@@ -6,12 +6,13 @@ Goal: reach the MVP validation criteria of `docs/contracts/results-contract.md`
 
 ## Current state
 
-Domain core in Docker. Done: Identity/Sphere/Member (§19 #1,#2), Policy Engine
-(ADR-003), Memory + policy-scoped Resolver (§19 child-can't-read-private,
-share/revoke), Agent (§19 agent-per-member), Approval flow (ADR-004; §19
-sensitive-action approval). Seven of nine §19 criteria hold at the domain
-level. Remaining: local model runtime adapter (Ollama) and export — then an
-API/CLI surface to make all nine demonstrable end-to-end.
+Domain core + first adapter in Docker. Done: Identity/Sphere/Member (§19 #1,#2),
+Policy Engine (ADR-003), Memory + policy-scoped Resolver (§19
+child-can't-read-private, share/revoke), Agent (§19 agent-per-member), Approval
+flow (ADR-004; §19 approval), Ollama runtime adapter (§19 local model runtime —
+live-verified against the host Ollama). Eight of nine §19 criteria hold.
+Remaining: export (§19 #9). Then a thin API/CLI surface to make all nine
+demonstrable end-to-end as a single runnable flow.
 
 ## Stack decisions (ADR-006)
 
@@ -38,7 +39,7 @@ Runtime adapter → integrations/Packages → UI.
 - [x] memory can be shared and revoked *(core; CLI/API wiring pending)*
 - [x] a capability can be allowed for an adult and denied to a child *(policy engine; CLI/API wiring pending)*
 - [x] a sensitive action can trigger approval *(core; CLI/API wiring pending)*
-- [ ] the system runs with a local model runtime
+- [x] the system runs with a local model runtime *(Ollama adapter; live listModels passed against the running host Ollama)*
 - [ ] data can be exported
 
 ## Log
@@ -171,3 +172,26 @@ Runtime adapter → integrations/Packages → UI.
     `OLLAMA_BASE_URL=http://host.docker.internal:11434` + host-gateway mapping
     into docker-compose. Adapter must read `OLLAMA_BASE_URL` (default
     `http://localhost:11434`).
+
+### Iteration 8 — 2026-06-25
+- **Done:** Runtime port + Ollama adapter. `packages/core/runtime/runtime.ts`:
+  AgentRuntime port (listModels/generate/isAvailable; RuntimeMessage/Request/
+  Response) — pure interface, runtime decides no permissions (ADR-001).
+  `packages/adapters/runtime-ollama` (first provider-bearing package, @kinos/core
+  dep): OllamaRuntime over /api/tags + /api/chat (stream:false), reads
+  OLLAMA_BASE_URL (default localhost:11434), injectable fetch. 4 mocked-fetch
+  unit tests + a live test gated on reachability. Monorepo wiring: adapter
+  tsconfig resolves @kinos/core via paths + project reference; added @types/node;
+  root tsconfig references the adapter.
+- **Verified (in container):** `npm test` → 54 passed, 1 skipped (live
+  generation — no model pulled); the live `listModels` test **passed against the
+  running host Ollama**. `typecheck` → exit 0 across both packages.
+- **Decisions:** adapter connects to an existing Ollama (never starts one);
+  generation test skips until a model is pulled (e.g. `ollama pull llama3.2` on
+  the Ollama host). Tool-calling/streaming and Hermes runtime deferred (no §19
+  dependency).
+- **Next step:** Export slice (§19 #9 / results-contract §17, ADR-002 export).
+  TDD an exportSphere(sphere, members, agents, memory, policies) → documented
+  JSON snapshot (canonical items, ownership, visibility, sensitivity, lifecycle;
+  not embeddings) + importSphere round-trip. Pure core. Then a thin CLI/API in
+  packages/app to drive the full §19 sequence end-to-end.

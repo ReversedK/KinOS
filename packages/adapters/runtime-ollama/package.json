@@ -1,0 +1,18 @@
+{
+  "name": "@kinos/runtime-ollama",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ollama agent-runtime adapter. Implements @kinos/core's AgentRuntime port against a local Ollama server.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@kinos/core": "*"
+  },
+  "scripts": {
+    "typecheck": "tsc --build"
+  }
+}
