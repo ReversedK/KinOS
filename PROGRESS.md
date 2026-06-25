@@ -58,6 +58,18 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 28 — 2026-06-25 (post-§19; UI build verified)
+- **Done:** ran `next build` in-container — compiled successfully, strict-typed
+  the app, and prerendered `/` as static. Next auto-reconfigured ui/tsconfig.json
+  (added allowJs; intentional, kept). The Spheres page + layout + API client
+  type-check and build clean.
+- **Verified (in container):** `next build` ✓ (route `/` static, 87 kB first
+  load); `npm test` → 123 passed, 1 skipped; workspace `typecheck` → exit 0.
+- **Next step:** expand the UI — a Sphere detail page (members/agents) and a
+  pending-approvals view via getPendingApprovals, pointed at a running API
+  (KINOS_API_URL). Consider an end-to-end smoke (serve API + next build/start)
+  later. Add a `next lint`/build step to the doc'd verification flow.
+
 ### Iteration 27 — 2026-06-25 (post-§19; Next.js UI scaffold)
 - **Human decision:** build the UI as a **Next.js app** per ADR-006 (asked
   before committing to the frontend stack).

@@ -146,6 +146,17 @@ docker compose run --rm -p 8787:8787 dev npm run serve -w @kinos/api
 Every response includes an `x-correlation-id` header; errors use the
 api-contract codes (`not_found`, `invalid_request`) and never leak content.
 
+### UI (Next.js)
+
+A read-only Next.js UI (`ui/`) lists Spheres and (soon) members/agents/approvals
+from the read API, hiding all technical internals (results-contract §18). It
+reads `KINOS_API_URL` (default `http://localhost:8787`).
+
+```bash
+docker compose run --rm dev npm run build -w @kinos/ui    # compile + typecheck
+docker compose run --rm -p 3000:3000 dev npm run dev -w @kinos/ui   # dev server
+```
+
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 
 ## Development rule
