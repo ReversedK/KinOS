@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft accepted for MVP direction.
+Accepted for MVP.
 
 ## Context
 
