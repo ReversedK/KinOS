@@ -58,6 +58,24 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 19 — 2026-06-25 (post-§19; local executor adapter)
+- **Done:** `@kinos/executor-local` (`packages/adapters/executor-local`).
+  LocalCapabilityExecutor implements the CapabilityExecutor port via a handler
+  registry keyed by binding.runtimeToolName; an unknown handler throws (failure
+  containment, ADR-001). `modelBackedHandler(runtime, {model, system})` routes a
+  capability through the AgentRuntime port (for draft/summarize-style
+  capabilities). 3 tests with a fake runtime. Pure of native deps; strict tsconfig.
+- **Verified (in container):** `npm test` → 95 passed, 1 skipped; `typecheck` → exit 0
+  across all five packages.
+- **Decisions:** executor decides no permissions (runs only post-policy-check);
+  input is passed through as-is (string used verbatim, else JSON-stringified).
+- **Next step:** wire a CLI `run <sphereId> <capability>` that loads policies +
+  bindings for a Sphere and drives beginSensitiveAction/resolveApproval through
+  LocalCapabilityExecutor with the SqliteAuditSink — making the full governed
+  execute loop invocable end-to-end. Needs persisting policies/bindings per
+  Sphere first (extend the store/snapshot or a small config). Alternatively
+  start the Next.js UI (results-contract §18).
+
 ### Iteration 18 — 2026-06-25 (post-§19; lifecycle audit + CLI view)
 - **Done:** Added `AuditReader` read-interface in core (InMemoryAuditSink
   implements it). `initSphere` now emits a `sphere.created` event when an audit
