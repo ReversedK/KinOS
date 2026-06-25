@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft — proposed. Pending acceptance.
+Accepted for MVP.
 
 ## Context
 
