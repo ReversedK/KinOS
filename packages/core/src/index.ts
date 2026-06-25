@@ -25,3 +25,4 @@ export * from "./capability/types.js";
 export * from "./capability/catalog.js";
 export * from "./capability/resolver.js";
 export * from "./audit/events.js";
+export * from "./flow/sensitive-action.js";

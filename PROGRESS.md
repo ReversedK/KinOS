@@ -36,8 +36,15 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
 - **Audit events**: DONE (iteration 15). KinEvent model + AuditSink port +
   InMemoryAuditSink (event-model.md). executeCapability emits a correlation-
   chained, content-free trail (requested → allowed → executed | denied) citing
-  the deciding policy. Next: emit approval.requested/granted when an
-  ApprovalRequest is created/resolved, and a durable audit sink adapter.
+  the deciding policy.
+- **Sensitive-action orchestration**: DONE (iteration 16).
+  `flow/sensitive-action.ts` ties execution + approval under one correlation id:
+  begin → (executed | denied | pending_approval with an ApprovalRequest +
+  approval.requested); resolve → record decision (approval.granted/denied) →
+  grant re-runs the single authorized action (executeCapability honours a
+  matching grantedApproval; deny still dominates). Next: durable AuditSink
+  adapter; emit lifecycle events (sphere.created, agent.created, memory.*) in
+  the command/scenario paths.
 - **SQLite persistence + CLI wiring**: DONE. `SphereStore` port (it.11) +
   `@kinos/persistence-sqlite` (it.12) + CLI subcommands `init/list/show/export`
   backed by SQLite at `$KINOS_DB` (it.13). Verified durable across separate
@@ -365,3 +372,23 @@ Runtime adapter → integrations/Packages → UI.
   (capability.allowed/executed), all under one correlation id. Add a local
   CapabilityExecutor adapter and surface it via a CLI subcommand. Then a durable
   AuditSink adapter (SQLite) so audit survives restarts.
+
+### Iteration 16 — 2026-06-25 (post-§19; sensitive-action flow)
+- **Done:** `packages/core/flow/sensitive-action.ts`. beginSensitiveAction runs
+  executeCapability and, on require_approval, creates an ApprovalRequest and
+  emits approval.requested. resolveApproval records an approver decision (emits
+  approval.granted/denied) and, on a quorum of grants, re-runs the single
+  authorized action. executeCapability extended with an optional grantedApproval
+  that turns a matching require_approval (same capability + correlation id) into
+  execution — single-use; a deny is never overridden, profile/binding checks
+  still apply. 4 flow tests; full chain shares one correlation id.
+- **Verified (in container):** `npm test` → 88 passed, 1 skipped; `typecheck` → exit 0.
+- **Decisions:** the original request is re-supplied to resolveApproval to run
+  the authorized action (the approval references, not copies, the action — ADR-004).
+  grant matching requires capability name + correlation id to prevent a grant
+  authorizing a different action.
+- **Next step:** durable AuditSink adapter (SQLite, append-only audit table) so
+  the audit trail survives restarts; and emit lifecycle events
+  (sphere.created/agent.created/memory.*) from the command + scenario paths so a
+  full run leaves a readable, correlation-linked audit history. Doc-check
+  privacy-model (audit minimality) before persisting audit.

@@ -17,6 +17,7 @@
  * CapabilityExecutor port.
  */
 
+import { isAuthorized, type ApprovalRequest } from "../approval/approval.js";
 import type { AuditSink, KinEventType } from "../audit/events.js";
 import { evaluate } from "../policy/engine.js";
 import {
@@ -43,6 +44,13 @@ export interface CapabilityExecutionDeps {
   readonly executor: CapabilityExecutor;
   /** Optional audit sink; when present, the execution chain is recorded. */
   readonly audit?: AuditSink;
+  /**
+   * A granted ApprovalRequest authorizing this one action. When a per-call
+   * policy decision is require_approval, a granted approval matching this
+   * capability and correlation id authorizes execution (single-use). A deny is
+   * never overridden.
+   */
+  readonly grantedApproval?: ApprovalRequest;
 }
 
 export interface CapabilityExecutionResult {
@@ -147,9 +155,18 @@ export async function executeCapability(
     return deny(decision.reason, decision);
   }
   if (decision.effect === "require_approval") {
-    // The approval.requested event is emitted when the ApprovalRequest is
-    // created (the suspended action does not run here).
-    return { outcome: "requires_approval", reason: decision.reason, correlationId, decision };
+    const g = deps.grantedApproval;
+    const authorizedByGrant =
+      g !== undefined &&
+      isAuthorized(g) &&
+      g.correlationId === correlationId &&
+      g.action.capabilityName === request.capabilityName;
+    if (!authorizedByGrant) {
+      // The approval.requested event is emitted when the ApprovalRequest is
+      // created (the suspended action does not run here).
+      return { outcome: "requires_approval", reason: decision.reason, correlationId, decision };
+    }
+    // Fall through: a granted approval authorizes this single action.
   }
   emit("capability.allowed", decision);
   const output = await deps.executor.execute(binding, request.input);
