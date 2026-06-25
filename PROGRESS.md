@@ -28,9 +28,10 @@ Ollama adapter (live-verified), export/import, and the `@kinos/cli` acceptance
 orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
 
 ### Beyond §19 (not required for the §19 milestone; next if the loop resumes)
-- **SQLite persistence**: port DEFINED (`SphereStore` in core, in-memory ref
-  done — iteration 11). Next: the SQLite adapter implementing the same contract
-  (durability; results-contract §1/§15).
+- **SQLite persistence**: DONE. `SphereStore` port in core (in-memory ref,
+  iteration 11) + `@kinos/persistence-sqlite` SQLite adapter (better-sqlite3,
+  durability verified across reopen — iteration 12). Next: wire the CLI to
+  persist/reload a Sphere (results-contract §1 "database is initialized").
 - **Interactive CLI/API commands** (the current CLI runs a scripted scenario,
   not per-command operations) and the **Next.js UI** (results-contract §18).
 - **Capability execution path** (binding resolution + per-call policy re-check
@@ -273,3 +274,22 @@ Runtime adapter → integrations/Packages → UI.
   temp DB file; ideally extract a shared SphereStore contract suite and run it
   for both in-memory and SQLite. Then wire the CLI to persist/reload a Sphere
   (results-contract §1 "database is initialized").
+
+### Iteration 12 — 2026-06-25 (post-§19; SQLite adapter)
+- **Done:** `@kinos/persistence-sqlite` (`packages/adapters/persistence-sqlite`).
+  SqliteSphereStore implements SphereStore via better-sqlite3 — one `spheres`
+  table (id PRIMARY KEY, snapshot JSON), INSERT OR REPLACE, WAL mode, close().
+  5 tests against a temp DB file incl. durability across a reopen of the same
+  file. better-sqlite3 compiled in-container (Dockerfile build tools).
+- **Verified (in container):** `npm test` → 70 passed, 1 skipped; `typecheck` →
+  exit 0 across all four packages.
+- **Decisions:** adapter tsconfig sets `verbatimModuleSyntax:false` +
+  `esModuleInterop:true` locally so the CJS `better-sqlite3` default-imports
+  cleanly; core keeps strict module settings. Stores the canonical export
+  snapshot as JSON (thin adapter; query-optimised schema deferred until needed).
+- **Next step:** Wire the CLI to persistence — `mvp` (or a new subcommand) saves
+  the built Sphere via a chosen SphereStore and reloads it, proving
+  results-contract §1 "the database is initialized" / §15 local-first durability
+  end-to-end. Inject SqliteSphereStore in the CLI (path from env, e.g.
+  KINOS_DB), keep InMemory for tests. Consider a tiny arg parser
+  (create/list/export) rather than only the scripted scenario.
