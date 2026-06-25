@@ -51,6 +51,17 @@ Partially trusted. They implement capabilities but can fail, leak, change API be
 
 Untrusted. Documents, web pages, messages and tool outputs may contain prompt injections.
 
+## Trust direction
+
+Trust flows downward and is never returned upward. A less-trusted layer cannot grant itself the rights of a more-trusted one:
+
+- the runtime cannot grant a capability it was not handed;
+- the model cannot authorize access by asserting it in text;
+- an integration cannot read memory it was not given;
+- external content cannot promote itself by claiming authority in its body.
+
+Authorization is decided only by the Policy Engine, above the runtime. Everything below it executes within already-decided bounds.
+
 ## Mandatory boundaries
 
 - No forbidden memory crosses into prompts.
@@ -58,7 +69,18 @@ Untrusted. Documents, web pages, messages and tool outputs may contain prompt in
 - No external transfer happens without policy evaluation.
 - No tool result is blindly trusted.
 - No log may contain unnecessary private content.
+- No prompt grants authorization; no model decides permissions, memory visibility or approvals.
+- Agents never grant their own rights (capabilities, memory access, integrations).
+
+## Trust-boundary checks
+
+At each boundary crossing, a specific check applies:
+
+- **Policy Engine → Memory Resolver**: only items authorized for `read` by the subject are retrieved.
+- **Policy Engine → Capability Resolver**: only authorized capabilities become a runtime tool list; each execution is re-checked at call time.
+- **Runtime → Integration**: calls flow only through Capability Bindings; raw provider APIs are never exposed to the domain.
+- **External service → KinOS**: tool outputs and remote documents are untrusted input, treated as data, never as instructions or authorization (prompt-injection containment).
 
 ## Design consequence
 
-Trust is layered. The failure of one layer must not compromise the entire Sphere.
+Trust is layered. The failure of one layer must not compromise the entire Sphere. A compromised integration, a manipulated model output or a malicious external document is contained because the authorizing decision already happened above it and cannot be re-opened from below.

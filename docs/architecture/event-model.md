@@ -30,6 +30,21 @@ type KinEvent = {
 };
 ```
 
+## Correlation chaining
+
+A single sensitive action produces a chain of events sharing one `correlationId`, generated at request entry and threaded through policy check, approval, runtime call and integration call. From that id an auditor can reconstruct: who asked, which policy version decided, whether approval was required and by whom it was answered, what executed and through which integration — without reading any private content.
+
+Example chain for one purchase:
+
+```text
+capability.requested  -> capability.denied? no
+require_approval (policy) -> approval.requested -> approval.granted
+capability.allowed -> capability.executed
+external_transfer.requested -> external_transfer.allowed
+```
+
+All carry the same `correlationId`; each carries the deciding policy id/version where relevant.
+
 ## Initial event types
 
 - sphere.created
@@ -58,6 +73,14 @@ type KinEvent = {
 - external_transfer.allowed
 - external_transfer.denied
 
+## What an event may and may not carry
+
+May carry: ids, types, Sphere/actor/agent references, resource type and class, sensitivity class, decision, deciding policy id/version, a user-safe reason, correlation id, timestamp.
+
+Must not carry: full conversation text, raw memory content, message bodies, credentials, secrets or provider tokens. Sensitive resources are referenced by id and classification, never copied.
+
+A `reason` is user-safe: it names the policy and the decision class, not the private content that triggered it. `policyId`/`policyVersion` and `cost`/`execution` (local/cloud) may extend the common fields where relevant.
+
 ## Audit vs telemetry
 
-Audit events support trust and accountability. Telemetry supports product improvement. They must be separate systems with separate consent rules.
+Audit events support trust and accountability. Telemetry supports product improvement. They must be separate systems with separate consent rules. Telemetry must never become a copy of audit content, and audit must never be repurposed as analytics on private behavior.
