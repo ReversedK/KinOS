@@ -8,9 +8,9 @@ Goal: reach the MVP validation criteria of `docs/contracts/results-contract.md`
 
 Domain core in Docker. Done: Identity/Sphere/Member (§19 #1,#2), Policy Engine
 (ADR-003), Memory + policy-scoped Resolver (§19 child-can't-read-private,
-share/revoke), Agent (§19 each member can have an agent). Six of nine §19
-criteria hold at the domain level. Remaining at core level: sensitive-action
-approval (ADR-004), local model runtime adapter (Ollama), export — then an
+share/revoke), Agent (§19 agent-per-member), Approval flow (ADR-004; §19
+sensitive-action approval). Seven of nine §19 criteria hold at the domain
+level. Remaining: local model runtime adapter (Ollama) and export — then an
 API/CLI surface to make all nine demonstrable end-to-end.
 
 ## Stack decisions (ADR-006)
@@ -37,7 +37,7 @@ Runtime adapter → integrations/Packages → UI.
 - [x] the child cannot access private adult memory *(resolver+engine; CLI/API wiring pending)*
 - [x] memory can be shared and revoked *(core; CLI/API wiring pending)*
 - [x] a capability can be allowed for an adult and denied to a child *(policy engine; CLI/API wiring pending)*
-- [ ] a sensitive action can trigger approval
+- [x] a sensitive action can trigger approval *(core; CLI/API wiring pending)*
 - [ ] the system runs with a local model runtime
 - [ ] data can be exported
 
@@ -143,3 +143,24 @@ Runtime adapter → integrations/Packages → UI.
   decision creates a pending ApprovalRequest; grant/deny/expire transitions;
   granted is single-use; requester/agent cannot self-approve. Threads the
   correlation id.
+
+### Iteration 7 — 2026-06-25
+- **Done:** Approval flow in `packages/core/approval/approval.ts`.
+  ApprovalRequest (ADR-004 shape). createApprovalFromDecision (only from a
+  require_approval decision; carries correlationId + deciding policy; computes
+  expiresAt). recordApprovalDecision (eligibility: active member holding an
+  approver role, not the requester, not a minor; deny dominates; quorum distinct
+  grants; duplicates ignored; resolved requests rejected). expireIfDue
+  (expiry = denial), cancelApproval, isAuthorized (granted only). All immutable.
+  13 tests cover every ADR-004 acceptance criterion.
+- **Verified (in container):** `npm test` → 49 passed (8 files); `typecheck` → exit 0.
+- **Decisions:** minors are categorically ineligible to approve (satisfies "a
+  minor can never approve an action by or about themselves"); approver
+  eligibility facts are passed in (core does no Sphere lookup, stays pure);
+  timeout/risk escalation beyond quorum deferred (no §19 dependency).
+- **Next step:** Local model runtime adapter (Ollama) — define the runtime port
+  in core (e.g. AgentRuntime/CapabilityExecutor interface) and an Ollama adapter
+  in packages/adapters/runtime-ollama. Port lives in core (pure); adapter
+  imports the provider. Gives §19 "runs with a local model runtime". TDD the
+  port contract with a fake; integration-test the adapter behind a flag (no live
+  Ollama in CI). Confirm doc coverage (ADR-001 + ADR-006) before coding.
