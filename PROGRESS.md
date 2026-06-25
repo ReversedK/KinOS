@@ -8,9 +8,10 @@ Goal: reach the MVP validation criteria of `docs/contracts/results-contract.md`
 
 Domain core in Docker. Done: Identity/Sphere/Member (§19 #1,#2), Policy Engine
 (ADR-003), Memory + policy-scoped Resolver (§19 child-can't-read-private,
-share/revoke). Five of nine §19 criteria hold at the domain level. Remaining at
-core level: Agent per member, sensitive-action approval, local model runtime,
-export — then an API/CLI surface to make all nine demonstrable end-to-end.
+share/revoke), Agent (§19 each member can have an agent). Six of nine §19
+criteria hold at the domain level. Remaining at core level: sensitive-action
+approval (ADR-004), local model runtime adapter (Ollama), export — then an
+API/CLI surface to make all nine demonstrable end-to-end.
 
 ## Stack decisions (ADR-006)
 
@@ -32,7 +33,7 @@ Runtime adapter → integrations/Packages → UI.
 
 - [x] a Sphere can be created *(core; CLI/API surface pending)*
 - [x] two adults and one child can be added *(core; CLI/API surface pending)*
-- [ ] each member can have an agent
+- [x] each member can have an agent *(core; CLI/API wiring pending)*
 - [x] the child cannot access private adult memory *(resolver+engine; CLI/API wiring pending)*
 - [x] memory can be shared and revoked *(core; CLI/API wiring pending)*
 - [x] a capability can be allowed for an adult and denied to a child *(policy engine; CLI/API wiring pending)*
@@ -125,3 +126,20 @@ Runtime adapter → integrations/Packages → UI.
   configured/active/disabled, "disabling does not delete memory". TDD. Gives
   §19 "each member can have an agent". Then approval flow (ADR-004) for §19
   "sensitive action triggers approval".
+
+### Iteration 6 — 2026-06-25
+- **Done:** Agent slice in `packages/core/agent/agent.ts`. Agent (owner
+  member|sphere, distinct identity, enabledCapabilities, modelPreference,
+  state). createAgent (configured; rejects id==ownerId; rejects empty name),
+  enable/disableCapability, activate/pause/disableAgent, changeModelPreference
+  (same identity — boring swap). All immutable. 6 tests, incl. an integration
+  test proving disabling an agent leaves its owner's memory readable.
+- **Verified (in container):** `npm test` → 36 passed (7 files); `typecheck` → exit 0.
+- **Decisions:** modelPreference is an advisory tag (Ollama model name later);
+  agent's acting role/ageProfile (for capability execution as owner) deferred to
+  the capability-execution slice. Sphere-agent persona (ADR-005 layer 2) deferred.
+- **Next step:** Approval flow (ADR-004 / entity-lifecycle ApprovalRequest) for
+  §19 "a sensitive action can trigger approval". TDD: a require_approval policy
+  decision creates a pending ApprovalRequest; grant/deny/expire transitions;
+  granted is single-use; requester/agent cannot self-approve. Threads the
+  correlation id.
