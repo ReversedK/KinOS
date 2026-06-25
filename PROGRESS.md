@@ -58,6 +58,24 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 30 — 2026-06-25 (post-§19; API e2e over real SQLite)
+- **Done:** end-to-end test (`packages/app/api/src/e2e.test.ts`) booting
+  createApiServer wired to the **real durable adapters** (SqliteSphereStore/
+  ApprovalStore/AuditSink) seeded in a temp dir, then fetching every route the
+  UI consumes (/spheres, /spheres/:id, /members, /agents, /approvals). Closes
+  the integration gap the per-layer unit tests left (server tests used in-memory
+  stores). 2 tests.
+- **Verified (in container):** `npm test` → 130 passed, 1 skipped; `typecheck` →
+  exit 0. The full read path SQLite → router → HTTP → fetch is proven together.
+- **Status:** the MVP is complete and hardened end-to-end — governance core,
+  5 adapters, CLI (init/list/show/export/run/approve/audit/mvp), read API + HTTP
+  server, Next.js UI (Spheres/members/agents/approvals), durable persistence +
+  audit, cross-process approvals. All nine §19 criteria pass; 130 tests green.
+- **Next step (optional):** Sphere-agent persona (ADR-005 L2); policy NL
+  authoring/compilation (ADR-003); real integration adapters (Google/CalDAV/n8n)
+  behind bindings; embeddings index. None are §19 requirements. Natural point to
+  pause the loop and summarize.
+
 ### Iteration 29 — 2026-06-25 (post-§19; UI Sphere detail + approvals)
 - **Done:** extended the read API with `/spheres/:id/members` (id, role, status)
   and `/spheres/:id/agents` (id, name, owner, state, enabledCapabilities) — facts
