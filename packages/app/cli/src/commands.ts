@@ -8,12 +8,16 @@
  */
 
 import {
+  beginSensitiveAction,
   createIdentity,
   createSphere,
+  defaultCapabilityCatalog,
   exportSphere,
   importSphere,
   type AuditReader,
   type AuditSink,
+  type CapabilityExecutor,
+  type PolicyRequest,
   type SphereStore,
 } from "@kinos/core";
 
@@ -79,6 +83,87 @@ export async function showSphere(store: SphereStore, id: string): Promise<string
     `members: ${snap.sphere.members.length}`,
     `identities: ${snap.identities.length}`,
   ].join("\n");
+}
+
+export interface RunCapabilityDeps {
+  readonly store: SphereStore;
+  readonly executor: CapabilityExecutor;
+  readonly audit: AuditSink;
+  readonly newApprovalId: () => string;
+}
+
+export interface RunCapabilityArgs {
+  readonly sphereId: string;
+  readonly capabilityName: string;
+  readonly profile: "adult" | "child";
+  readonly now: string;
+  readonly correlationId: string;
+}
+
+function demoSubject(sphereId: string, profile: "adult" | "child"): PolicyRequest["subject"] {
+  return profile === "adult"
+    ? {
+        memberId: `mbr_${sphereId}_founder`,
+        agentId: `agt_${sphereId}_admin`,
+        role: "parent",
+        ageProfile: "adult",
+      }
+    : {
+        memberId: `mbr_${sphereId}_child`,
+        agentId: `agt_${sphereId}_child`,
+        role: "child",
+        ageProfile: "child",
+      };
+}
+
+/**
+ * Drive the governed execute loop for a persisted Sphere: load its policies and
+ * bindings, run beginSensitiveAction through the injected executor and audit
+ * sink, and summarize the outcome (executed / denied / pending approval).
+ */
+export async function runCapability(
+  deps: RunCapabilityDeps,
+  args: RunCapabilityArgs,
+): Promise<string> {
+  const snap = await deps.store.load(args.sphereId);
+  if (snap === undefined) return `Sphere ${args.sphereId} not found.`;
+  const imported = importSphere(snap);
+
+  const result = await beginSensitiveAction(
+    {
+      subject: demoSubject(args.sphereId, args.profile),
+      capabilityName: args.capabilityName,
+      input: {},
+      context: {
+        sphereId: args.sphereId,
+        time: args.now,
+        execution: "local",
+        correlationId: args.correlationId,
+      },
+    },
+    {
+      catalog: defaultCapabilityCatalog(),
+      bindings: imported.bindings,
+      policies: imported.policies,
+      executor: deps.executor,
+      audit: deps.audit,
+      newApprovalId: deps.newApprovalId,
+    },
+  );
+
+  const lines = [
+    `capability: ${args.capabilityName}`,
+    `actor: ${args.profile}`,
+    `outcome: ${result.status}`,
+    `reason: ${result.reason}`,
+  ];
+  if (result.approval !== undefined) {
+    lines.push(
+      `approvalId: ${result.approval.id} (state ${result.approval.state}, approvers ${result.approval.approverRoles.join(", ")})`,
+    );
+  }
+  lines.push(`correlationId: ${args.correlationId}`);
+  return lines.join("\n");
 }
 
 /** Render an action's audit chain (security facts only) for a correlation id. */

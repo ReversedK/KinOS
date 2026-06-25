@@ -106,6 +106,19 @@ viewable across runs:
 docker compose run --rm dev npm run mvp -w @kinos/cli -- audit <correlationId>
 ```
 
+Run a capability through the governed pipeline (catalog profile floor → enabled
+binding → Policy Engine → approval floor → execute), recording an audit chain:
+
+```bash
+docker compose run --rm dev npm run mvp -w @kinos/cli -- run sph_1 calendar.create_event adult
+docker compose run --rm dev npm run mvp -w @kinos/cli -- run sph_1 payment.execute child
+```
+
+A freshly `init`ed Sphere has no bindings, so `run` is denied by default; a
+Sphere whose snapshot carries an enabled binding and an allowing policy
+executes. Either way the action's outcome and `correlationId` are printed and
+the audit chain is queryable with `audit`.
+
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 
 ## Development rule

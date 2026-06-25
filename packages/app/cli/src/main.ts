@@ -7,6 +7,7 @@
  *   list                      list persisted Sphere ids
  *   show <id>                 show a persisted Sphere summary
  *   export <id>               print a Sphere's export snapshot JSON
+ *   run <id> <cap> [adult|child]  run a capability through the governed pipeline
  *   audit <correlationId>     show an action's audit chain
  *
  * Persistence is SQLite at $KINOS_DB (default ./data/kinos.sqlite); the audit
@@ -18,10 +19,18 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
+import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
 import { SqliteAuditSink, SqliteSphereStore } from "@kinos/persistence-sqlite";
 import { OllamaRuntime } from "@kinos/runtime-ollama";
 
-import { exportSphereJson, initSphere, listSpheres, showAudit, showSphere } from "./commands.js";
+import {
+  exportSphereJson,
+  initSphere,
+  listSpheres,
+  runCapability,
+  showAudit,
+  showSphere,
+} from "./commands.js";
 import { runMvpScenario } from "./scenario.js";
 
 function openStore(): SqliteSphereStore {
@@ -115,6 +124,40 @@ async function main(argv: readonly string[]): Promise<number> {
         console.log(await exportSphereJson(store, id));
       } finally {
         store.close();
+      }
+      return 0;
+    }
+    case "run": {
+      const [sphereId, capabilityName, profileArg] = rest;
+      if (!sphereId || !capabilityName) {
+        console.error("usage: kinos run <id> <capability> [adult|child]");
+        return 1;
+      }
+      const profile = profileArg === "child" ? "child" : "adult";
+      const store = openStore();
+      const audit = openAudit();
+      const executor = new LocalCapabilityExecutor(
+        new Map<string, CapabilityHandler>([
+          ["local.calendar", async (input) => ({ created: true, input })],
+          ["local.echo", async (input) => ({ echoed: input })],
+        ]),
+      );
+      try {
+        console.log(
+          await runCapability(
+            { store, executor, audit, newApprovalId: () => `apr_${randomUUID()}` },
+            {
+              sphereId,
+              capabilityName,
+              profile,
+              now: new Date().toISOString(),
+              correlationId: randomUUID(),
+            },
+          ),
+        );
+      } finally {
+        store.close();
+        audit.close();
       }
       return 0;
     }

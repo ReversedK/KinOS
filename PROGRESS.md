@@ -58,6 +58,25 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 21 — 2026-06-25 (post-§19; governed run command)
+- **Done:** `runCapability` command + CLI `run <id> <cap> [adult|child]`. Loads a
+  Sphere snapshot, builds CapabilityExecutionDeps from its policies + bindings +
+  the catalog + an injected executor, drives beginSensitiveAction with the
+  SqliteAuditSink, prints outcome/reason/approval/correlationId. main wires
+  LocalCapabilityExecutor (local.calendar/local.echo handlers). 3 command tests
+  (executed via executor, deny on missing binding, child denied by profile floor).
+- **Verified (in container):** `npm test` → 99 passed, 1 skipped; `typecheck` →
+  exit 0. Live: `run` on a fresh Sphere denies (no binding); `run … child` on
+  payment denied by catalog profile floor — each with its own correlationId.
+- **Decisions:** `run` uses a demo subject derived from profile (adult founder /
+  child); real per-member acting identity + an `approve <id>` command (approvals
+  aren't persisted yet) deferred. The full governed loop is now invocable from
+  the CLI end-to-end.
+- **Next step:** persist ApprovalRequests (so a pending `run` can be resolved by
+  a later `approve <approvalId>` command, closing the suspend→grant→execute loop
+  across processes); OR begin the Next.js UI (results-contract §18). Lean: the
+  approval persistence closes the last open governance gap before UI.
+
 ### Iteration 20 — 2026-06-25 (post-§19; persist bindings)
 - **Done:** Added an optional `bindings` (CapabilityBinding[]) section to the
   SphereExport snapshot — additive, no version bump (a snapshot without it
