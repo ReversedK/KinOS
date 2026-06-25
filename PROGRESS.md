@@ -6,13 +6,13 @@ Goal: reach the MVP validation criteria of `docs/contracts/results-contract.md`
 
 ## Current state
 
-Domain core + first adapter in Docker. Done: Identity/Sphere/Member (§19 #1,#2),
-Policy Engine (ADR-003), Memory + policy-scoped Resolver (§19
-child-can't-read-private, share/revoke), Agent (§19 agent-per-member), Approval
-flow (ADR-004; §19 approval), Ollama runtime adapter (§19 local model runtime —
-live-verified against the host Ollama). Eight of nine §19 criteria hold.
-Remaining: export (§19 #9). Then a thin API/CLI surface to make all nine
-demonstrable end-to-end as a single runnable flow.
+All nine §19 criteria pass at the domain/core level (unit-tested in Docker):
+Identity/Sphere/Member, Policy Engine (ADR-003), Memory + policy-scoped Resolver,
+Agent, Approval (ADR-004), Ollama runtime adapter (live-verified), export/import.
+**Remaining for "done": a thin CLI/API in `packages/app` that drives the full
+§19 sequence as one runnable flow**, turning the per-criterion unit proofs into
+a single end-to-end demonstration with documented run commands (results-contract
+§1 installation).
 
 ## Stack decisions (ADR-006)
 
@@ -40,7 +40,7 @@ Runtime adapter → integrations/Packages → UI.
 - [x] a capability can be allowed for an adult and denied to a child *(policy engine; CLI/API wiring pending)*
 - [x] a sensitive action can trigger approval *(core; CLI/API wiring pending)*
 - [x] the system runs with a local model runtime *(Ollama adapter; live listModels passed against the running host Ollama)*
-- [ ] data can be exported
+- [x] data can be exported *(core export/import round-trip; CLI/API wiring pending)*
 
 ## Log
 
@@ -195,3 +195,22 @@ Runtime adapter → integrations/Packages → UI.
   JSON snapshot (canonical items, ownership, visibility, sensitivity, lifecycle;
   not embeddings) + importSphere round-trip. Pure core. Then a thin CLI/API in
   packages/app to drive the full §19 sequence end-to-end.
+
+### Iteration 9 — 2026-06-25
+- **Done:** Export slice in `packages/core/export/export.ts`. SphereExport
+  (versioned, self-describing JSON: format/version/exportedAt + sphere,
+  identities, agents, memory, policies; embeddings excluded). exportSphere +
+  importSphere (fail-closed validation: non-object / unknown format / unsupported
+  version / missing sections all throw). Documented the format in
+  `docs/architecture/export-format.md` (results-contract §17 requires a
+  documented format). 5 tests incl. a JSON round-trip.
+- **Verified (in container):** `npm test` → 59 passed, 1 skipped; `typecheck` → exit 0.
+- **Milestone:** all nine §19 criteria now pass at the core level.
+- **Next step:** Thin CLI in `packages/app/cli` (depends on @kinos/core +
+  @kinos/runtime-ollama) that runs the full §19 sequence as one flow: create
+  Sphere → add 2 adults + 1 child → create an agent per member → show child
+  denied parent's private memory → share then revoke → capability allowed for
+  adult / denied for child → trigger an approval → check the local Ollama
+  runtime → export. Wire SQLite persistence behind the core repository ports
+  (define those ports first; doc-check ADR-002/ADR-006). Document run commands
+  (results-contract §1). This converts the unit proofs into an end-to-end demo.
