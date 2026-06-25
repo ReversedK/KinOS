@@ -27,6 +27,7 @@ Data sovereignty, privacy, consent, portability, memory ownership and safety mus
 - [ADR-001 — Runtime and Integration Architecture](docs/adr/001-runtime-and-integration-architecture.md)
 - [ADR-002 — Memory Architecture](docs/adr/002-memory-architecture.md)
 - [ADR-003 — Policy Engine](docs/adr/003-policy-engine.md)
+- [ADR-004 — Approval and Escalation Model](docs/adr/004-approval-and-escalation-model.md)
 
 ### Domain
 

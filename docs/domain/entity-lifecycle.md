@@ -116,6 +116,34 @@ Rules:
 - a policy can be tested against simulated requests before activation;
 - a disabled or superseded policy stops affecting live decisions but its past decisions remain in audit.
 
+## Approval request lifecycle
+
+States:
+
+- pending;
+- granted;
+- denied;
+- expired;
+- cancelled.
+
+Transitions:
+
+- (created by a Policy Engine `require_approval` decision) → pending;
+- pending → granted (quorum of eligible approver grants reached);
+- pending → denied (any eligible approver denies, or quorum becomes unreachable);
+- pending → expired (expiry passes with no resolution);
+- pending → cancelled (the requesting subject withdraws the action before resolution).
+
+Rules:
+
+- the suspended action does not run while pending; it proceeds only on `granted`;
+- `expired` resolves exactly as a denial; the action does not run;
+- a `granted` approval is single-use and authorizes only the one pending action;
+- the requesting subject cannot approve their own request, and an agent never approves;
+- every transition emits a minimal audit event sharing the originating correlation id.
+
+See `docs/adr/004-approval-and-escalation-model.md`.
+
 ## Capability binding lifecycle
 
 States:
