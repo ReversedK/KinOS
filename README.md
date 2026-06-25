@@ -133,6 +133,19 @@ The whole sequence shares one correlation id, so `audit <correlationId>` shows
 → capability.executed`. Pending approvals persist to `$KINOS_APPROVALS_DB`
 (default `./data/approvals.sqlite`).
 
+### Read API (HTTP)
+
+A read-only HTTP API exposes already-governed state for clients/UI. It reads the
+same SQLite databases as the CLI and listens on `$KINOS_API_PORT` (default 8787):
+
+```bash
+docker compose run --rm -p 8787:8787 dev npm run serve -w @kinos/api
+# then: GET /health, /spheres, /spheres/:id, /approvals, /audit/:correlationId
+```
+
+Every response includes an `x-correlation-id` header; errors use the
+api-contract codes (`not_found`, `invalid_request`) and never leak content.
+
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 
 ## Development rule

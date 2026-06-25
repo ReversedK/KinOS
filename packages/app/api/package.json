@@ -10,9 +10,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@kinos/core": "*"
+    "@kinos/core": "*",
+    "@kinos/persistence-sqlite": "*"
   },
   "scripts": {
+    "serve": "tsx src/main.ts",
     "typecheck": "tsc --build"
   }
 }

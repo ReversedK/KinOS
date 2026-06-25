@@ -58,6 +58,21 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 26 — 2026-06-25 (post-§19; HTTP server for the read API)
+- **Done:** `createApiServer(deps)` (`packages/app/api/server.ts`) — a thin
+  node:http wrapper mapping IncomingMessage → ApiRequest, calling the pure
+  router, writing JSON + an `x-correlation-id` header. `toApiRequest` parses
+  method/path/query. `main.ts` wires the SQLite stores (read) and listens on
+  `$KINOS_API_PORT` (default 8787); `npm run serve -w @kinos/api`. 2 integration
+  tests bind an ephemeral port and fetch (health, sphere summary, 404).
+- **Verified (in container):** `npm test` → 119 passed, 1 skipped; `typecheck` →
+  exit 0. README documents the API.
+- **Decisions:** server holds no logic (transport only); read-only surface.
+- **Next step:** the **Next.js UI** (results-contract §18) consuming this API —
+  Spheres/members/agents/approvals views, hiding embeddings/MCP/runtime
+  internals. Large; consider whether to start it or pause and summarize (the
+  governance MVP + API are complete and §19 fully demonstrable).
+
 ### Iteration 25 — 2026-06-25 (post-§19; read API router)
 - **Done:** `@kinos/api` (`packages/app/api`). `handleApiRequest(req, deps)` — a
   transport-agnostic, read-only router (api-contract.md): GET /health,

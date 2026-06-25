@@ -3,13 +3,17 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "types": [],
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@kinos/core": ["../../core/src/index.ts"]
+      "@kinos/core": ["../../core/src/index.ts"],
+      "@kinos/persistence-sqlite": ["../../adapters/persistence-sqlite/src/index.ts"]
     }
   },
-  "references": [{ "path": "../../core" }],
+  "references": [
+    { "path": "../../core" },
+    { "path": "../../adapters/persistence-sqlite" }
+  ],
   "include": ["src/**/*.ts"],
   "exclude": ["**/*.test.ts", "dist"]
 }
