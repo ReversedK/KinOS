@@ -55,8 +55,10 @@ No new entity is introduced; Family is reduced to a type value rather than a str
 
 ## Open questions
 
-- How are cross-Sphere requests evaluated when a member belongs to multiple Spheres with conflicting roles? (Default: most restrictive wins; to be confirmed by ADR-003.)
-- How is graph traversal bounded to avoid implicit transitive grants and cycles in evaluation? (Policy Engine concern.)
+**Cross-Sphere graph evaluation is deferred to v2.** The MVP keeps Spheres flat for authorization: every grant is explicit and Sphere-scoped, membership of a Sphere in another Sphere grants no access, and the graph is structural only. The questions below are not resolved for the MVP and will be addressed by a future RFC/ADR when nested-Sphere authorization is taken on.
+
+- How are cross-Sphere requests evaluated when a member belongs to multiple Spheres with conflicting roles? (Tentative: most restrictive wins.) — v2.
+- How is graph traversal bounded to avoid implicit transitive grants and cycles in evaluation? — v2.
 - Which default policy presets ship per Sphere type, and where are they versioned?
 
 ## Acceptance criteria
