@@ -54,6 +54,22 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
 - **Capability execution path** (binding resolution + per-call policy re-check
   wired to the runtime), Sphere-agent persona (ADR-005 layer 2), audit events
   (event-model), embeddings (derived index).
+  - Update: capability execution (it.14), audit events (it.15-16) and a durable
+    SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
+    remain.
+
+### Iteration 17 — 2026-06-25 (post-§19; durable audit)
+- **Done:** `SqliteAuditSink` in `packages/adapters/persistence-sqlite` —
+  implements the core AuditSink over an append-only `audit_events` table (no
+  content column, so content cannot leak; privacy-model audit minimality).
+  byCorrelation()/all() reconstruct KinEvents with stable `evt_<seq>` ids. 2
+  tests incl. durability across a DB-file reopen.
+- **Verified (in container):** `npm test` → 90 passed, 1 skipped; `typecheck` → exit 0.
+- **Next step:** emit lifecycle events (sphere.created, agent.created, member.*,
+  memory.*) from the CLI command + scenario paths, writing to a SqliteAuditSink,
+  so a full run leaves a readable, correlation-linked audit history that
+  survives restarts. Add a CLI `audit <correlationId>` view. Then consider the
+  Sphere-agent persona (ADR-005 layer 2) or embeddings.
 
 ## Stack decisions (ADR-006)
 
