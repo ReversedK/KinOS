@@ -58,6 +58,19 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 23 — 2026-06-25 (post-§19; SQLite approval store)
+- **Done:** `SqliteApprovalStore` in `packages/adapters/persistence-sqlite` —
+  implements ApprovalStore over a `pending_actions` table (approval_id PK,
+  sphere_id, state, payload JSON). listPending filters on the state column;
+  durable across reopen. 3 tests.
+- **Verified (in container):** `npm test` → 106 passed, 1 skipped; `typecheck` → exit 0.
+- **Next step:** wire the CLI — `run` persists a PendingSensitiveAction when the
+  outcome is pending_approval (print approvalId); add `approve <approvalId>
+  [grant|deny] [--as parent2]` that loads the pending action, calls
+  resolveApproval (records decision + audits, re-executes on grant via
+  LocalCapabilityExecutor + the Sphere's bindings), updates/clears the store.
+  Closes the cross-process suspend→grant→execute loop. Then UI or persona.
+
 ### Iteration 22 — 2026-06-25 (post-§19; approval persistence port)
 - **Done:** `ApprovalStore` port + `PendingSensitiveAction` (approval + the
   originating CapabilityExecutionRequest) in `packages/core/flow/store.ts`, with
