@@ -5,6 +5,7 @@
     { "path": "./packages/adapters/runtime-ollama" },
     { "path": "./packages/adapters/persistence-sqlite" },
     { "path": "./packages/adapters/executor-local" },
-    { "path": "./packages/app/cli" }
+    { "path": "./packages/app/cli" },
+    { "path": "./packages/app/api" }
   ]
 }

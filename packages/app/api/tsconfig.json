@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@kinos/core": ["../../core/src/index.ts"]
+    }
+  },
+  "references": [{ "path": "../../core" }],
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.test.ts", "dist"]
+}

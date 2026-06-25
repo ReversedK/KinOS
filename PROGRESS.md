@@ -58,6 +58,25 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 25 — 2026-06-25 (post-§19; read API router)
+- **Done:** `@kinos/api` (`packages/app/api`). `handleApiRequest(req, deps)` — a
+  transport-agnostic, read-only router (api-contract.md): GET /health,
+  /spheres, /spheres/:id, /approvals[?sphereId], /audit/:correlationId. Every
+  response carries a correlation id (generated at entry); errors use the
+  contract codes (not_found, invalid_request) and leak no content. Pure handlers
+  over the core ports (SphereStore/ApprovalStore/AuditReader) — no HTTP server
+  yet. 8 tests.
+- **Verified (in container):** `npm test` → 117 passed, 1 skipped; `typecheck` →
+  exit 0 across all six packages.
+- **Decisions:** read-only metadata surface first (the UI substrate); the router
+  performs no authorization the Policy Engine couldn't reproduce. Write/governed
+  endpoints (capability request, approvals grant/deny) and a thin Node http
+  wrapper deferred to the next slices.
+- **Next step:** (a) a thin Node http server in packages/app/api/main wiring the
+  router to SQLite stores (so the API is reachable), then (b) the Next.js UI
+  (results-contract §18) consuming it. Or pause and summarize — the governance
+  MVP is complete and §19 fully demonstrable.
+
 ### Iteration 24 — 2026-06-25 (post-§19; cross-process approval loop CLOSED)
 - **Done:** `run` now persists a PendingSensitiveAction when the outcome is
   pending_approval (prints approvalId); new `approveCapability` + CLI
