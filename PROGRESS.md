@@ -6,11 +6,11 @@ Goal: reach the MVP validation criteria of `docs/contracts/results-contract.md`
 
 ## Current state
 
-Domain core scaffolded and exercised in Docker. Done: Identity/Sphere/Member
-(§19 #1, #2) and the deterministic Policy Engine evaluator (ADR-003). Next:
-Memory (canonical items + visibility), then wire memory through the engine so
-"child cannot read adult private memory" and "share then revoke" become
-demonstrable end-to-end.
+Domain core in Docker. Done: Identity/Sphere/Member (§19 #1,#2), Policy Engine
+(ADR-003), Memory + policy-scoped Resolver (§19 child-can't-read-private,
+share/revoke). Five of nine §19 criteria hold at the domain level. Remaining at
+core level: Agent per member, sensitive-action approval, local model runtime,
+export — then an API/CLI surface to make all nine demonstrable end-to-end.
 
 ## Stack decisions (ADR-006)
 
@@ -33,8 +33,8 @@ Runtime adapter → integrations/Packages → UI.
 - [x] a Sphere can be created *(core; CLI/API surface pending)*
 - [x] two adults and one child can be added *(core; CLI/API surface pending)*
 - [ ] each member can have an agent
-- [ ] the child cannot access private adult memory
-- [ ] memory can be shared and revoked
+- [x] the child cannot access private adult memory *(resolver+engine; CLI/API wiring pending)*
+- [x] memory can be shared and revoked *(core; CLI/API wiring pending)*
 - [x] a capability can be allowed for an adult and denied to a child *(policy engine; CLI/API wiring pending)*
 - [ ] a sensitive action can trigger approval
 - [ ] the system runs with a local model runtime
@@ -104,3 +104,24 @@ Runtime adapter → integrations/Packages → UI.
   share/revoke (revocation keeps the grant as an audit fact). Then a Memory
   Resolver that asks the Policy Engine, making §19 "child can't read adult
   private memory" and "share then revoke" demonstrable.
+
+### Iteration 5 — 2026-06-25
+- **Done:** Memory slice in `packages/core/memory/`. `memory.ts`: MemoryItem
+  (ADR-002 shape), createMemoryItem (private+active+normal by default),
+  shareWithMembers (grants + widen, owner unchanged), revokeShare (sets
+  revokedAt, retains grant as audit fact, item stays active), hasActiveGrant —
+  all immutable. `resolver.ts`: authorizeMemoryRead / resolveReadableMemory —
+  computes structural visibility (owner/scope/active-grant, active-only) and
+  expresses it as a lowest-priority synthetic allow run through the Policy
+  Engine, so real deny/approval (e.g. medical) still dominate and no structural
+  visibility = deny-by-default. 9 tests incl. ADR example 3.
+- **Verified (in container):** `npm test` → 30 passed (6 files); `typecheck` → exit 0.
+- **Decisions:** Resolver stays a *consumer* of the engine (no duplicated
+  precedence) by injecting a synthetic structural-allow. shared_with_sphere =
+  visible to any sphere member/agent for MVP; sphere-share revocation nuance and
+  embeddings deferred (embeddings are derived/regenerable, not modelled).
+- **Next step:** Agent slice (domain-model Agent; entity-lifecycle Agent) —
+  Agent(owner=member|sphere), enabled capabilities, memory-access profile,
+  configured/active/disabled, "disabling does not delete memory". TDD. Gives
+  §19 "each member can have an agent". Then approval flow (ADR-004) for §19
+  "sensitive action triggers approval".

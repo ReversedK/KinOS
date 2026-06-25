@@ -14,3 +14,5 @@ export * from "./sphere/member.js";
 export * from "./sphere/sphere.js";
 export * from "./policy/types.js";
 export * from "./policy/engine.js";
+export * from "./memory/memory.js";
+export * from "./memory/resolver.js";
