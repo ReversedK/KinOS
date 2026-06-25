@@ -4,15 +4,37 @@ Tracks the autonomous MVP implementation loop (`docs/implementation/mvp-loop.md`
 Goal: reach the MVP validation criteria of `docs/contracts/results-contract.md`
 §19 without violating the invariants or coding principles.
 
-## Current state
+## Current state — MVP §19 DONE (demonstrated end-to-end)
 
-All nine §19 criteria pass at the domain/core level (unit-tested in Docker):
-Identity/Sphere/Member, Policy Engine (ADR-003), Memory + policy-scoped Resolver,
-Agent, Approval (ADR-004), Ollama runtime adapter (live-verified), export/import.
-**Remaining for "done": a thin CLI/API in `packages/app` that drives the full
-§19 sequence as one runnable flow**, turning the per-criterion unit proofs into
-a single end-to-end demonstration with documented run commands (results-contract
-§1 installation).
+All nine results-contract §19 criteria pass as one runnable flow. The CLI
+`docker compose run --rm dev npm run mvp -w @kinos/cli` ran green against the
+real host Ollama:
+
+```
+PASS  a Sphere can be created
+PASS  two adults and one child can be added
+PASS  each member can have an agent
+PASS  the child cannot access private adult memory
+PASS  memory can be shared and revoked
+PASS  a capability can be allowed for an adult and denied to a child
+PASS  a sensitive action can trigger approval
+PASS  the system runs with a local model runtime (reachable; models=0)
+PASS  data can be exported
+```
+
+Built (all in Docker, TDD): Identity/Sphere/Member, Policy Engine (ADR-003),
+Memory + policy-scoped Resolver, Agent, Approval (ADR-004), AgentRuntime port +
+Ollama adapter (live-verified), export/import, and the `@kinos/cli` acceptance
+orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
+
+### Beyond §19 (not required for the §19 milestone; next if the loop resumes)
+- **SQLite persistence** behind core repository ports (durability; results-
+  contract §1/§15). Define the ports in core first; doc-check ADR-002/ADR-006.
+- **Interactive CLI/API commands** (the current CLI runs a scripted scenario,
+  not per-command operations) and the **Next.js UI** (results-contract §18).
+- **Capability execution path** (binding resolution + per-call policy re-check
+  wired to the runtime), Sphere-agent persona (ADR-005 layer 2), audit events
+  (event-model), embeddings (derived index).
 
 ## Stack decisions (ADR-006)
 
@@ -214,3 +236,20 @@ Runtime adapter → integrations/Packages → UI.
   runtime → export. Wire SQLite persistence behind the core repository ports
   (define those ports first; doc-check ADR-002/ADR-006). Document run commands
   (results-contract §1). This converts the unit proofs into an end-to-end demo.
+
+### Iteration 10 — 2026-06-25 — §19 MILESTONE
+- **Done:** `@kinos/cli` (`packages/app/cli`). `scenario.ts` `runMvpScenario`
+  composes the domain core + injected AgentRuntime port to exercise all nine §19
+  criteria, returning a pass/fail report. `main.ts` runs it against the Ollama
+  adapter (tsx runner; Node 20 can't run .ts directly) and exits non-zero on
+  failure. e2e test `scenario.test.ts` asserts all nine pass with a fake runtime.
+  Documented run commands in README (results-contract §1).
+- **Verified (in container):** `npm test` → 60 passed, 1 skipped (live
+  generation); `typecheck` → exit 0; and **`npm run mvp` printed PASS for all
+  nine §19 criteria against the real host Ollama**.
+- **Decisions:** §19 is a list of behaviors, not persistence — so the milestone
+  is met without SQLite; durability/UI are tracked under "Beyond §19" above.
+  Scenario depends on the runtime port (provider-free core); CLI injects Ollama,
+  tests inject a fake (deterministic).
+- **Loop status:** GOAL reached (§19 demonstrable end-to-end) → loop stopped and
+  summarized. Re-invoke `/loop` to continue with the "Beyond §19" items.

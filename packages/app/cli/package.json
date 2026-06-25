@@ -1,0 +1,15 @@
+{
+  "name": "@kinos/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "KinOS MVP CLI: runs the results-contract §19 acceptance scenario end-to-end.",
+  "dependencies": {
+    "@kinos/core": "*",
+    "@kinos/runtime-ollama": "*"
+  },
+  "scripts": {
+    "mvp": "tsx src/main.ts",
+    "typecheck": "tsc --build"
+  }
+}

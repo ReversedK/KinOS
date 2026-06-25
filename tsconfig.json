@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/core" },
-    { "path": "./packages/adapters/runtime-ollama" }
+    { "path": "./packages/adapters/runtime-ollama" },
+    { "path": "./packages/app/cli" }
   ]
 }

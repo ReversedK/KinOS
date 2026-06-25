@@ -57,6 +57,34 @@ Data sovereignty, privacy, consent, portability, memory ownership and safety mus
 - [RFC-001 — Sphere-first Architecture](docs/rfcs/001-sphere-first-architecture.md)
 - [RFC-002 — Package Store and Skills](docs/rfcs/002-package-store-and-skills.md)
 
+## Running the MVP
+
+The toolchain runs in Docker (no host node/npm; see ADR-006). A TypeScript
+monorepo holds the provider-independent domain core (`packages/core`), adapters
+(`packages/adapters/*`) and apps (`packages/app/*`).
+
+```bash
+docker compose run --rm dev npm install        # one-time
+docker compose run --rm dev npm test           # unit + acceptance tests
+docker compose run --rm dev npm run typecheck   # strict tsc across packages
+```
+
+Run the results-contract §19 acceptance scenario end-to-end (creates a Sphere,
+adds two adults + a child, an agent per member, checks private-memory denial,
+share/revoke, an adult-vs-child capability, a sensitive-action approval, the
+local model runtime, and export):
+
+```bash
+docker compose run --rm dev npm run mvp -w @kinos/cli
+```
+
+The local model runtime is an existing/running **Ollama**, reached via
+`OLLAMA_BASE_URL` (compose points the dev container at the host's Ollama). The
+acceptance run reports the runtime as reachable; pull a model (e.g.
+`ollama pull llama3.2`) on the Ollama host to also exercise generation.
+
+Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
+
 ## Development rule
 
 No substantial implementation should be added before the corresponding domain or architecture document exists and has been accepted.
