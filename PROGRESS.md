@@ -58,6 +58,20 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 22 — 2026-06-25 (post-§19; approval persistence port)
+- **Done:** `ApprovalStore` port + `PendingSensitiveAction` (approval + the
+  originating CapabilityExecutionRequest) in `packages/core/flow/store.ts`, with
+  `InMemoryApprovalStore` (clone in/out; listPending filters state==pending,
+  optional sphere). Lets the suspend→grant→execute loop span processes. 4 tests.
+- **Verified (in container):** `npm test` → 103 passed, 1 skipped; `typecheck` → exit 0.
+- **Decisions:** persist the whole originating request (subject incl.
+  role/ageProfile, input, context) so `approve` can resume the one authorized
+  execution; approval id is the key.
+- **Next step:** SQLite ApprovalStore adapter implementing this contract; then a
+  CLI flow — `run` persists a pending action on require_approval, `approve <id>
+  [grant|deny]` loads it, records the decision, and on grant re-executes via
+  resolveApproval, all durable + audited.
+
 ### Iteration 21 — 2026-06-25 (post-§19; governed run command)
 - **Done:** `runCapability` command + CLI `run <id> <cap> [adult|child]`. Loads a
   Sphere snapshot, builds CapabilityExecutionDeps from its policies + bindings +
