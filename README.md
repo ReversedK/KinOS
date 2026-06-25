@@ -28,6 +28,7 @@ Data sovereignty, privacy, consent, portability, memory ownership and safety mus
 - [ADR-002 — Memory Architecture](docs/adr/002-memory-architecture.md)
 - [ADR-003 — Policy Engine](docs/adr/003-policy-engine.md)
 - [ADR-004 — Approval and Escalation Model](docs/adr/004-approval-and-escalation-model.md)
+- [ADR-005 — Sphere Agent: Shared Space and Optional Collective Actor](docs/adr/005-sphere-agent-shared-space-and-actor.md)
 
 ### Domain
 
