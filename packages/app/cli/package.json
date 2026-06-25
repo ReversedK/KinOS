@@ -6,6 +6,7 @@
   "description": "KinOS MVP CLI: runs the results-contract §19 acceptance scenario end-to-end.",
   "dependencies": {
     "@kinos/core": "*",
+    "@kinos/persistence-sqlite": "*",
     "@kinos/runtime-ollama": "*"
   },
   "scripts": {

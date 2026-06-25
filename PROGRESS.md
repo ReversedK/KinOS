@@ -28,10 +28,10 @@ Ollama adapter (live-verified), export/import, and the `@kinos/cli` acceptance
 orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
 
 ### Beyond §19 (not required for the §19 milestone; next if the loop resumes)
-- **SQLite persistence**: DONE. `SphereStore` port in core (in-memory ref,
-  iteration 11) + `@kinos/persistence-sqlite` SQLite adapter (better-sqlite3,
-  durability verified across reopen — iteration 12). Next: wire the CLI to
-  persist/reload a Sphere (results-contract §1 "database is initialized").
+- **SQLite persistence + CLI wiring**: DONE. `SphereStore` port (it.11) +
+  `@kinos/persistence-sqlite` (it.12) + CLI subcommands `init/list/show/export`
+  backed by SQLite at `$KINOS_DB` (it.13). Verified durable across separate
+  process runs (results-contract §1 "database is initialized" / §15).
 - **Interactive CLI/API commands** (the current CLI runs a scripted scenario,
   not per-command operations) and the **Next.js UI** (results-contract §18).
 - **Capability execution path** (binding resolution + per-call policy re-check
@@ -293,3 +293,25 @@ Runtime adapter → integrations/Packages → UI.
   end-to-end. Inject SqliteSphereStore in the CLI (path from env, e.g.
   KINOS_DB), keep InMemory for tests. Consider a tiny arg parser
   (create/list/export) rather than only the scripted scenario.
+
+### Iteration 13 — 2026-06-25 (post-§19; CLI persistence)
+- **Done:** CLI subcommand layer. `commands.ts` (provider-free, takes a
+  SphereStore): initSphere (create family Sphere + founder identity, persist,
+  refuse overwrite), listSpheres, showSphere (summary / "not found"),
+  exportSphereJson (re-validates via importSphere before emit). `main.ts` is now
+  a dispatcher (`mvp|init|list|show|export`) wiring SqliteSphereStore at
+  `$KINOS_DB` (default ./data/kinos.sqlite, dir auto-created). 4 command tests
+  with InMemorySphereStore. README documents the commands.
+- **Verified (in container):** `npm test` → 74 passed, 1 skipped; `typecheck` →
+  exit 0. Live: `init` then **separate-process** `list`/`show` read the Sphere
+  back from the SQLite file — durability across runs.
+- **Decisions:** command logic stays provider-free (store injected); only main
+  wires SQLite. Founder identity displayName defaults to "Administrator" for the
+  `init` shortcut; richer member/agent CLI ops deferred.
+- **Next step (pick one): (a)** capability-execution path — CapabilityBinding +
+  resolver that re-checks policy per call and runs via the AgentRuntime port
+  (ADR-001 double-check), wiring approvals into a real execute flow; or **(b)**
+  audit events (event-model.md) threaded by correlation id across policy →
+  approval → runtime. Both are doc-covered. Lean (a): it makes capabilities
+  actually executable, the core value loop. Doc-check capability-catalog +
+  integration-model first.

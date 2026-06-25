@@ -83,6 +83,21 @@ The local model runtime is an existing/running **Ollama**, reached via
 acceptance run reports the runtime as reachable; pull a model (e.g.
 `ollama pull llama3.2`) on the Ollama host to also exercise generation.
 
+### Persisting Spheres (local-first, SQLite)
+
+State persists to a SQLite database at `$KINOS_DB` (default `./data/kinos.sqlite`):
+
+```bash
+docker compose run --rm dev npm run mvp -w @kinos/cli -- init sph_1 "Doe Family"
+docker compose run --rm dev npm run mvp -w @kinos/cli -- list
+docker compose run --rm dev npm run mvp -w @kinos/cli -- show sph_1
+docker compose run --rm dev npm run mvp -w @kinos/cli -- export sph_1   # snapshot JSON
+```
+
+A Sphere created in one run is read back by later runs — the database is
+initialized on first use and no external service is required (results-contract
+§1, §15).
+
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 
 ## Development rule

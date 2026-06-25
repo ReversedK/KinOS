@@ -1,26 +1,111 @@
 /**
- * KinOS MVP CLI — runs the results-contract §19 acceptance scenario against the
- * local Ollama runtime and prints a pass/fail report. Exits non-zero if any
- * criterion fails. The Ollama base URL comes from $OLLAMA_BASE_URL.
+ * KinOS MVP CLI.
+ *
+ * Subcommands:
+ *   mvp                       run the results-contract §19 acceptance scenario
+ *   init <id> <name>          create and persist a family Sphere
+ *   list                      list persisted Sphere ids
+ *   show <id>                 show a persisted Sphere summary
+ *   export <id>               print a Sphere's export snapshot JSON
+ *
+ * Persistence is SQLite at $KINOS_DB (default ./data/kinos.sqlite). The local
+ * model runtime is Ollama at $OLLAMA_BASE_URL.
  */
 
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+import { SqliteSphereStore } from "@kinos/persistence-sqlite";
 import { OllamaRuntime } from "@kinos/runtime-ollama";
 
+import { exportSphereJson, initSphere, listSpheres, showSphere } from "./commands.js";
 import { runMvpScenario } from "./scenario.js";
 
-const report = await runMvpScenario({
-  runtime: new OllamaRuntime(),
-  now: new Date().toISOString(),
-});
-
-console.log("KinOS MVP §19 acceptance\n");
-for (const c of report.criteria) {
-  console.log(`  ${c.passed ? "PASS" : "FAIL"}  ${c.description} — ${c.detail}`);
+function openStore(): SqliteSphereStore {
+  const path = process.env["KINOS_DB"] ?? "data/kinos.sqlite";
+  mkdirSync(dirname(path), { recursive: true });
+  return new SqliteSphereStore(path);
 }
-console.log(
-  report.allPassed
-    ? "\nAll §19 criteria passed."
-    : "\nSome §19 criteria failed.",
-);
 
-process.exit(report.allPassed ? 0 : 1);
+async function runMvp(): Promise<number> {
+  const report = await runMvpScenario({ runtime: new OllamaRuntime(), now: new Date().toISOString() });
+  console.log("KinOS MVP §19 acceptance\n");
+  for (const c of report.criteria) {
+    console.log(`  ${c.passed ? "PASS" : "FAIL"}  ${c.description} — ${c.detail}`);
+  }
+  console.log(report.allPassed ? "\nAll §19 criteria passed." : "\nSome §19 criteria failed.");
+  return report.allPassed ? 0 : 1;
+}
+
+const USAGE = "usage: kinos <mvp | init <id> <name> | list | show <id> | export <id>>";
+
+async function main(argv: readonly string[]): Promise<number> {
+  const [command, ...rest] = argv;
+  switch (command) {
+    case "mvp":
+      return runMvp();
+    case "init": {
+      const [id, ...nameParts] = rest;
+      if (!id || nameParts.length === 0) {
+        console.error("usage: kinos init <id> <name>");
+        return 1;
+      }
+      const store = openStore();
+      try {
+        console.log(
+          await initSphere(store, {
+            id,
+            name: nameParts.join(" "),
+            founderName: "Administrator",
+            now: new Date().toISOString(),
+          }),
+        );
+      } finally {
+        store.close();
+      }
+      return 0;
+    }
+    case "list": {
+      const store = openStore();
+      try {
+        console.log(await listSpheres(store));
+      } finally {
+        store.close();
+      }
+      return 0;
+    }
+    case "show": {
+      const [id] = rest;
+      if (!id) {
+        console.error("usage: kinos show <id>");
+        return 1;
+      }
+      const store = openStore();
+      try {
+        console.log(await showSphere(store, id));
+      } finally {
+        store.close();
+      }
+      return 0;
+    }
+    case "export": {
+      const [id] = rest;
+      if (!id) {
+        console.error("usage: kinos export <id>");
+        return 1;
+      }
+      const store = openStore();
+      try {
+        console.log(await exportSphereJson(store, id));
+      } finally {
+        store.close();
+      }
+      return 0;
+    }
+    default:
+      console.error(USAGE);
+      return command === undefined ? 1 : 1;
+  }
+}
+
+process.exit(await main(process.argv.slice(2)));

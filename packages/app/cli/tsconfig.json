@@ -7,12 +7,14 @@
     "baseUrl": ".",
     "paths": {
       "@kinos/core": ["../../core/src/index.ts"],
-      "@kinos/runtime-ollama": ["../../adapters/runtime-ollama/src/index.ts"]
+      "@kinos/runtime-ollama": ["../../adapters/runtime-ollama/src/index.ts"],
+      "@kinos/persistence-sqlite": ["../../adapters/persistence-sqlite/src/index.ts"]
     }
   },
   "references": [
     { "path": "../../core" },
-    { "path": "../../adapters/runtime-ollama" }
+    { "path": "../../adapters/runtime-ollama" },
+    { "path": "../../adapters/persistence-sqlite" }
   ],
   "include": ["src/**/*.ts"],
   "exclude": ["**/*.test.ts", "dist"]
