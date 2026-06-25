@@ -14,8 +14,11 @@ import {
   defaultCapabilityCatalog,
   exportSphere,
   importSphere,
+  resolveApproval,
+  type ApprovalStore,
   type AuditReader,
   type AuditSink,
+  type CapabilityExecutionRequest,
   type CapabilityExecutor,
   type PolicyRequest,
   type SphereStore,
@@ -90,6 +93,8 @@ export interface RunCapabilityDeps {
   readonly executor: CapabilityExecutor;
   readonly audit: AuditSink;
   readonly newApprovalId: () => string;
+  /** When provided, a pending approval is persisted for a later `approve`. */
+  readonly approvals?: ApprovalStore;
 }
 
 export interface RunCapabilityArgs {
@@ -129,27 +134,30 @@ export async function runCapability(
   if (snap === undefined) return `Sphere ${args.sphereId} not found.`;
   const imported = importSphere(snap);
 
-  const result = await beginSensitiveAction(
-    {
-      subject: demoSubject(args.sphereId, args.profile),
-      capabilityName: args.capabilityName,
-      input: {},
-      context: {
-        sphereId: args.sphereId,
-        time: args.now,
-        execution: "local",
-        correlationId: args.correlationId,
-      },
+  const request: CapabilityExecutionRequest = {
+    subject: demoSubject(args.sphereId, args.profile),
+    capabilityName: args.capabilityName,
+    input: {},
+    context: {
+      sphereId: args.sphereId,
+      time: args.now,
+      execution: "local",
+      correlationId: args.correlationId,
     },
-    {
-      catalog: defaultCapabilityCatalog(),
-      bindings: imported.bindings,
-      policies: imported.policies,
-      executor: deps.executor,
-      audit: deps.audit,
-      newApprovalId: deps.newApprovalId,
-    },
-  );
+  };
+
+  const result = await beginSensitiveAction(request, {
+    catalog: defaultCapabilityCatalog(),
+    bindings: imported.bindings,
+    policies: imported.policies,
+    executor: deps.executor,
+    audit: deps.audit,
+    newApprovalId: deps.newApprovalId,
+  });
+
+  if (result.status === "pending_approval" && result.approval !== undefined && deps.approvals !== undefined) {
+    await deps.approvals.save({ approval: result.approval, request });
+  }
 
   const lines = [
     `capability: ${args.capabilityName}`,
@@ -164,6 +172,67 @@ export async function runCapability(
   }
   lines.push(`correlationId: ${args.correlationId}`);
   return lines.join("\n");
+}
+
+export interface ApproveDeps {
+  readonly store: SphereStore;
+  readonly approvals: ApprovalStore;
+  readonly executor: CapabilityExecutor;
+  readonly audit: AuditSink;
+}
+
+export interface ApproveArgs {
+  readonly approvalId: string;
+  readonly decision: "grant" | "deny";
+  readonly approverMemberId: string;
+  readonly approverRole: string;
+  readonly now: string;
+}
+
+/**
+ * Resolve a persisted pending approval: record the human decision (audited) and,
+ * on a quorum of grants, resume the one authorized execution via the Sphere's
+ * bindings and the injected executor. Updates the stored approval state.
+ */
+export async function approveCapability(deps: ApproveDeps, args: ApproveArgs): Promise<string> {
+  const pending = await deps.approvals.load(args.approvalId);
+  if (pending === undefined) return `Approval ${args.approvalId} not found.`;
+  if (pending.approval.state !== "pending") {
+    return `Approval ${args.approvalId} is already ${pending.approval.state}.`;
+  }
+  const snap = await deps.store.load(pending.approval.sphereId);
+  if (snap === undefined) return `Sphere ${pending.approval.sphereId} not found.`;
+  const imported = importSphere(snap);
+
+  const result = await resolveApproval(
+    pending.approval,
+    {
+      approver: { memberId: args.approverMemberId, roles: [args.approverRole], ageProfile: "adult" },
+      decision: args.decision,
+      at: args.now,
+    },
+    pending.request,
+    {
+      catalog: defaultCapabilityCatalog(),
+      bindings: imported.bindings,
+      policies: imported.policies,
+      executor: deps.executor,
+      audit: deps.audit,
+      newApprovalId: () => args.approvalId,
+    },
+  );
+
+  if (result.approval !== undefined) {
+    await deps.approvals.save({ approval: result.approval, request: pending.request });
+  }
+
+  return [
+    `approvalId: ${args.approvalId}`,
+    `capability: ${pending.approval.action.capabilityName}`,
+    `outcome: ${result.status}`,
+    `reason: ${result.reason}`,
+    `correlationId: ${result.correlationId}`,
+  ].join("\n");
 }
 
 /** Render an action's audit chain (security facts only) for a correlation id. */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  InMemoryApprovalStore,
   InMemoryAuditSink,
   InMemorySphereStore,
   createSphere,
@@ -16,6 +17,7 @@ import {
   exportSphereJson,
   showAudit,
   runCapability,
+  approveCapability,
 } from "./commands.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
@@ -182,6 +184,80 @@ describe("CLI commands over a SphereStore (results-contract §1/§15)", () => {
     expect(out).toContain("outcome: denied");
     expect(out).toMatch(/profile/i);
     expect(executor.calls).toBe(0);
+  });
+
+  // --- approval persistence: cross-process suspend -> grant -> execute ---
+
+  const allowAdultPayment: Policy = {
+    id: "pol_pay",
+    sphereId: "sph_1",
+    description: "Adults may pay.",
+    subjectSelector: { ageProfiles: ["adult"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["payment.execute"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+  const paymentBinding: CapabilityBinding = {
+    capability: "payment.execute",
+    runtime: "local",
+    runtimeToolName: "local.pay",
+    execution: "local",
+    risk: "critical",
+    requiresApproval: false, // catalog approvalFloor=true raises it
+    status: "enabled",
+  };
+
+  it("run persists a pending approval; approve grant resumes execution", async () => {
+    const store = new InMemorySphereStore();
+    await seed(store, { policies: [allowAdultPayment], bindings: [paymentBinding] });
+    const approvals = new InMemoryApprovalStore();
+    const executor = countingExecutor();
+    const audit = new InMemoryAuditSink();
+
+    const runOut = await runCapability(
+      { store, executor, audit, approvals, newApprovalId: () => "apr_1" },
+      { sphereId: "sph_1", capabilityName: "payment.execute", profile: "adult", now: NOW, correlationId: "cor_run" },
+    );
+    expect(runOut).toContain("outcome: pending_approval");
+    expect(executor.calls).toBe(0);
+    expect((await approvals.load("apr_1"))?.approval.state).toBe("pending");
+
+    const approveOut = await approveCapability(
+      { store, approvals, executor, audit },
+      { approvalId: "apr_1", decision: "grant", approverMemberId: "mbr_p2", approverRole: "parent", now: NOW },
+    );
+    expect(approveOut).toContain("outcome: executed");
+    expect(executor.calls).toBe(1);
+    expect((await approvals.load("apr_1"))?.approval.state).toBe("granted");
+  });
+
+  it("approve deny resolves without executing", async () => {
+    const store = new InMemorySphereStore();
+    await seed(store, { policies: [allowAdultPayment], bindings: [paymentBinding] });
+    const approvals = new InMemoryApprovalStore();
+    const executor = countingExecutor();
+    const audit = new InMemoryAuditSink();
+    await runCapability(
+      { store, executor, audit, approvals, newApprovalId: () => "apr_1" },
+      { sphereId: "sph_1", capabilityName: "payment.execute", profile: "adult", now: NOW, correlationId: "cor_run" },
+    );
+    const out = await approveCapability(
+      { store, approvals, executor, audit },
+      { approvalId: "apr_1", decision: "deny", approverMemberId: "mbr_p2", approverRole: "parent", now: NOW },
+    );
+    expect(out).toContain("outcome: denied");
+    expect(executor.calls).toBe(0);
+  });
+
+  it("approve reports a missing approval", async () => {
+    const out = await approveCapability(
+      { store: new InMemorySphereStore(), approvals: new InMemoryApprovalStore(), executor: countingExecutor(), audit: new InMemoryAuditSink() },
+      { approvalId: "nope", decision: "grant", approverMemberId: "mbr_p2", approverRole: "parent", now: NOW },
+    );
+    expect(out).toMatch(/not found/i);
   });
 
   it("showAudit renders a correlation chain and reports an empty one", () => {

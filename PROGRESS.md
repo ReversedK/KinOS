@@ -58,6 +58,28 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 24 — 2026-06-25 (post-§19; cross-process approval loop CLOSED)
+- **Done:** `run` now persists a PendingSensitiveAction when the outcome is
+  pending_approval (prints approvalId); new `approveCapability` + CLI
+  `approve <approvalId> [grant|deny]` loads the pending action + Sphere, calls
+  resolveApproval (records the human decision, audits, re-executes on grant via
+  the Sphere's bindings + LocalCapabilityExecutor), and updates the store. main
+  wires SqliteApprovalStore ($KINOS_APPROVALS_DB) + a shared localExecutor
+  (local.calendar/local.pay/local.echo). 3 command tests.
+- **Verified (in container):** `npm test` → 109 passed, 1 skipped; `typecheck` →
+  exit 0. **Live cross-process proof:** seeded a payment Sphere → `run` →
+  pending_approval (persisted) → **separate-process** `approve grant` → executed;
+  `audit <cid>` shows the full chain capability.requested → approval.requested →
+  approval.granted → capability.allowed → capability.executed under one
+  correlation id.
+- **Decisions:** CLI approver is a fixed distinct adult parent ("cli-approver")
+  for the demo; quorum>1 / minor-safety approver resolution from real membership
+  deferred. The governed sensitive-action loop is now durable and complete CLI-side.
+- **Next step:** The whole governance core + adapters + CLI is feature-complete
+  for the MVP. Remaining big rocks: the **Next.js UI** (results-contract §18) and
+  the **Sphere-agent persona** (ADR-005 L2). Consider pausing the loop and
+  summarizing unless continuing to the UI.
+
 ### Iteration 23 — 2026-06-25 (post-§19; SQLite approval store)
 - **Done:** `SqliteApprovalStore` in `packages/adapters/persistence-sqlite` —
   implements ApprovalStore over a `pending_actions` table (approval_id PK,

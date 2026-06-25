@@ -119,6 +119,20 @@ Sphere whose snapshot carries an enabled binding and an allowing policy
 executes. Either way the action's outcome and `correlationId` are printed and
 the audit chain is queryable with `audit`.
 
+When a capability needs approval (a policy or a catalog approval floor), `run`
+prints `outcome: pending_approval` with an `approvalId` and persists it. A human
+resolves it — even in a later process — and the action resumes on grant:
+
+```bash
+docker compose run --rm dev npm run mvp -w @kinos/cli -- approve <approvalId> grant
+docker compose run --rm dev npm run mvp -w @kinos/cli -- approve <approvalId> deny
+```
+
+The whole sequence shares one correlation id, so `audit <correlationId>` shows
+`capability.requested → approval.requested → approval.granted → capability.allowed
+→ capability.executed`. Pending approvals persist to `$KINOS_APPROVALS_DB`
+(default `./data/approvals.sqlite`).
+
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 
 ## Development rule

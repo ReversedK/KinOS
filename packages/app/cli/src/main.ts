@@ -8,6 +8,7 @@
  *   show <id>                 show a persisted Sphere summary
  *   export <id>               print a Sphere's export snapshot JSON
  *   run <id> <cap> [adult|child]  run a capability through the governed pipeline
+ *   approve <approvalId> [grant|deny]  resolve a pending approval
  *   audit <correlationId>     show an action's audit chain
  *
  * Persistence is SQLite at $KINOS_DB (default ./data/kinos.sqlite); the audit
@@ -20,10 +21,15 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
-import { SqliteAuditSink, SqliteSphereStore } from "@kinos/persistence-sqlite";
+import {
+  SqliteApprovalStore,
+  SqliteAuditSink,
+  SqliteSphereStore,
+} from "@kinos/persistence-sqlite";
 import { OllamaRuntime } from "@kinos/runtime-ollama";
 
 import {
+  approveCapability,
   exportSphereJson,
   initSphere,
   listSpheres,
@@ -45,6 +51,22 @@ function openAudit(): SqliteAuditSink {
   return new SqliteAuditSink(path);
 }
 
+function openApprovals(): SqliteApprovalStore {
+  const path = process.env["KINOS_APPROVALS_DB"] ?? "data/approvals.sqlite";
+  mkdirSync(dirname(path), { recursive: true });
+  return new SqliteApprovalStore(path);
+}
+
+function localExecutor(): LocalCapabilityExecutor {
+  return new LocalCapabilityExecutor(
+    new Map<string, CapabilityHandler>([
+      ["local.calendar", async (input) => ({ created: true, input })],
+      ["local.pay", async (input) => ({ paid: true, input })],
+      ["local.echo", async (input) => ({ echoed: input })],
+    ]),
+  );
+}
+
 async function runMvp(): Promise<number> {
   const report = await runMvpScenario({ runtime: new OllamaRuntime(), now: new Date().toISOString() });
   console.log("KinOS MVP §19 acceptance\n");
@@ -56,7 +78,7 @@ async function runMvp(): Promise<number> {
 }
 
 const USAGE =
-  "usage: kinos <mvp | init <id> <name> | list | show <id> | export <id> | audit <correlationId>>";
+  "usage: kinos <mvp | init <id> <name> | list | show <id> | export <id> | run <id> <cap> [adult|child] | approve <approvalId> [grant|deny] | audit <correlationId>>";
 
 async function main(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv;
@@ -136,16 +158,11 @@ async function main(argv: readonly string[]): Promise<number> {
       const profile = profileArg === "child" ? "child" : "adult";
       const store = openStore();
       const audit = openAudit();
-      const executor = new LocalCapabilityExecutor(
-        new Map<string, CapabilityHandler>([
-          ["local.calendar", async (input) => ({ created: true, input })],
-          ["local.echo", async (input) => ({ echoed: input })],
-        ]),
-      );
+      const approvals = openApprovals();
       try {
         console.log(
           await runCapability(
-            { store, executor, audit, newApprovalId: () => `apr_${randomUUID()}` },
+            { store, executor: localExecutor(), audit, approvals, newApprovalId: () => `apr_${randomUUID()}` },
             {
               sphereId,
               capabilityName,
@@ -158,6 +175,37 @@ async function main(argv: readonly string[]): Promise<number> {
       } finally {
         store.close();
         audit.close();
+        approvals.close();
+      }
+      return 0;
+    }
+    case "approve": {
+      const [approvalId, decisionArg] = rest;
+      if (!approvalId) {
+        console.error("usage: kinos approve <approvalId> [grant|deny]");
+        return 1;
+      }
+      const decision = decisionArg === "deny" ? "deny" : "grant";
+      const store = openStore();
+      const audit = openAudit();
+      const approvals = openApprovals();
+      try {
+        console.log(
+          await approveCapability(
+            { store, approvals, executor: localExecutor(), audit },
+            {
+              approvalId,
+              decision,
+              approverMemberId: "cli-approver",
+              approverRole: "parent",
+              now: new Date().toISOString(),
+            },
+          ),
+        );
+      } finally {
+        store.close();
+        audit.close();
+        approvals.close();
       }
       return 0;
     }
