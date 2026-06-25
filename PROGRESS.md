@@ -28,6 +28,11 @@ Ollama adapter (live-verified), export/import, and the `@kinos/cli` acceptance
 orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
 
 ### Beyond §19 (not required for the §19 milestone; next if the loop resumes)
+- **Capability-execution path**: DONE (iteration 14). Catalog + binding + the
+  per-call double-check (ADR-001): unknown → deny, profile floor, enabled-binding
+  check, Policy Engine re-check, approval floor, execute via CapabilityExecutor
+  port. Next sub-step: wire approvals into the execute flow and add a real local
+  executor adapter.
 - **SQLite persistence + CLI wiring**: DONE. `SphereStore` port (it.11) +
   `@kinos/persistence-sqlite` (it.12) + CLI subcommands `init/list/show/export`
   backed by SQLite at `$KINOS_DB` (it.13). Verified durable across separate
@@ -315,3 +320,23 @@ Runtime adapter → integrations/Packages → UI.
   approval → runtime. Both are doc-covered. Lean (a): it makes capabilities
   actually executable, the core value loop. Doc-check capability-catalog +
   integration-model first.
+
+### Iteration 14 — 2026-06-25 (post-§19; capability execution)
+- **Done:** Capability-execution pipeline in `packages/core/capability/`.
+  `types.ts` (Capability, CapabilityBinding per ADR-001, CapabilityExecutor
+  port). `catalog.ts` (defaultCapabilityCatalog — minimal MVP subset with risk,
+  allowedProfiles, approvalFloor, auditFacts). `resolver.ts` `executeCapability`
+  doing the ADR-001 double-check: unknown→deny, catalog profile default-deny,
+  enabled-binding-or-deny, per-call Policy Engine re-check (scoped to binding
+  risk + execution), approval floor raises allow→require_approval, then
+  execute via the executor / suspend / refuse. 6 tests.
+- **Verified (in container):** `npm test` → 80 passed, 1 skipped; `typecheck` → exit 0.
+- **Decisions:** executor is a port (fake in tests; local/n8n adapters later).
+  Floor-raised approvals default approverRoles to [parent, admin] (policy roles
+  used when a policy raises instead). Capability input/output JSON-schema
+  validation deferred (types accept `unknown` input for now).
+- **Next step:** (i) a local CapabilityExecutor adapter + wire executeCapability
+  into the CLI/scenario so a require_approval result creates an ApprovalRequest
+  and, once granted, the action runs (closing policy→approval→execution under
+  one correlation id); then (ii) audit events (event-model.md) recording
+  security facts across that chain. Doc-check event-model first.
