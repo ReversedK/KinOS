@@ -148,6 +148,30 @@ Run an approved n8n workflow through a controlled binding. The workflow is reach
 
 Risk: depends on workflow (declared per binding).
 
+### store.browse
+
+Browse the curated package store. Read-only.
+
+Risk: low.
+
+### package.install
+
+Install a package into a Sphere: resolve and dedup dependencies, verify signature and age rating, register capabilities and create bindings (disabled), and run the grant wizard. Admin-only; install never grants use by itself. See `docs/rfcs/002-package-store-and-skills.md`.
+
+Risk: high. Child/teen: denied. Approval floor applies.
+
+### package.disable
+
+Disable an installed package and its bindings; blocks future use, keeps audit.
+
+Risk: high. Admin-only.
+
+### package.uninstall
+
+Remove an installed package, its bindings and sandbox; audit facts are retained. A required dependency is not removed while another package needs it.
+
+Risk: high. Admin-only.
+
 ## Forbidden MVP capabilities for minors by default
 
 These are denied for child profiles by default and require explicit, audited authorization to enable for teens. Absence of an explicit allow keeps them denied.

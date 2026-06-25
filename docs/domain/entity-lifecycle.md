@@ -158,3 +158,28 @@ Rules:
 
 - disabling a binding blocks future execution;
 - historical audit remains readable after removal.
+
+## Package lifecycle
+
+States:
+
+- available (in the store, not yet installed);
+- installed;
+- enabled;
+- disabled;
+- uninstalled.
+
+Transitions:
+
+- available → installed (dependencies resolved and deduped; capabilities and bindings registered, bindings created disabled);
+- installed → enabled (the install grant wizard's confirmed policies activate; bindings enabled);
+- enabled → disabled (use blocked; bindings disabled; audit retained);
+- installed/disabled → uninstalled (bindings and sandbox removed; audit facts retained).
+
+Rules:
+
+- install never grants use; only confirmed policies authorize, and the Policy Engine still gates each call;
+- a dependency is not uninstalled while another installed package still requires it;
+- disabling or uninstalling blocks the future, not the past; audit history remains.
+
+See `docs/rfcs/002-package-store-and-skills.md`.

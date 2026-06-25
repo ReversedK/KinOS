@@ -134,6 +134,28 @@ Fields/concepts:
 - capability bindings;
 - audit settings.
 
+### Package
+
+The unit of distribution installed from the store to extend an agent. See `docs/rfcs/002-package-store-and-skills.md`.
+
+Fields/concepts:
+
+- id;
+- type (skill, mcp, bundle);
+- title;
+- description (plain, practical: what it lets the agent do);
+- version;
+- publisher and signature;
+- verification level;
+- age rating;
+- dependencies (other packages, version-ranged);
+- provided capabilities;
+- required capabilities and scopes;
+- default policies (presets proposed by the install grant wizard);
+- lifecycle state.
+
+A **Skill** is a Package of type `skill` (an agent competence composing capabilities). An **mcp** package is an Integration adapter. Installing a Package makes capabilities available and creates Capability Bindings in a disabled state; it never grants use — only policies confirmed at install authorize anyone, and the Policy Engine still evaluates every call.
+
 ### ApprovalRequest
 
 A human validation request required before an action.
@@ -179,6 +201,7 @@ Fields/concepts:
 - A Capability is implemented by one or more Capability Bindings.
 - An Integration provides one or more Capability Bindings.
 - A Policy controls access to MemoryItems, Capabilities, Integrations and Sphere resources.
+- A Package is installed into a Sphere; a `skill` package composes Capabilities, an `mcp` package provides an Integration, and a Package may depend on other Packages.
 - An ApprovalRequest is raised when a Policy returns require_approval; it links subject, capability and approvers via a correlation id.
 - An AuditEvent records a security-relevant decision and carries the correlation id chaining policy check, approval, runtime call and integration call.
 

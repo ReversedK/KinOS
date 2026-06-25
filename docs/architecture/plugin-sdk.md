@@ -69,11 +69,15 @@ It must also:
 - emit audit events for its operations;
 - never act as the permission engine.
 
+## Packaging and distribution
+
+Plugins and Skills are distributed and installed as **Packages** through the curated store (`docs/rfcs/002-package-store-and-skills.md`). A Package is the distribution and lifecycle wrapper around the plugin types above plus Skills. Curated, signed and sandboxed dynamic install is in scope for the MVP; install resolves dependencies, registers capabilities with bindings created disabled, and authorizes use only through policies confirmed at install. The Capability Resolver and Policy Engine still govern every call.
+
 ## Non-goals for MVP
 
-- public plugin marketplace;
-- third-party untrusted code execution;
-- dynamic remote plugin installation.
+- public/open plugin marketplace (curated store only; deferred to v2);
+- third-party untrusted code execution (MVP packages are signed and sandboxed; unsigned third-party code deferred to v2);
+- dynamic install of unverified packages (verified + signed + sandboxed install is in scope; unverified is v2).
 
 ## Design rule
 
