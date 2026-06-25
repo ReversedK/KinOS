@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getPendingApprovals, getSphere, getSpheres } from "./api";
+import { getAgents, getMembers, getPendingApprovals, getSphere, getSpheres } from "./api";
 
 function fakeFetch(body: unknown, status = 200): typeof fetch {
   return (async () =>
@@ -33,6 +33,24 @@ describe("UI API client", () => {
     );
     expect(out).toHaveLength(1);
     expect(out[0]?.capability).toBe("payment.execute");
+  });
+
+  it("getMembers returns the member summaries", async () => {
+    const out = await getMembers(
+      "http://x",
+      "sph_1",
+      fakeFetch({ members: [{ id: "mbr_p1", role: "parent", status: "active" }] }),
+    );
+    expect(out).toEqual([{ id: "mbr_p1", role: "parent", status: "active" }]);
+  });
+
+  it("getAgents returns the agent summaries", async () => {
+    const out = await getAgents(
+      "http://x",
+      "sph_1",
+      fakeFetch({ agents: [{ id: "agt_0", name: "P1", ownerId: "mbr_p1", state: "configured", enabledCapabilities: [] }] }),
+    );
+    expect(out[0]?.name).toBe("P1");
   });
 
   it("throws on a non-ok response", async () => {

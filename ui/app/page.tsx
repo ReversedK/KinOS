@@ -37,16 +37,21 @@ export default async function Home() {
 
   return (
     <main>
+      <p style={{ marginTop: 0 }}>
+        <a href="/approvals" style={{ color: "#8ab4f8" }}>Pending approvals →</a>
+      </p>
       <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: "1rem" }}>
         {summaries.map((s) => (
           <li
             key={s.id}
             style={{ border: "1px solid #2a2d34", borderRadius: 8, padding: "1rem" }}
           >
-            <div style={{ fontSize: "1.1rem", fontWeight: 600 }}>{s.name}</div>
-            <div style={{ color: "#9aa0a6", fontSize: "0.9rem" }}>
-              {s.type} · {s.status} · {s.members} member{s.members === 1 ? "" : "s"}
-            </div>
+            <a href={`/spheres/${encodeURIComponent(s.id)}`} style={{ color: "inherit", textDecoration: "none" }}>
+              <div style={{ fontSize: "1.1rem", fontWeight: 600 }}>{s.name}</div>
+              <div style={{ color: "#9aa0a6", fontSize: "0.9rem" }}>
+                {s.type} · {s.status} · {s.members} member{s.members === 1 ? "" : "s"}
+              </div>
+            </a>
           </li>
         ))}
       </ul>

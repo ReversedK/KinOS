@@ -23,6 +23,20 @@ export interface PendingApproval {
   readonly approverRoles: readonly string[];
 }
 
+export interface MemberSummary {
+  readonly id: string;
+  readonly role: string;
+  readonly status: string;
+}
+
+export interface AgentSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly ownerId: string;
+  readonly state: string;
+  readonly enabledCapabilities: readonly string[];
+}
+
 const DEFAULT_BASE_URL = "http://localhost:8787";
 
 export function apiBaseUrl(): string {
@@ -56,4 +70,30 @@ export async function getPendingApprovals(
 ): Promise<readonly PendingApproval[]> {
   const body = await getJson<{ pending: readonly PendingApproval[] }>(baseUrl, "/approvals", fetchImpl);
   return body.pending;
+}
+
+export async function getMembers(
+  baseUrl: string,
+  sphereId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly MemberSummary[]> {
+  const body = await getJson<{ members: readonly MemberSummary[] }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/members`,
+    fetchImpl,
+  );
+  return body.members;
+}
+
+export async function getAgents(
+  baseUrl: string,
+  sphereId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly AgentSummary[]> {
+  const body = await getJson<{ agents: readonly AgentSummary[] }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/agents`,
+    fetchImpl,
+  );
+  return body.agents;
 }

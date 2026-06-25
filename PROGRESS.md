@@ -58,6 +58,24 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 29 — 2026-06-25 (post-§19; UI Sphere detail + approvals)
+- **Done:** extended the read API with `/spheres/:id/members` (id, role, status)
+  and `/spheres/:id/agents` (id, name, owner, state, enabledCapabilities) — facts
+  only, no private content; 404 on missing sphere. Added UI client getMembers/
+  getAgents and pages: `/spheres/[id]` (members + agents) and `/approvals`
+  (pending, with approver roles); the Spheres list now links to both. 5 new tests.
+- **Verified (in container):** `npm test` → 128 passed, 1 skipped; `typecheck` →
+  exit 0; `next build` ✓ (routes /, /approvals static, /spheres/[id] dynamic).
+- **Decisions:** member endpoint exposes role/status only (no profile content,
+  §18/privacy-model); approvals view shows capability + approver roles, never the
+  action payload.
+- **Next step:** the UI is read-only feature-complete for the MVP views (Spheres,
+  members, agents, approvals). Remaining optional rocks: an end-to-end UI smoke
+  (serve API + drive the UI), the Sphere-agent persona (ADR-005 L2), policy
+  authoring/NL compilation, real integration adapters. Consider pausing the loop
+  and summarizing — the governance MVP + API + UI are complete and §19 fully
+  demonstrable.
+
 ### Iteration 28 — 2026-06-25 (post-§19; UI build verified)
 - **Done:** ran `next build` in-container — compiled successfully, strict-typed
   the app, and prerendered `/` as static. Next auto-reconfigured ui/tsconfig.json

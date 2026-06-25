@@ -107,4 +107,24 @@ describe("API router (api-contract.md)", () => {
     const res = await handleApiRequest({ method: "GET", path: "/nope" }, await deps());
     expect(res.status).toBe(404);
   });
+
+  it("lists a sphere's members (role + status, no private content)", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/members" }, await deps());
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      members: [{ id: "mbr_p1", role: "parent", status: "active" }],
+    });
+  });
+
+  it("lists a sphere's agents", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/agents" }, await deps());
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ agents: [] });
+  });
+
+  it("404s members of a missing sphere", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/spheres/nope/members" }, await deps());
+    expect(res.status).toBe(404);
+    expect(res.code).toBe("not_found");
+  });
 });

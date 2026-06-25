@@ -69,6 +69,25 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         identities: snap.identities.length,
       });
     }
+    if (segments.length === 3 && (segments[2] === "members" || segments[2] === "agents")) {
+      const snap = await deps.store.load(segments[1] as string);
+      if (snap === undefined) return err(404, "not_found", "Sphere not found");
+      if (segments[2] === "members") {
+        // Security facts only: id, role, status — never private profile content.
+        return ok({
+          members: snap.sphere.members.map((m) => ({ id: m.id, role: m.role, status: m.status })),
+        });
+      }
+      return ok({
+        agents: snap.agents.map((a) => ({
+          id: a.id,
+          name: a.name,
+          ownerId: a.ownerId,
+          state: a.state,
+          enabledCapabilities: a.enabledCapabilities,
+        })),
+      });
+    }
   }
 
   if (segments[0] === "approvals" && segments.length === 1) {
