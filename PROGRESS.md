@@ -164,3 +164,10 @@ Runtime adapter → integrations/Packages → UI.
   imports the provider. Gives §19 "runs with a local model runtime". TDD the
   port contract with a fake; integration-test the adapter behind a flag (no live
   Ollama in CI). Confirm doc coverage (ADR-001 + ADR-006) before coding.
+  - **Human directive (2026-06-25): use the existing/running Ollama**, not a
+    containerised one. Verified: host Ollama API is up at :11434 and reachable
+    from the dev container via `host.docker.internal:11434` (no models pulled
+    yet → generation tests skip; connectivity/list test can run). Wired
+    `OLLAMA_BASE_URL=http://host.docker.internal:11434` + host-gateway mapping
+    into docker-compose. Adapter must read `OLLAMA_BASE_URL` (default
+    `http://localhost:11434`).
