@@ -12,6 +12,7 @@
  */
 
 import type { Agent } from "../agent/agent.js";
+import type { CapabilityBinding } from "../capability/types.js";
 import type { Identity } from "../identity/identity.js";
 import type { MemoryItem } from "../memory/memory.js";
 import type { Policy } from "../policy/types.js";
@@ -30,6 +31,8 @@ export interface SphereExport {
   readonly agents: readonly Agent[];
   readonly memory: readonly MemoryItem[];
   readonly policies: readonly Policy[];
+  /** Capability bindings (ADR-001). Optional for backward compatibility. */
+  readonly bindings?: readonly CapabilityBinding[];
 }
 
 export interface ExportSphereInput {
@@ -38,6 +41,7 @@ export interface ExportSphereInput {
   readonly agents: readonly Agent[];
   readonly memory: readonly MemoryItem[];
   readonly policies: readonly Policy[];
+  readonly bindings?: readonly CapabilityBinding[];
   readonly exportedAt: string;
 }
 
@@ -51,6 +55,7 @@ export function exportSphere(input: ExportSphereInput): SphereExport {
     agents: [...input.agents],
     memory: [...input.memory],
     policies: [...input.policies],
+    bindings: [...(input.bindings ?? [])],
   };
 }
 
@@ -60,6 +65,7 @@ export interface ImportedSphere {
   readonly agents: readonly Agent[];
   readonly memory: readonly MemoryItem[];
   readonly policies: readonly Policy[];
+  readonly bindings: readonly CapabilityBinding[];
   readonly exportedAt: string;
 }
 
@@ -88,12 +94,16 @@ export function importSphere(data: unknown): ImportedSphere {
   ) {
     throw new Error("Malformed export snapshot: missing required sections");
   }
+  if (snap.bindings !== undefined && !Array.isArray(snap.bindings)) {
+    throw new Error("Malformed export snapshot: bindings must be an array");
+  }
   return {
     sphere: snap.sphere,
     identities: snap.identities,
     agents: snap.agents,
     memory: snap.memory,
     policies: snap.policies,
+    bindings: snap.bindings ?? [],
     exportedAt: snap.exportedAt,
   };
 }

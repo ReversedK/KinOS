@@ -21,7 +21,8 @@ The export is a single UTF-8 JSON document. It is self-describing and versioned.
   "identities": [ /* Identity[] */ ],
   "agents":     [ /* Agent[] */ ],
   "memory":     [ /* MemoryItem[] — canonical; no embeddings */ ],
-  "policies":   [ /* Policy[] */ ]
+  "policies":   [ /* Policy[] */ ],
+  "bindings":   [ /* CapabilityBinding[] — optional */ ]
 }
 ```
 
@@ -40,6 +41,10 @@ Each section uses the canonical domain shapes defined in
   grants (including revoked grants, which are retained as audit facts).
 - **policies** — structured policies (selectors, action, effect, conditions,
   priority, version, status). The executable rule, not prose, is exported.
+- **bindings** — Capability Bindings (ADR-001): capability, runtime, execution,
+  risk, approval floor, status. The provider-specific `runtimeToolName` is an
+  adapter detail carried for restoration; it is never used in domain reasoning
+  or audit. Optional section: a snapshot without it imports to an empty list.
 
 ## Rules
 

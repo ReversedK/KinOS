@@ -11,6 +11,7 @@ import { createIdentity } from "../identity/identity.js";
 import { createAgent } from "../agent/agent.js";
 import { createMemoryItem, shareWithMembers } from "../memory/memory.js";
 import type { Policy } from "../policy/types.js";
+import type { CapabilityBinding } from "../capability/types.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
 
@@ -59,7 +60,18 @@ function fixture() {
       status: "active",
     },
   ];
-  return { sphere, identities, agents, memory, policies };
+  const bindings: CapabilityBinding[] = [
+    {
+      capability: "calendar.create_event",
+      runtime: "local",
+      runtimeToolName: "local.calendar",
+      execution: "local",
+      risk: "medium",
+      requiresApproval: false,
+      status: "enabled",
+    },
+  ];
+  return { sphere, identities, agents, memory, policies, bindings };
 }
 
 describe("Sphere export/import (results-contract §17, ADR-002)", () => {
@@ -84,7 +96,24 @@ describe("Sphere export/import (results-contract §17, ADR-002)", () => {
     expect(restored.agents).toEqual(f.agents);
     expect(restored.memory).toEqual(f.memory);
     expect(restored.policies).toEqual(f.policies);
+    expect(restored.bindings).toEqual(f.bindings);
     expect(restored.exportedAt).toBe(NOW);
+  });
+
+  it("defaults bindings to an empty array when the snapshot omits them", () => {
+    const f = fixture();
+    const snap = exportSphere({
+      sphere: f.sphere,
+      identities: f.identities,
+      agents: f.agents,
+      memory: f.memory,
+      policies: f.policies,
+      exportedAt: NOW,
+    });
+    // Simulate an older snapshot with no bindings section.
+    const legacy = JSON.parse(JSON.stringify(snap)) as Record<string, unknown>;
+    delete legacy["bindings"];
+    expect(importSphere(legacy).bindings).toEqual([]);
   });
 
   it("rejects an unknown format (fail closed)", () => {

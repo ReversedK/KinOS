@@ -58,6 +58,22 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 20 — 2026-06-25 (post-§19; persist bindings)
+- **Done:** Added an optional `bindings` (CapabilityBinding[]) section to the
+  SphereExport snapshot — additive, no version bump (a snapshot without it
+  imports to []). exportSphere/importSphere updated; export-format.md documents
+  it; bindings round-trip + legacy-default tests. This unblocks the governed
+  `run` command (it needs a Sphere's bindings + policies).
+- **Verified (in container):** `npm test` → 96 passed, 1 skipped; `typecheck` → exit 0.
+- **Decisions:** kept EXPORT_VERSION=1 (additive optional field, backward
+  tolerant) rather than bumping; runtimeToolName is carried for restoration only.
+- **Next step:** CLI `run <sphereId> <capability> [adult|child]` — load the
+  snapshot, build CapabilityExecutionDeps from its policies + bindings + the
+  catalog + LocalCapabilityExecutor, drive beginSensitiveAction with the
+  SqliteAuditSink, print the outcome + correlationId. A fresh Sphere (no
+  bindings) denies (deny-by-default); seed a binding/policy via a test snapshot
+  to show execute + approval. Then optionally an `init`-seeded default or the UI.
+
 ### Iteration 19 — 2026-06-25 (post-§19; local executor adapter)
 - **Done:** `@kinos/executor-local` (`packages/adapters/executor-local`).
   LocalCapabilityExecutor implements the CapabilityExecutor port via a handler
