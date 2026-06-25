@@ -28,6 +28,8 @@ Visible only to explicitly selected members or agents representing them.
 
 Used for family or organizational governance. Must not imply total surveillance.
 
+A **supervisor** is a Member whose Sphere role carries supervisory responsibility over another member — for example a parent or guardian over a minor, or a Sphere administrator over the Sphere. Supervisor status is resolved per Sphere from role (see `docs/adr/000-sphere-model.md`), is not a global identity, and never by itself grants access to another member's private content.
+
 ### Shared with Sphere
 
 Visible to the Sphere agent and authorized Sphere members.

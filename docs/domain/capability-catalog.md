@@ -156,7 +156,7 @@ These are denied for child profiles by default and require explicit, audited aut
 - terminal.execute;
 - file.delete;
 - payment.execute;
-- message.send_external;
+- message.send;
 - public.publish;
 - unknown_tool.execute.
 

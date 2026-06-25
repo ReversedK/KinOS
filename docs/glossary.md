@@ -82,6 +82,10 @@ A governed unit of human representation. A Sphere can represent a person, family
 
 An agent representing a Sphere rather than an individual person. It answers only from information available to the Sphere, never receives private memories without authorization, and requests approval before sensitive actions.
 
+## Supervisor
+
+A Member whose Sphere role carries supervisory responsibility over another member, such as a parent or guardian over a minor or an administrator over the Sphere. Supervisor status is resolved per Sphere from role, is not a global identity, and does not by itself grant access to another member's private content (supervision is not surveillance).
+
 ## Visibility Scope
 
 The set of subjects allowed to see a memory item: private, selected members, supervisors/parents where applicable, Sphere-shared, or public/exportable. New data is private by default; widening the scope requires explicit consent.
