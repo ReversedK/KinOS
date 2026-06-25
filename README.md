@@ -54,6 +54,7 @@ Data sovereignty, privacy, consent, portability, memory ownership and safety mus
 
 - [RFC Template](docs/rfcs/000-template.md)
 - [RFC-001 — Sphere-first Architecture](docs/rfcs/001-sphere-first-architecture.md)
+- [RFC-002 — Package Store and Skills](docs/rfcs/002-package-store-and-skills.md)
 
 ## Development rule
 
