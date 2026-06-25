@@ -28,8 +28,9 @@ Ollama adapter (live-verified), export/import, and the `@kinos/cli` acceptance
 orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
 
 ### Beyond §19 (not required for the §19 milestone; next if the loop resumes)
-- **SQLite persistence** behind core repository ports (durability; results-
-  contract §1/§15). Define the ports in core first; doc-check ADR-002/ADR-006.
+- **SQLite persistence**: port DEFINED (`SphereStore` in core, in-memory ref
+  done — iteration 11). Next: the SQLite adapter implementing the same contract
+  (durability; results-contract §1/§15).
 - **Interactive CLI/API commands** (the current CLI runs a scripted scenario,
   not per-command operations) and the **Next.js UI** (results-contract §18).
 - **Capability execution path** (binding resolution + per-call policy re-check
@@ -253,3 +254,22 @@ Runtime adapter → integrations/Packages → UI.
   tests inject a fake (deterministic).
 - **Loop status:** GOAL reached (§19 demonstrable end-to-end) → loop stopped and
   summarized. Re-invoke `/loop` to continue with the "Beyond §19" items.
+
+### Iteration 11 — 2026-06-25 (post-§19; persistence)
+- **Done:** Persistence port `SphereStore` in `packages/core/persistence/store.ts`
+  (save/load/list/delete over the documented SphereExport snapshot; embeddings
+  not persisted) + `InMemorySphereStore` reference impl that stores/returns JSON
+  clones so callers can't mutate persisted state. 5 tests (round-trip, missing →
+  undefined, overwrite, delete, mutation isolation). Doc-covered by ADR-006
+  ("repository port defined by the domain") + ADR-002.
+- **Verified (in container):** `npm test` → 65 passed, 1 skipped; `typecheck` → exit 0.
+- **Decisions:** the store persists the canonical export snapshot (reuses the
+  documented format) rather than a bespoke schema — keeps SQLite a thin adapter
+  and durability aligned with export/import. Clone via JSON to keep core free of
+  node/dom globals (no structuredClone).
+- **Next step:** SQLite adapter `packages/adapters/persistence-sqlite`
+  implementing SphereStore via better-sqlite3 (Dockerfile already has build
+  tools). One table keyed by sphere id storing the snapshot JSON. TDD against a
+  temp DB file; ideally extract a shared SphereStore contract suite and run it
+  for both in-memory and SQLite. Then wire the CLI to persist/reload a Sphere
+  (results-contract §1 "database is initialized").

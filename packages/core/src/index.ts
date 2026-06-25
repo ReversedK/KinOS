@@ -20,3 +20,4 @@ export * from "./agent/agent.js";
 export * from "./approval/approval.js";
 export * from "./runtime/runtime.js";
 export * from "./export/export.js";
+export * from "./persistence/store.js";
