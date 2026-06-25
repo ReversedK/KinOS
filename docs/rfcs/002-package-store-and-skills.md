@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft — proposed.
+Accepted.
 
 ## Summary
 
