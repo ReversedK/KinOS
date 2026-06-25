@@ -58,6 +58,25 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 27 — 2026-06-25 (post-§19; Next.js UI scaffold)
+- **Human decision:** build the UI as a **Next.js app** per ADR-006 (asked
+  before committing to the frontend stack).
+- **Done:** scaffolded `ui/` (@kinos/ui): Next 14 app-router skeleton
+  (`app/layout.tsx`, `app/page.tsx` server component listing Spheres), config
+  (`next.config.mjs`, `tsconfig.json`), and a framework-agnostic API client
+  `lib/api.ts` (getSpheres/getSphere/getPendingApprovals, injectable fetch,
+  reads `KINOS_API_URL`). Added `ui` to npm workspaces; vitest now includes
+  `ui/**/*.test.ts`; `.next/` + next-env.d.ts gitignored. 4 API-client tests.
+- **Verified (in container):** `npm install` pulled Next/React; `npm test` →
+  123 passed, 1 skipped; `typecheck` (tsc --build, core/adapters/app) → exit 0.
+  The UI page/components are validated by `next build`, deferred to next iter.
+- **Decisions:** UI is a read-only consumer (coding principle 1 — no policy in
+  the UI); it shows Spheres/members, never embeddings/MCP/runtime internals (§18).
+  ui is NOT a tsc project reference (Next owns its build/typecheck).
+- **Next step:** run `next build` in-container to typecheck/compile the app
+  (generates next-env.d.ts); fix any type issues in page/layout. Then add
+  members/agents and a pending-approvals view, pointing at a running API.
+
 ### Iteration 26 — 2026-06-25 (post-§19; HTTP server for the read API)
 - **Done:** `createApiServer(deps)` (`packages/app/api/server.ts`) — a thin
   node:http wrapper mapping IncomingMessage → ApiRequest, calling the pure
