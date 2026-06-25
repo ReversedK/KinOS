@@ -33,6 +33,11 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
   check, Policy Engine re-check, approval floor, execute via CapabilityExecutor
   port. Next sub-step: wire approvals into the execute flow and add a real local
   executor adapter.
+- **Audit events**: DONE (iteration 15). KinEvent model + AuditSink port +
+  InMemoryAuditSink (event-model.md). executeCapability emits a correlation-
+  chained, content-free trail (requested → allowed → executed | denied) citing
+  the deciding policy. Next: emit approval.requested/granted when an
+  ApprovalRequest is created/resolved, and a durable audit sink adapter.
 - **SQLite persistence + CLI wiring**: DONE. `SphereStore` port (it.11) +
   `@kinos/persistence-sqlite` (it.12) + CLI subcommands `init/list/show/export`
   backed by SQLite at `$KINOS_DB` (it.13). Verified durable across separate
@@ -340,3 +345,23 @@ Runtime adapter → integrations/Packages → UI.
   and, once granted, the action runs (closing policy→approval→execution under
   one correlation id); then (ii) audit events (event-model.md) recording
   security facts across that chain. Doc-check event-model first.
+
+### Iteration 15 — 2026-06-25 (post-§19; audit events)
+- **Done:** Audit event model in `packages/core/audit/events.ts` — KinEvent +
+  KinEventType (event-model initial set), EventDecision, AuditSink port,
+  InMemoryAuditSink (assigns evt_N ids, byCorrelation()). Threaded an optional
+  `audit` sink through executeCapability: emits capability.requested then
+  allowed+executed (citing deciding policyId/version) or denied, all sharing the
+  correlation id, carrying only ids/decision/reason — verified no input content
+  leaks into events. 8 tests (sink + capability audit chain).
+- **Verified (in container):** `npm test` → 84 passed, 1 skipped; `typecheck` →
+  exit 0 (fixed an exactOptionalPropertyTypes issue in the event builder).
+- **Decisions:** require_approval emits no extra capability event here — the
+  approval.requested event belongs to ApprovalRequest creation (next step). Audit
+  sink is an optional dep so existing call sites are unaffected.
+- **Next step:** Orchestrate the full sensitive-action chain in one place:
+  executeCapability → on require_approval create an ApprovalRequest (emit
+  approval.requested) → on grant (emit approval.granted) re-run execution
+  (capability.allowed/executed), all under one correlation id. Add a local
+  CapabilityExecutor adapter and surface it via a CLI subcommand. Then a durable
+  AuditSink adapter (SQLite) so audit survives restarts.
