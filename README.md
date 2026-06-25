@@ -98,6 +98,14 @@ A Sphere created in one run is read back by later runs — the database is
 initialized on first use and no external service is required (results-contract
 §1, §15).
 
+`init` prints a `correlationId`; the audit trail (security facts only, no
+content) persists to `$KINOS_AUDIT_DB` (default `./data/audit.sqlite`) and is
+viewable across runs:
+
+```bash
+docker compose run --rm dev npm run mvp -w @kinos/cli -- audit <correlationId>
+```
+
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 
 ## Development rule

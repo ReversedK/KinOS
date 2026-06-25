@@ -58,6 +58,22 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 18 — 2026-06-25 (post-§19; lifecycle audit + CLI view)
+- **Done:** Added `AuditReader` read-interface in core (InMemoryAuditSink
+  implements it). `initSphere` now emits a `sphere.created` event when an audit
+  sink + correlationId are supplied; `showAudit(reader, cid)` renders a chain
+  (facts only). `main.ts` wires a SqliteAuditSink at `$KINOS_AUDIT_DB`, generates
+  a correlationId for `init` (printed), and adds an `audit <correlationId>`
+  subcommand. README documents it.
+- **Verified (in container):** `npm test` → 92 passed, 1 skipped; `typecheck` →
+  exit 0. Live: `init` then **separate-process** `audit <cid>` shows the
+  persisted `sphere.created` event.
+- **Next step:** emit the remaining lifecycle events (agent.created, member.*,
+  memory.shared/revoked) where those operations occur (scenario/commands), and
+  thread the sensitive-action flow's audit into the SqliteAuditSink so a full
+  run is reconstructable. Then choose Sphere-agent persona (ADR-005 L2) or
+  embeddings, or start the Next.js UI (results-contract §18).
+
 ### Iteration 17 — 2026-06-25 (post-§19; durable audit)
 - **Done:** `SqliteAuditSink` in `packages/adapters/persistence-sqlite` —
   implements the core AuditSink over an append-only `audit_events` table (no

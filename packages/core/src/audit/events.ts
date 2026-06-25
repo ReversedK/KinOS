@@ -67,7 +67,12 @@ export interface AuditSink {
   record(event: KinEventDraft): void;
 }
 
-export class InMemoryAuditSink implements AuditSink {
+/** Read side of the audit log: reconstruct a single action's event chain. */
+export interface AuditReader {
+  byCorrelation(correlationId: string): readonly KinEvent[];
+}
+
+export class InMemoryAuditSink implements AuditSink, AuditReader {
   private seq = 0;
   readonly events: KinEvent[] = [];
 

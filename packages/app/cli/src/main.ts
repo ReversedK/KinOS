@@ -7,24 +7,33 @@
  *   list                      list persisted Sphere ids
  *   show <id>                 show a persisted Sphere summary
  *   export <id>               print a Sphere's export snapshot JSON
+ *   audit <correlationId>     show an action's audit chain
  *
- * Persistence is SQLite at $KINOS_DB (default ./data/kinos.sqlite). The local
- * model runtime is Ollama at $OLLAMA_BASE_URL.
+ * Persistence is SQLite at $KINOS_DB (default ./data/kinos.sqlite); the audit
+ * log at $KINOS_AUDIT_DB (default ./data/audit.sqlite). The local model runtime
+ * is Ollama at $OLLAMA_BASE_URL.
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { SqliteSphereStore } from "@kinos/persistence-sqlite";
+import { SqliteAuditSink, SqliteSphereStore } from "@kinos/persistence-sqlite";
 import { OllamaRuntime } from "@kinos/runtime-ollama";
 
-import { exportSphereJson, initSphere, listSpheres, showSphere } from "./commands.js";
+import { exportSphereJson, initSphere, listSpheres, showAudit, showSphere } from "./commands.js";
 import { runMvpScenario } from "./scenario.js";
 
 function openStore(): SqliteSphereStore {
   const path = process.env["KINOS_DB"] ?? "data/kinos.sqlite";
   mkdirSync(dirname(path), { recursive: true });
   return new SqliteSphereStore(path);
+}
+
+function openAudit(): SqliteAuditSink {
+  const path = process.env["KINOS_AUDIT_DB"] ?? "data/audit.sqlite";
+  mkdirSync(dirname(path), { recursive: true });
+  return new SqliteAuditSink(path);
 }
 
 async function runMvp(): Promise<number> {
@@ -37,7 +46,8 @@ async function runMvp(): Promise<number> {
   return report.allPassed ? 0 : 1;
 }
 
-const USAGE = "usage: kinos <mvp | init <id> <name> | list | show <id> | export <id>>";
+const USAGE =
+  "usage: kinos <mvp | init <id> <name> | list | show <id> | export <id> | audit <correlationId>>";
 
 async function main(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv;
@@ -51,6 +61,8 @@ async function main(argv: readonly string[]): Promise<number> {
         return 1;
       }
       const store = openStore();
+      const audit = openAudit();
+      const correlationId = randomUUID();
       try {
         console.log(
           await initSphere(store, {
@@ -58,10 +70,14 @@ async function main(argv: readonly string[]): Promise<number> {
             name: nameParts.join(" "),
             founderName: "Administrator",
             now: new Date().toISOString(),
+            audit,
+            correlationId,
           }),
         );
+        console.log(`correlationId: ${correlationId}`);
       } finally {
         store.close();
+        audit.close();
       }
       return 0;
     }
@@ -102,9 +118,23 @@ async function main(argv: readonly string[]): Promise<number> {
       }
       return 0;
     }
+    case "audit": {
+      const [correlationId] = rest;
+      if (!correlationId) {
+        console.error("usage: kinos audit <correlationId>");
+        return 1;
+      }
+      const audit = openAudit();
+      try {
+        console.log(showAudit(audit, correlationId));
+      } finally {
+        audit.close();
+      }
+      return 0;
+    }
     default:
       console.error(USAGE);
-      return command === undefined ? 1 : 1;
+      return 1;
   }
 }
 

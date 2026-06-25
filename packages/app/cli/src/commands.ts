@@ -12,6 +12,8 @@ import {
   createSphere,
   exportSphere,
   importSphere,
+  type AuditReader,
+  type AuditSink,
   type SphereStore,
 } from "@kinos/core";
 
@@ -20,6 +22,9 @@ export interface InitSphereArgs {
   readonly name: string;
   readonly founderName: string;
   readonly now: string;
+  /** When provided, a sphere.created audit event is recorded. */
+  readonly audit?: AuditSink;
+  readonly correlationId?: string;
 }
 
 /** Create a family Sphere with a founding parent and persist it. */
@@ -44,6 +49,17 @@ export async function initSphere(store: SphereStore, args: InitSphereArgs): Prom
     exportedAt: args.now,
   });
   await store.save(snapshot);
+
+  if (args.audit !== undefined && args.correlationId !== undefined) {
+    args.audit.record({
+      type: "sphere.created",
+      sphereId: args.id,
+      resourceType: "sphere",
+      resourceId: args.id,
+      correlationId: args.correlationId,
+      createdAt: args.now,
+    });
+  }
   return `Initialized Sphere ${args.id} ("${args.name}").`;
 }
 
@@ -63,6 +79,20 @@ export async function showSphere(store: SphereStore, id: string): Promise<string
     `members: ${snap.sphere.members.length}`,
     `identities: ${snap.identities.length}`,
   ].join("\n");
+}
+
+/** Render an action's audit chain (security facts only) for a correlation id. */
+export function showAudit(reader: AuditReader, correlationId: string): string {
+  const events = reader.byCorrelation(correlationId);
+  if (events.length === 0) return `No audit events for ${correlationId}.`;
+  return events
+    .map((e) => {
+      const decision = e.decision ? ` [${e.decision}]` : "";
+      const policy = e.policyId ? ` (policy ${e.policyId} v${e.policyVersion})` : "";
+      const reason = e.reason ? ` — ${e.reason}` : "";
+      return `${e.createdAt}  ${e.type}${decision}${policy}${reason}`;
+    })
+    .join("\n");
 }
 
 /** Load and re-validate a snapshot, returning its documented JSON form. */
