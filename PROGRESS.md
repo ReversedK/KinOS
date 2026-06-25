@@ -17,6 +17,8 @@ the stack choice itself required an accepted ADR — none existed).
 - First surface: **domain API + thin CLI**; Next.js UI deferred.
 - Layout: npm-workspaces monorepo — `packages/core`, `packages/adapters/*`,
   `packages/app/*`, `ui/`. Test runner: Vitest. `tsc --strict`.
+- Environment: **Docker only** — no host node/npm. Run via
+  `docker compose run --rm dev npm <cmd>`.
 
 ## Dependency order being followed
 
@@ -47,3 +49,18 @@ Runtime adapter → integrations/Packages → UI.
   trivial failing→passing test. Then begin the first domain slice: Identity /
   Sphere / Member value objects + creation, TDD, with a failing test encoding
   "a Sphere can be created" and "two adults and one child can be added".
+
+### Iteration 2 — 2026-06-25
+- **Done:** Scaffolded npm-workspaces monorepo (root `package.json`,
+  `tsconfig.base.json` strict, root `tsconfig.json` project refs, `vitest.config.ts`,
+  `packages/core`). Proved the toolchain with a red→green test
+  (`CORE_CONTRACT_VERSION`). Pivoted the toolchain to **Docker** per human
+  instruction: added `Dockerfile`, `docker-compose.yml`, `.gitignore`; removed host
+  `node_modules`. All commands now run via `docker compose run --rm dev …`.
+- **Verified (in container):** `npm test` → 1 passed; `npm run typecheck` → exit 0.
+- **Decisions:** Docker is the dev/run environment (ADR-006 "Dev and run
+  environment"); Node stays the runtime.
+- **Next step:** First domain slice — Identity / Sphere / Member. TDD: failing
+  test encoding §19 "a Sphere can be created" and "two adults + one child added",
+  modelling roles (parent/child) per results-contract §3 and domain-model.md.
+  Pure `packages/core`, no I/O.

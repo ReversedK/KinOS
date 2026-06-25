@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+*.log
+
+# Local data (SQLite stores etc.) must never be committed.
+*.sqlite
+*.sqlite3
+data/

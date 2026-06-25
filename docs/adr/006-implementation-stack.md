@@ -100,6 +100,24 @@ Dependency rule (enforced by review, later by lint/boundaries tooling):
 - **No build step for the core** beyond `tsc`; adapters/app may add bundling
   only when a real consumer needs it.
 
+### Dev and run environment
+
+The toolchain runs **inside Docker containers, never against a host
+node/npm**. A single `Dockerfile` (Node 20 + build tools for native modules
+such as the SQLite adapter) and `docker-compose.yml` provide the environment;
+all commands go through it:
+
+```text
+docker compose run --rm dev npm install
+docker compose run --rm dev npm test
+docker compose run --rm dev npm run typecheck
+```
+
+The repo is bind-mounted and `node_modules` lives in a named volume, so installs
+stay inside the container and the host stays clean. Node remains the runtime
+(this ADR's language decision is unchanged); Docker is only the environment that
+provides it, keeping dev/CI reproducible and host-independent.
+
 ## Consequences
 
 - The domain core stays portable and provider-independent (invariants 12, 26,

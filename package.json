@@ -1,0 +1,22 @@
+{
+  "name": "kinos",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Local-first trust infrastructure for personal and collective AI agents inside human Spheres.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/adapters/*",
+    "packages/app/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --build"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}
