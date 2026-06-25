@@ -6,8 +6,10 @@ Goal: reach the MVP validation criteria of `docs/contracts/results-contract.md`
 
 ## Current state
 
-Spec-only repo. Iteration 1 establishes the implementation stack (doc-before-code:
-the stack choice itself required an accepted ADR — none existed).
+Domain core scaffolded and exercised in Docker. First slice done: Identity /
+Sphere / Member — §19 "create a Sphere" and "two adults + one child" pass in
+`packages/core`. Next: Policy Engine (the gate that makes the minor/private
+criteria meaningful), then Memory.
 
 ## Stack decisions (ADR-006)
 
@@ -27,8 +29,8 @@ Runtime adapter → integrations/Packages → UI.
 
 ## §19 MVP criteria checklist
 
-- [ ] a Sphere can be created
-- [ ] two adults and one child can be added
+- [x] a Sphere can be created *(core; CLI/API surface pending)*
+- [x] two adults and one child can be added *(core; CLI/API surface pending)*
 - [ ] each member can have an agent
 - [ ] the child cannot access private adult memory
 - [ ] memory can be shared and revoked
@@ -64,3 +66,19 @@ Runtime adapter → integrations/Packages → UI.
   test encoding §19 "a Sphere can be created" and "two adults + one child added",
   modelling roles (parent/child) per results-contract §3 and domain-model.md.
   Pure `packages/core`, no I/O.
+
+### Iteration 3 — 2026-06-25
+- **Done:** First domain slice in `packages/core`. `identity/` (Identity +
+  createIdentity), `sphere/member.ts` (Role parent/teenager/child/guest,
+  MemberStatus, isMinor → child/teenager per §8), `sphere/sphere.ts` (SphereType,
+  SphereStatus, createSphere [founder = first member + administrator, active],
+  addMember [immutable, deny duplicate], listMembers). All pure, ids
+  caller-supplied (no crypto import). Red→green TDD.
+- **Verified (in container):** `npm test` → 8 passed (3 files); `typecheck` → exit 0.
+- **Decisions:** createSphere yields `active` (entity-lifecycle draft→active
+  "initialized and ready"); minors = child+teenager; ids injected to keep core
+  deterministic and I/O-free.
+- **Next step:** Policy Engine slice (ADR-003 / domain-model Policy). TDD a
+  minimal evaluator honouring: deny strictly dominates require_approval dominates
+  allow; absence of an allow = deny (deny by default). This is the gate the
+  §19 minor/private-memory and adult-vs-child capability criteria depend on.
