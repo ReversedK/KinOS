@@ -6,10 +6,11 @@ Goal: reach the MVP validation criteria of `docs/contracts/results-contract.md`
 
 ## Current state
 
-Domain core scaffolded and exercised in Docker. First slice done: Identity /
-Sphere / Member — §19 "create a Sphere" and "two adults + one child" pass in
-`packages/core`. Next: Policy Engine (the gate that makes the minor/private
-criteria meaningful), then Memory.
+Domain core scaffolded and exercised in Docker. Done: Identity/Sphere/Member
+(§19 #1, #2) and the deterministic Policy Engine evaluator (ADR-003). Next:
+Memory (canonical items + visibility), then wire memory through the engine so
+"child cannot read adult private memory" and "share then revoke" become
+demonstrable end-to-end.
 
 ## Stack decisions (ADR-006)
 
@@ -34,7 +35,7 @@ Runtime adapter → integrations/Packages → UI.
 - [ ] each member can have an agent
 - [ ] the child cannot access private adult memory
 - [ ] memory can be shared and revoked
-- [ ] a capability can be allowed for an adult and denied to a child
+- [x] a capability can be allowed for an adult and denied to a child *(policy engine; CLI/API wiring pending)*
 - [ ] a sensitive action can trigger approval
 - [ ] the system runs with a local model runtime
 - [ ] data can be exported
@@ -82,3 +83,24 @@ Runtime adapter → integrations/Packages → UI.
   minimal evaluator honouring: deny strictly dominates require_approval dominates
   allow; absence of an allow = deny (deny by default). This is the gate the
   §19 minor/private-memory and adult-vs-child capability criteria depend on.
+
+### Iteration 4 — 2026-06-25
+- **Done:** Policy Engine in `packages/core/policy/`. `types.ts` (PolicyRequest,
+  PolicyDecision, Policy, effects — verbatim from ADR-003) and `engine.ts`
+  `evaluate(request, policies)`: staged eval with fixed precedence
+  deny > require_approval > allow, deny-by-default, unresolved subject → deny,
+  active-only policy selection, conflict resolution by priority then specificity
+  (names the cited policy, never changes the effect). Matching: roles,
+  ageProfiles, memberIds; capability exact + `prefix.*`; classifications
+  (unclassified → private), sensitivities, riskLevels; context execution +
+  time windows. 13 tests cover ADR worked examples 1/2/4/5.
+- **Verified (in container):** `npm test` → 21 passed (4 files); `typecheck` → exit 0.
+- **Decisions/limits:** `subjectSelector.agents` (personal/sphere) and
+  `contextConditions.maxCostCents` deferred — a specific agent-kind selector
+  conservatively does not match yet; no §19 criterion needs either. Time windows
+  use the ISO timestamp's wall-clock (no TZ database) — faithful for local HH:MM.
+- **Next step:** Memory slice — MemoryItem (owner, visibility, sensitivity,
+  share grants, lifecycle) per domain-model + ADR-002. TDD createMemoryItem,
+  share/revoke (revocation keeps the grant as an audit fact). Then a Memory
+  Resolver that asks the Policy Engine, making §19 "child can't read adult
+  private memory" and "share then revoke" demonstrable.
