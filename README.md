@@ -41,6 +41,7 @@ Data sovereignty, privacy, consent, portability, memory ownership and safety mus
 - [Event Model](docs/architecture/event-model.md)
 - [API Contract](docs/architecture/api-contract.md)
 - [Integration Model](docs/architecture/integration-model.md)
+- [Secret Store](docs/architecture/secret-store.md)
 - [Plugin SDK](docs/architecture/plugin-sdk.md)
 
 ### Security
