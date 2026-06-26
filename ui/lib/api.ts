@@ -37,6 +37,15 @@ export interface AgentSummary {
   readonly enabledCapabilities: readonly string[];
 }
 
+export interface RuntimeInfo {
+  readonly provider: string;
+  readonly model: string;
+  readonly execution: string;
+  readonly cloudInferenceEnabled: boolean;
+  readonly allowedProviders: readonly string[];
+  readonly allowed: boolean;
+}
+
 const DEFAULT_BASE_URL = "http://localhost:8787";
 
 export function apiBaseUrl(): string {
@@ -97,6 +106,14 @@ export async function getAgents(
     fetchImpl,
   );
   return body.agents;
+}
+
+export async function getRuntime(
+  baseUrl: string,
+  sphereId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RuntimeInfo> {
+  return getJson<RuntimeInfo>(baseUrl, `/spheres/${encodeURIComponent(sphereId)}/runtime`, fetchImpl);
 }
 
 // --- Governed write actions (RFC-003) ---

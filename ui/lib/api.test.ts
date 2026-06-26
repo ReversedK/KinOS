@@ -6,6 +6,7 @@ import {
   getAgents,
   getMembers,
   getPendingApprovals,
+  getRuntime,
   getSphere,
   getSpheres,
   grantApproval,
@@ -70,6 +71,15 @@ describe("UI API client", () => {
       fakeFetch({ agents: [{ id: "agt_0", name: "P1", ownerId: "mbr_p1", state: "configured", enabledCapabilities: [] }] }),
     );
     expect(out[0]?.name).toBe("P1");
+  });
+
+  it("getRuntime returns the resolved runtime profile", async () => {
+    const out = await getRuntime(
+      "http://x",
+      "sph_1",
+      fakeFetch({ provider: "ollama", model: "llama3.2", execution: "local", cloudInferenceEnabled: false, allowedProviders: ["ollama"], allowed: true }),
+    );
+    expect(out).toMatchObject({ provider: "ollama", execution: "local", allowed: true });
   });
 
   it("throws on a non-ok response", async () => {

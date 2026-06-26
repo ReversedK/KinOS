@@ -130,6 +130,17 @@ describe("API router (api-contract.md)", () => {
     expect(res.status).toBe(404);
     expect(res.code).toBe("not_found");
   });
+
+  it("reports a sphere's resolved runtime profile (local-first default)", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/runtime" }, await deps());
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      provider: "ollama",
+      execution: "local",
+      cloudInferenceEnabled: false,
+      allowed: true,
+    });
+  });
 });
 
 // --- Governed write path: POST capability execution (api-contract §Capability) ---

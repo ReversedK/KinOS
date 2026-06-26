@@ -58,6 +58,26 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 44 — 2026-06-26 (post-§19; runtime read endpoint + UI client, RFC-004/003)
+- **Done:** `GET /spheres/:id/runtime` — the API counterpart of the CLI
+  `describeRuntime`: returns the Sphere's resolved inference profile (provider,
+  model, execution, cloud flag, allowed providers, and whether it's permitted),
+  **no secrets**. Added a `getRuntime` UI client wrapper + `RuntimeInfo` type, so
+  the config view can display the current provider/model. 2 new tests (router
+  reports local-first default; client parses the profile).
+- **Verified (in container):** `npm test router + ui/lib` → 37 passed (router 24,
+  ui 13); `typecheck` → exit 0.
+- **Decisions:** deliberately shipped the **read** endpoint, not a set-provider
+  **write** — changing a Sphere's provider/model is a high-risk admin action that
+  must be policy-gated/approval-bound (RFC-004), and that authorization machinery
+  (admin-only capabilities, sphere.update_settings policy) isn't wired yet.
+  Building the write without it would create an ungoverned mutation, so it waits
+  for the governed-settings slice rather than guessing past the invariant.
+- **Next step:** design + wire the governed admin-settings path (a
+  `runtime.set_provider` capability checked by the Policy Engine) before exposing
+  a provider/model **write**; meanwhile the config view can render the read-only
+  runtime info next to members/agents. Then RFC-005 chat sessions.
+
 ### Iteration 43 — 2026-06-26 (post-§19; run-capability affordance on Sphere page, RFC-003)
 - **Done:** added a `RunCapability` client component to the Sphere detail page: a
   member selector (acting "as" a member — anticipates RFC-006 impersonation), a

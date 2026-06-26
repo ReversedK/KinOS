@@ -13,10 +13,12 @@
 
 import {
   ageProfileForRole,
+  assertProfileAllowed,
   beginSensitiveAction,
   defaultCapabilityCatalog,
   importSphere,
   resolveApproval,
+  resolveEffectiveProfile,
   type ApprovalStore,
   type AuditReader,
   type AuditSink,
@@ -241,6 +243,27 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           state: a.state,
           enabledCapabilities: a.enabledCapabilities,
         })),
+      });
+    }
+    if (segments.length === 3 && segments[2] === "runtime") {
+      // RFC-004: the resolved inference profile a Sphere would use (no secrets).
+      const snap = await deps.store.load(segments[1] as string);
+      if (snap === undefined) return err(404, "not_found", "Sphere not found");
+      const { runtimeConfig } = importSphere(snap);
+      const profile = resolveEffectiveProfile(runtimeConfig);
+      let allowed = true;
+      try {
+        assertProfileAllowed(runtimeConfig, profile);
+      } catch {
+        allowed = false;
+      }
+      return ok({
+        provider: profile.providerId,
+        model: profile.model,
+        execution: profile.execution,
+        cloudInferenceEnabled: runtimeConfig.cloudInferenceEnabled,
+        allowedProviders: runtimeConfig.allowedProviders,
+        allowed,
       });
     }
   }
