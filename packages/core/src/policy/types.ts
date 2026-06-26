@@ -24,7 +24,8 @@ export type ResourceType =
   | "integration"
   | "document"
   | "sphere"
-  | "approval";
+  | "approval"
+  | "session";
 
 export type Classification =
   | "private"

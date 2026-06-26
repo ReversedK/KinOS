@@ -58,6 +58,24 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 51 — 2026-06-26 (post-§19; policy-scoped session resolver, RFC-005)
+- **Done:** `packages/core/src/session/resolver.ts` — `authorizeSessionRead` /
+  `resolveReadableSessions`, mirroring the memory resolver: owner-only structural
+  visibility (non-deleted) expressed as a lowest-priority synthetic `allow` run
+  through the Policy Engine, so a real `deny`/`require_approval` still dominates and
+  a non-owner is denied by default. Added a `session` ResourceType to the policy
+  types so sessions are first-class in policy selectors. 5 tests (owner allowed,
+  non-owner denied, deleted never surfaced, real deny overrides owner, list filter).
+- **Verified (in container):** `npm test session + policy` → 30 passed (policy's
+  13 unaffected by the ResourceType addition); `typecheck` → exit 0.
+- **Decisions:** guardian oversight of a minor's session (RFC-005 open question) is
+  intentionally NOT implicit — it would widen structural visibility via an explicit
+  grant (like memory's supervisor scope), deferred. Reused the engine's precedence
+  rather than duplicating any rule (resolver stays a consumer).
+- **Next step:** a SQLite SessionStore adapter; then the chat-turn flow
+  (policy-scoped memory + the owner's own history → AgentRuntime via the Sphere's
+  profile, capability calls governed) and the API endpoints + UI chat view.
+
 ### Iteration 50 — 2026-06-26 (post-§19; SessionStore port, RFC-005)
 - **Done:** `packages/core/src/session/store.ts` — `SessionStore` port
   (save/load/listForOwner/delete) + `InMemorySessionStore` reference impl.
