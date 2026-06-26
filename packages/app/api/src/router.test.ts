@@ -750,3 +750,92 @@ describe("API router — integrations", () => {
     expect(res.status).toBe(501);
   });
 });
+
+// --- Store: browse + governed install/enable (RFC-002) ---
+
+describe("API router — package store", () => {
+  const allowAdultPackages: Policy = {
+    id: "pol_pkg",
+    sphereId: "sph_1",
+    description: "Adults may manage packages.",
+    subjectSelector: { ageProfiles: ["adult"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["package.install", "package.enable", "package.disable"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+
+  async function pkgDeps(policies: Policy[]) {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe Family",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    await store.save(exportSphere({ sphere, identities: [], agents: [], memory: [], policies, exportedAt: NOW }));
+    const audit = new InMemoryAuditSink();
+    let n = 0;
+    const deps: ApiDeps = {
+      store,
+      approvals: new InMemoryApprovalStore(),
+      audit,
+      auditSink: audit,
+      newCorrelationId: () => `req_${++n}`,
+      now: () => NOW,
+    };
+    return deps;
+  }
+
+  const adult = { subject: { memberId: "mbr_p1", role: "parent", ageProfile: "adult" } };
+
+  it("browses the curated store catalog", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/store" }, await pkgDeps([]));
+    expect(res.status).toBe(200);
+    const pkgs = (res.body as { packages: { id: string }[] }).packages;
+    expect(pkgs.some((p) => p.id === "minecraft-themepark")).toBe(true);
+  });
+
+  it("installs a store package (installed, not enabled — install != authorization) and persists it", async () => {
+    const deps = await pkgDeps([allowAdultPackages]);
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: "family-calendar", status: "installed" });
+    const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/packages" }, deps);
+    expect((list.body as { packages: { id: string; status: string }[] }).packages).toEqual([
+      { id: "family-calendar", type: "skill", title: "Family Calendar", description: expect.any(String), status: "installed" },
+    ]);
+  });
+
+  it("then enables the installed package", async () => {
+    const deps = await pkgDeps([allowAdultPackages]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: "family-calendar", status: "enabled" });
+  });
+
+  it("denies install by default when no policy allows it (403)", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, await pkgDeps([]));
+    expect(res.status).toBe(403);
+  });
+
+  it("404s installing a package not in the store", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "nope" } }, await pkgDeps([allowAdultPackages]));
+    expect(res.status).toBe(404);
+  });
+
+  it("409s installing an already-installed package", async () => {
+    const deps = await pkgDeps([allowAdultPackages]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    const again = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    expect(again.status).toBe(409);
+  });
+
+  it("501 when package management is not enabled (read-only deps)", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, await deps());
+    expect(res.status).toBe(501);
+  });
+});

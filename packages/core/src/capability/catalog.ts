@@ -82,6 +82,38 @@ const CAPABILITIES: readonly Capability[] = [
     approvalFloor: false,
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
+  {
+    name: "store.browse",
+    description: "Browse the curated package store.",
+    risk: "low",
+    allowedProfiles: ["adult", "teen", "child"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    name: "package.install",
+    description: "Install a package from the store into the Sphere (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    name: "package.enable",
+    description: "Enable an installed package for the Sphere (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    name: "package.disable",
+    description: "Disable an installed package for the Sphere (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
 ];
 
 /** A fresh catalog map keyed by capability name. */

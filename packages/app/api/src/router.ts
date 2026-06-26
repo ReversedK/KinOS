@@ -18,11 +18,16 @@ import {
   createRuntimeProfile,
   createSession,
   defaultCapabilityCatalog,
+  defaultStoreCatalog,
   disableIntegration,
+  disablePackage,
   enableIntegration,
+  enablePackage,
   evaluate,
   exportSphere,
+  findStorePackage,
   importSphere,
+  installPackage,
   authorizeSessionRead,
   resolveApproval,
   resolveEffectiveProfile,
@@ -390,6 +395,134 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     return ok({ id: integrationId, status: updated.status });
   }
 
+  // --- Store: install a package (RFC-002) ---
+  // POST /spheres/:id/packages/install  { subject, packageId }
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 4 &&
+    segments[2] === "packages" &&
+    segments[3] === "install"
+  ) {
+    if (deps.auditSink === undefined) return err(501, "invalid_request", "Package management is not enabled on this server");
+    const sphereId = segments[1] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+      packageId?: string;
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    if (typeof body.packageId !== "string") return err(400, "invalid_request", "packageId is required");
+
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    const cap = defaultCapabilityCatalog().get("package.install");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "package.install is not allowed for this profile");
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "capability", capabilityName: "package.install", riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      imported.policies,
+    );
+    if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
+
+    const manifest = findStorePackage(body.packageId);
+    if (manifest === undefined) return err(404, "not_found", "Package not in store");
+    if (imported.packages.some((p) => p.manifest.id === body.packageId)) {
+      return err(409, "invalid_request", "Package already installed");
+    }
+    // Install != authorization: status is `installed`; use is granted only by policy.
+    const pkg = installPackage(manifest, sphereId);
+    await deps.store.save(exportSphere({ ...imported, packages: [...imported.packages, pkg], exportedAt: stamp }));
+    deps.auditSink.record({
+      type: "package.installed",
+      sphereId,
+      resourceType: "package",
+      resourceId: manifest.id,
+      decision: "executed",
+      reason: `package.install type=${manifest.type}`,
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+      ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+      ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+    });
+    return ok({ id: manifest.id, status: pkg.status });
+  }
+
+  // POST /spheres/:id/packages/:pid/enable | /disable
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 5 &&
+    segments[2] === "packages" &&
+    (segments[4] === "enable" || segments[4] === "disable")
+  ) {
+    if (deps.auditSink === undefined) return err(501, "invalid_request", "Package management is not enabled on this server");
+    const sphereId = segments[1] as string;
+    const packageId = segments[3] as string;
+    const action = segments[4] === "enable" ? "enable" : "disable";
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+    const pkg = imported.packages.find((p) => p.manifest.id === packageId);
+    if (pkg === undefined) return err(404, "not_found", "Package not installed");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as { subject?: PolicyRequest["subject"] };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    const capabilityName = action === "enable" ? "package.enable" : "package.disable";
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    const cap = defaultCapabilityCatalog().get(capabilityName);
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", `${capabilityName} is not allowed for this profile`);
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "capability", capabilityName, riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      imported.policies,
+    );
+    if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
+
+    let updated;
+    try {
+      updated = action === "enable" ? enablePackage(pkg) : disablePackage(pkg);
+    } catch (e) {
+      return err(409, "invalid_request", (e as Error).message);
+    }
+    const packages = imported.packages.map((p) => (p.manifest.id === packageId ? updated : p));
+    await deps.store.save(exportSphere({ ...imported, packages, exportedAt: stamp }));
+    deps.auditSink.record({
+      type: action === "enable" ? "package.enabled" : "package.disabled",
+      sphereId,
+      resourceType: "package",
+      resourceId: packageId,
+      decision: "executed",
+      reason: capabilityName,
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+      ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+      ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+    });
+    return ok({ id: packageId, status: updated.status });
+  }
+
   // --- Chat: create a session (RFC-005) ---
   // POST /spheres/:id/sessions  { subject, agentId, title? }
   if (req.method === "POST" && segments[0] === "spheres" && segments.length === 3 && segments[2] === "sessions") {
@@ -490,6 +623,23 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     return ok({ ok: true });
   }
 
+  if (segments.length === 1 && segments[0] === "store") {
+    // store.browse (RFC-002): the curated catalog of installable packages.
+    return ok({
+      packages: defaultStoreCatalog().map((m) => ({
+        id: m.id,
+        type: m.type,
+        title: m.title,
+        description: m.description,
+        version: m.version,
+        publisher: m.publisher,
+        ageRating: m.ageRating,
+        dependencies: m.dependencies,
+        providesCapabilities: m.providesCapabilities,
+      })),
+    });
+  }
+
   if (segments[0] === "spheres") {
     if (segments.length === 1) {
       return ok({ spheres: await deps.store.list() });
@@ -571,6 +721,20 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         state: session.state,
         updatedAt: session.updatedAt,
         messages: session.messages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })),
+      });
+    }
+    if (segments.length === 3 && segments[2] === "packages") {
+      // Installed packages (RFC-002): manifest facts + lifecycle status.
+      const snap = await deps.store.load(segments[1] as string);
+      if (snap === undefined) return err(404, "not_found", "Sphere not found");
+      return ok({
+        packages: importSphere(snap).packages.map((p) => ({
+          id: p.manifest.id,
+          type: p.manifest.type,
+          title: p.manifest.title,
+          description: p.manifest.description,
+          status: p.status,
+        })),
       });
     }
     if (segments.length === 3 && segments[2] === "integrations") {

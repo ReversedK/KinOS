@@ -58,6 +58,28 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 65 — 2026-06-26 (post-§19; governed store/package API, RFC-002)
+- **Done:** store endpoints. `GET /store` returns the curated catalog
+  (store.browse); `GET /spheres/:id/packages` lists installed packages (manifest
+  facts + status); `POST /spheres/:id/packages/install` ({subject, packageId})
+  policy-checks `package.install` (profile floor + engine, deny-by-default),
+  resolves the manifest from the curated store (404 unknown), refuses a duplicate
+  (409), and persists the `InstalledPackage` as **installed** (NOT enabled —
+  install ≠ authorization); `POST .../packages/:pid/{enable,disable}` policy-checks
+  `package.enable`/`package.disable` and transitions the package. Added the store/
+  package catalog capabilities and `package.*` audit event types; each action is
+  audited. 7 new tests.
+- **Verified (in container):** `npm test router + capability` → 64 passed (router
+  56); `typecheck` → exit 0.
+- **Decisions:** install persists the manifest + lifecycle; dependency resolution/
+  dedup, signature verification, sandbox provisioning and the grant-wizard policy
+  emission remain RFC-002 install-pipeline concerns simplified for the MVP
+  (capabilities a package provides are declared in its manifest; dynamic catalog
+  registration deferred). enabling stays governed and per-call policy still gates.
+- **Next step:** the store UI (browse catalog + Install, installed list +
+  enable/disable) — the final piece of the originally-requested surface. Then a
+  full pause + summary.
+
 ### Iteration 64 — 2026-06-26 (post-§19; persist packages + store catalog, RFC-002)
 - **Done:** (1) added an optional `packages` (`InstalledPackage[]`) section to the
   `SphereExport` snapshot — additive, defaults to `[]`, fails closed on a non-array,

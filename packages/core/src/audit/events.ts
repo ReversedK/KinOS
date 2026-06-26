@@ -34,6 +34,10 @@ export type KinEventType =
   | "approval.denied"
   | "integration.enabled"
   | "integration.disabled"
+  | "package.installed"
+  | "package.enabled"
+  | "package.disabled"
+  | "package.uninstalled"
   | "external_transfer.requested"
   | "external_transfer.allowed"
   | "external_transfer.denied";
