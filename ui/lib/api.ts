@@ -98,3 +98,112 @@ export async function getAgents(
   );
   return body.agents;
 }
+
+// --- Governed write actions (RFC-003) ---
+//
+// The UI only triggers governed actions; the Policy Engine decides. These
+// wrappers post to the governed write endpoints and surface the outcome
+// (executed / denied / pending approval) — they never decide authorization.
+
+/** The acting subject. Real identity resolution/auth is server-side (RFC-003/006). */
+export interface ActingSubject {
+  readonly memberId?: string;
+  readonly role: string;
+  readonly ageProfile: string;
+}
+
+export interface ExecutionOutcome {
+  /** "executed" | "pending_approval" — or undefined on a denial. */
+  readonly status?: string;
+  readonly reason?: string;
+  readonly approvalId?: string;
+  readonly approverRoles?: readonly string[];
+  /** Set on a denial (HTTP 403): "forbidden". */
+  readonly code?: string;
+}
+
+async function postJson<T>(
+  baseUrl: string,
+  path: string,
+  payload: unknown,
+  fetchImpl: typeof fetch,
+): Promise<{ status: number; body: T }> {
+  const res = await fetchImpl(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  return { status: res.status, body: (await res.json()) as T };
+}
+
+/**
+ * Request a governed capability execution. A denial (403) is a governed outcome,
+ * not a transport error, so it is returned rather than thrown; unexpected
+ * statuses (e.g. 501 disabled, 5xx) throw.
+ */
+export async function executeCapability(
+  baseUrl: string,
+  sphereId: string,
+  capability: string,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  const { status, body } = await postJson<ExecutionOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/capabilities/${encodeURIComponent(capability)}/execute`,
+    { subject },
+    fetchImpl,
+  );
+  if (status === 200 || status === 202 || status === 403) return body;
+  throw new Error(`execute ${capability} failed: ${status}`);
+}
+
+export interface ApproverRef {
+  readonly memberId: string;
+  readonly role: string;
+}
+
+export interface ApprovalOutcome {
+  readonly approvalId: string;
+  readonly capability: string;
+  readonly status: string;
+  readonly reason?: string;
+}
+
+async function resolveApprovalAction(
+  baseUrl: string,
+  approvalId: string,
+  decision: "grant" | "deny",
+  approver: ApproverRef,
+  fetchImpl: typeof fetch,
+): Promise<ApprovalOutcome> {
+  const { status, body } = await postJson<ApprovalOutcome>(
+    baseUrl,
+    `/approvals/${encodeURIComponent(approvalId)}/${decision}`,
+    { approver },
+    fetchImpl,
+  );
+  if (status !== 200) {
+    throw new Error(`${decision} ${approvalId} failed: ${status}`);
+  }
+  return body;
+}
+
+export function grantApproval(
+  baseUrl: string,
+  approvalId: string,
+  approver: ApproverRef,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ApprovalOutcome> {
+  return resolveApprovalAction(baseUrl, approvalId, "grant", approver, fetchImpl);
+}
+
+export function denyApproval(
+  baseUrl: string,
+  approvalId: string,
+  approver: ApproverRef,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ApprovalOutcome> {
+  return resolveApprovalAction(baseUrl, approvalId, "deny", approver, fetchImpl);
+}

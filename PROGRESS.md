@@ -58,6 +58,27 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 41 — 2026-06-26 (post-§19; UI write-action client, RFC-003)
+- **Done:** added governed **write** wrappers to the UI API client
+  (`ui/lib/api.ts`): `executeCapability(sphereId, capability, subject)`,
+  `grantApproval(approvalId, approver)`, `denyApproval(...)`, plus a `postJson`
+  helper (POST + JSON, no-store). The UI only *triggers* governed actions and
+  surfaces the outcome — it decides no authorization (coding principle 1, RFC-003).
+  A capability denial (HTTP 403) is returned as a governed outcome, not thrown, so
+  the UI can show "denied" with a safe reason; unexpected statuses (501 disabled,
+  5xx) throw. 6 new tests (executed + POST body asserted, 403 denial returned,
+  501 throws, grant/deny endpoints + body, 409 throws).
+- **Verified (in container):** `npm test ui/lib/api.test.ts` → 12 passed;
+  workspace `typecheck` → exit 0 (ui types are exercised by vitest + `next build`;
+  ui is intentionally not a tsc project reference).
+- **Decisions:** the acting subject is passed by the caller for now (server-side
+  identity resolution/auth is deferred — RFC-003/006); kept denials as data, not
+  exceptions, so the UI can render allow/deny/approval uniformly.
+- **Next step:** wire these into the pages — an approvals page grant/deny action
+  (client component) and a "run capability" affordance on the Sphere page — then
+  the connectors/provider config views and RFC-005 chat. A `next build` pass to
+  validate the client components is worthwhile once a page consumes them.
+
 ### Iteration 40 — 2026-06-26 (post-§19; governed approval grant/deny API, RFC-003)
 - **Done:** added governed approval-resolution write endpoints to the router
   (api-contract §Approval): `POST /approvals/:id/grant` and `/deny`. Loads the
