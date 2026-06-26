@@ -11,7 +11,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
-import { SqliteApprovalStore, SqliteAuditSink, SqliteSphereStore } from "@kinos/persistence-sqlite";
+import { SqliteApprovalStore, SqliteAuditSink, SqliteSessionStore, SqliteSphereStore } from "@kinos/persistence-sqlite";
+import { OllamaRuntime } from "@kinos/runtime-ollama";
 
 import { createApiServer } from "./server.js";
 
@@ -23,6 +24,7 @@ function ensureDir(path: string): string {
 const store = new SqliteSphereStore(ensureDir(process.env["KINOS_DB"] ?? "data/kinos.sqlite"));
 const approvals = new SqliteApprovalStore(ensureDir(process.env["KINOS_APPROVALS_DB"] ?? "data/approvals.sqlite"));
 const audit = new SqliteAuditSink(ensureDir(process.env["KINOS_AUDIT_DB"] ?? "data/audit.sqlite"));
+const sessions = new SqliteSessionStore(ensureDir(process.env["KINOS_SESSIONS_DB"] ?? "data/sessions.sqlite"));
 
 // Local executor for the governed write path (mirrors the CLI's handler set).
 const executor = new LocalCapabilityExecutor(
@@ -40,7 +42,10 @@ const server = createApiServer({
   audit,
   auditSink: audit,
   executor,
+  sessions,
+  runtime: new OllamaRuntime(),
   newCorrelationId: () => randomUUID(),
   newApprovalId: () => `apr_${randomUUID()}`,
+  newSessionId: () => `ses_${randomUUID()}`,
 });
 server.listen(port, () => console.log(`KinOS API listening on :${port}`));

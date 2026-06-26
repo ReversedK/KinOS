@@ -12,7 +12,8 @@
   "dependencies": {
     "@kinos/core": "*",
     "@kinos/executor-local": "*",
-    "@kinos/persistence-sqlite": "*"
+    "@kinos/persistence-sqlite": "*",
+    "@kinos/runtime-ollama": "*"
   },
   "scripts": {
     "serve": "tsx src/main.ts",

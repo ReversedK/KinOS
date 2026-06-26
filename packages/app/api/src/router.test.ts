@@ -640,4 +640,27 @@ describe("API router — chat sessions", () => {
     const res = await handleApiRequest({ method: "POST", path: turnPath, body: { subject: ownerSubject, text: "hi" } }, await deps());
     expect(res.status).toBe(501);
   });
+
+  it("reads one session with its transcript for the owner (member role derived from the Sphere)", async () => {
+    const deps = await withSession();
+    await handleApiRequest({ method: "POST", path: turnPath, body: { subject: ownerSubject, text: "hi there" } }, deps);
+    const res = await handleApiRequest(
+      { method: "GET", path: "/spheres/sph_1/sessions/ses_1", query: { ownerId: "mbr_p1" } },
+      deps,
+    );
+    expect(res.status).toBe(200);
+    const body = res.body as { id: string; messages: { role: string; content: string }[] };
+    expect(body.id).toBe("ses_1");
+    expect(body.messages.map((m) => m.role)).toEqual(["user", "agent"]);
+    expect(body.messages[0]?.content).toBe("hi there");
+  });
+
+  it("denies reading a session to a non-member (403)", async () => {
+    const deps = await withSession();
+    const res = await handleApiRequest(
+      { method: "GET", path: "/spheres/sph_1/sessions/ses_1", query: { ownerId: "mbr_stranger" } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
 });

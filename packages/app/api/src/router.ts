@@ -21,6 +21,7 @@ import {
   evaluate,
   exportSphere,
   importSphere,
+  authorizeSessionRead,
   resolveApproval,
   resolveEffectiveProfile,
   runChatTurn,
@@ -468,6 +469,34 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           updatedAt: s.updatedAt,
           messageCount: s.messages.length,
         })),
+      });
+    }
+    if (segments.length === 4 && segments[2] === "sessions") {
+      // RFC-005: read one session with its transcript — owner-private, policy-scoped.
+      if (deps.sessions === undefined) return err(501, "invalid_request", "Chat sessions are not enabled");
+      const snap = await deps.store.load(segments[1] as string);
+      if (snap === undefined) return err(404, "not_found", "Sphere not found");
+      const session = await deps.sessions.load(segments[3] as string);
+      if (session === undefined || session.sphereId !== segments[1]) return err(404, "not_found", "Session not found");
+      const ownerId = req.query?.["ownerId"];
+      if (typeof ownerId !== "string" || ownerId === "") return err(400, "invalid_request", "ownerId is required");
+      // Derive the subject's role from Sphere membership (not client-claimed).
+      const member = snap.sphere.members.find((m) => m.id === ownerId);
+      if (member === undefined) return err(403, "forbidden", "Not a member of this Sphere");
+      const subject = { memberId: ownerId, role: member.role, ageProfile: ageProfileForRole(member.role) };
+      const decision = authorizeSessionRead(subject, session, importSphere(snap).policies, {
+        sphereId: segments[1] as string,
+        time: (deps.now ?? (() => new Date().toISOString()))(),
+        correlationId,
+      });
+      if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
+      return ok({
+        id: session.id,
+        title: session.title,
+        agentId: session.agentId,
+        state: session.state,
+        updatedAt: session.updatedAt,
+        messages: session.messages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })),
       });
     }
     if (segments.length === 3 && segments[2] === "runtime") {

@@ -58,6 +58,25 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 56 — 2026-06-26 (post-§19; session read endpoint + HTTP chat wiring, RFC-005)
+- **Done:** (1) `GET /spheres/:id/sessions/:sid?ownerId=` reads one session with
+  its transcript, policy-scoped: the subject's **role is derived from the Sphere's
+  membership** (not client-claimed), then `authorizeSessionRead` decides — owner
+  allowed, non-member 403, a deny policy would still dominate. (2) Wired the API
+  `main.ts` with a `SqliteSessionStore` ($KINOS_SESSIONS_DB) + an `OllamaRuntime`
+  and the session-id generator, so chat works over HTTP end-to-end. Added
+  `@kinos/runtime-ollama` to the API package deps + tsconfig. 2 new router tests
+  (owner reads transcript; non-member denied).
+- **Verified (in container):** `npm install` + `npm test router` → 43 passed;
+  `typecheck` → exit 0 across packages (api now references runtime-ollama).
+- **Decisions:** deriving the acting role from membership keeps the read governed
+  without trusting a client-claimed role; the single injected runtime + Sphere
+  model stands in until per-Sphere `selectRuntime`/cloud wiring lands.
+- **Next step:** the UI chat view — a sessions list (GET sessions), a transcript
+  view (GET one session), and a composer (POST a turn) as client components; an
+  optional server test posting a turn over HTTP. Then RFC-005 is demonstrable
+  end-to-end and the originally-requested feature set is covered.
+
 ### Iteration 55 — 2026-06-26 (post-§19; chat-turn API endpoint, RFC-005)
 - **Done:** `POST /spheres/:id/sessions/:sid/messages` runs a governed chat turn.
   Loads the Sphere + session (404 on either missing / sphere mismatch), resolves
