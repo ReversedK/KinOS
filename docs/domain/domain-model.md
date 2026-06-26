@@ -22,7 +22,9 @@ Fields/concepts:
 - policies;
 - capabilities;
 - memory;
-- integrations.
+- integrations;
+- runtime profile (selected inference provider + model; cloud inference disableable — see RuntimeProfile);
+- installed packages.
 
 ### Member
 
@@ -47,7 +49,7 @@ Fields/concepts:
 - owner;
 - scope;
 - runtime configuration;
-- model preference;
+- model preference (a governed selection *within* the Sphere's allowed providers/models; never a provider the Sphere has disabled — see RuntimeProfile, RFC-004);
 - enabled capabilities;
 - memory access profile.
 
@@ -134,6 +136,60 @@ Fields/concepts:
 - capability bindings;
 - audit settings.
 
+### RuntimeProfile
+
+The Sphere's selected inference provider and model. Configuration, not a model
+dependency: the domain references the `AgentRuntime` port, never a provider SDK.
+See `docs/rfcs/004-inference-provider-and-model-configuration.md`.
+
+Fields/concepts:
+
+- provider id (MVP: `ollama` local, `openai` cloud);
+- model;
+- base url (optional; self-hosted / OpenAI-compatible endpoints);
+- secret reference (cloud credentials, by reference only — never the key);
+- execution class (local or cloud);
+- cloud-inference enabled flag (Sphere-level; default off, disableable entirely).
+
+Local-first by default. Selecting or using a cloud provider is a high-risk,
+admin-only, approval-gated action, denied for minors by default, and audited as an
+external transfer. An Agent's model preference is constrained to what the Sphere
+allows. Changing provider or model is "boring": no memory migration, no policy
+change.
+
+### Session
+
+A conversation between a member and an agent, holding the running transcript for
+continuity. Distinct from canonical MemoryItems and from AuditEvents. See
+`docs/rfcs/005-agent-chat-sessions-and-conversation-history.md`.
+
+Fields/concepts:
+
+- id;
+- Sphere;
+- agent (the agent being talked to);
+- owner (the acting member who owns this conversation);
+- title;
+- messages;
+- lifecycle state.
+
+Private to its owner by default; read is policy-scoped. A transcript is short-term
+continuity, never the audit log and never canonical memory — promoting a fact to
+long-term memory is an explicit, governed action creating a MemoryItem.
+
+### Message
+
+One turn within a Session.
+
+Fields/concepts:
+
+- id;
+- session;
+- role (conversational only: `user` or `agent` — never an authorization role);
+- content (conversational content; private);
+- created at;
+- correlation id (links to any capability calls made during the turn).
+
 ### Package
 
 The unit of distribution installed from the store to extend an agent. See `docs/rfcs/002-package-store-and-skills.md`.
@@ -202,6 +258,8 @@ Fields/concepts:
 - An Integration provides one or more Capability Bindings.
 - A Policy controls access to MemoryItems, Capabilities, Integrations and Sphere resources.
 - A Package is installed into a Sphere; a `skill` package composes Capabilities, an `mcp` package provides an Integration, and a Package may depend on other Packages.
+- A Sphere has one RuntimeProfile selecting the inference provider and model; an Agent's model preference is constrained to what that profile allows.
+- A Member owns many Sessions; a Session belongs to one Agent and one owning Member and contains many Messages; a Session is neither a MemoryItem nor an AuditEvent, and a fact is moved from a Session to canonical memory only by an explicit, governed promotion.
 - An ApprovalRequest is raised when a Policy returns require_approval; it links subject, capability and approvers via a correlation id.
 - An AuditEvent records a security-relevant decision and carries the correlation id chaining policy check, approval, runtime call and integration call.
 

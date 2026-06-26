@@ -66,6 +66,13 @@ UI exists. The **Next.js UI is deferred** to a later iteration (results-contract
 Per coding principle 1, the UI — when it lands — is a consumer of the API and
 never a place where policy or memory visibility is decided.
 
+> Amended by RFC-003 (accepted): the UI is no longer read-only. It may *trigger*
+> governed write/configuration actions (connectors, packages/store, provider and
+> model selection, members/agents, chat) by calling governed API endpoints. It
+> still decides no authorization — the Policy Engine does — so coding principle 1
+> holds. "Consumer of the API" now means "consumer that may invoke governed
+> actions", not "read-only".
+
 ### Project layout
 
 A TypeScript monorepo with workspace packages, enforcing the dependency

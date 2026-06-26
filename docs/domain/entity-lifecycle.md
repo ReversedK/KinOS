@@ -183,3 +183,29 @@ Rules:
 - disabling or uninstalling blocks the future, not the past; audit history remains.
 
 See `docs/rfcs/002-package-store-and-skills.md`.
+
+## Session lifecycle
+
+States:
+
+- active;
+- archived;
+- deleted.
+
+Transitions:
+
+- (created when a member starts a conversation with an agent) → active;
+- active → archived (kept, not surfaced by default; resumable);
+- active/archived → deleted (the owner deletes the conversation).
+
+Rules:
+
+- a Session is private to its owner by default; read is policy-scoped;
+- deleting a Session removes its transcript but does not delete MemoryItems already
+  promoted from it, nor audit facts — deletion blocks the future, not the past;
+- a transcript is never the audit log; no message content is copied into audit
+  events (audit minimality, invariant 16);
+- retention defaults to "keep until the owner deletes"; a Sphere may set a retention
+  policy, and retention choices are audited as security facts.
+
+See `docs/rfcs/005-agent-chat-sessions-and-conversation-history.md`.
