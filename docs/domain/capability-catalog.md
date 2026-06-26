@@ -172,6 +172,24 @@ Remove an installed package, its bindings and sandbox; audit facts are retained.
 
 Risk: high. Admin-only.
 
+### runtime.config.project
+
+(Re)project an agent's runtime configuration from Sphere config and the agent's policy scope — provider/model, the single Sphere MCP, the allowed capability surface and native-tool allow-list, with autonomous tool/integration install disabled. The runtime never edits its own governance config. See `docs/rfcs/007-hermes-governed-runtime.md`.
+
+Risk: high. Admin-only. Approval floor applies. Audit records the projection version and the capability/tool surface, never config secrets.
+
+### runtime.session.backup
+
+Back up an agent's runtime working state as an opaque, encrypted, restorable snapshot (RuntimeStateSnapshot), stored local-first. Records the fact of backup only, never session content.
+
+Risk: high. Admin/owner-only.
+
+### runtime.session.restore
+
+Restore an agent's runtime working state from a snapshot, overwriting current runtime state. Governed and audited; records the fact only, never session content.
+
+Risk: high. Admin/owner-only. Approval floor applies.
+
 ## Forbidden MVP capabilities for minors by default
 
 These are denied for child profiles by default and require explicit, audited authorization to enable for teens. Absence of an explicit allow keeps them denied.
