@@ -80,18 +80,20 @@ docker compose run --rm dev npm run mvp -w @kinos/cli
 
 The local model runtime is an existing/running **Ollama**, reached via
 `OLLAMA_BASE_URL` (compose points the dev container at the host's Ollama). The
-acceptance run reports the runtime as reachable; pull a model (e.g.
-`ollama pull llama3.2`) on the Ollama host to also exercise generation.
+acceptance run reports the runtime as reachable. To also exercise live
+generation, pull a chat model on the Ollama host (e.g. `ollama pull qwen2.5:7b`);
+the live runtime test then picks the first non-embedding model, or whatever
+`OLLAMA_TEST_MODEL` names.
 
 ### Persisting Spheres (local-first, SQLite)
 
 State persists to a SQLite database at `$KINOS_DB` (default `./data/kinos.sqlite`):
 
 ```bash
-docker compose run --rm dev npm run mvp -w @kinos/cli -- init sph_1 "Doe Family"
-docker compose run --rm dev npm run mvp -w @kinos/cli -- list
-docker compose run --rm dev npm run mvp -w @kinos/cli -- show sph_1
-docker compose run --rm dev npm run mvp -w @kinos/cli -- export sph_1   # snapshot JSON
+docker compose run --rm dev npm run cli -w @kinos/cli -- init sph_1 "Doe Family"
+docker compose run --rm dev npm run cli -w @kinos/cli -- list
+docker compose run --rm dev npm run cli -w @kinos/cli -- show sph_1
+docker compose run --rm dev npm run cli -w @kinos/cli -- export sph_1   # snapshot JSON
 ```
 
 A Sphere created in one run is read back by later runs — the database is
@@ -103,15 +105,15 @@ content) persists to `$KINOS_AUDIT_DB` (default `./data/audit.sqlite`) and is
 viewable across runs:
 
 ```bash
-docker compose run --rm dev npm run mvp -w @kinos/cli -- audit <correlationId>
+docker compose run --rm dev npm run cli -w @kinos/cli -- audit <correlationId>
 ```
 
 Run a capability through the governed pipeline (catalog profile floor → enabled
 binding → Policy Engine → approval floor → execute), recording an audit chain:
 
 ```bash
-docker compose run --rm dev npm run mvp -w @kinos/cli -- run sph_1 calendar.create_event adult
-docker compose run --rm dev npm run mvp -w @kinos/cli -- run sph_1 payment.execute child
+docker compose run --rm dev npm run cli -w @kinos/cli -- run sph_1 calendar.create_event adult
+docker compose run --rm dev npm run cli -w @kinos/cli -- run sph_1 payment.execute child
 ```
 
 A freshly `init`ed Sphere has no bindings, so `run` is denied by default; a
@@ -124,8 +126,8 @@ prints `outcome: pending_approval` with an `approvalId` and persists it. A human
 resolves it — even in a later process — and the action resumes on grant:
 
 ```bash
-docker compose run --rm dev npm run mvp -w @kinos/cli -- approve <approvalId> grant
-docker compose run --rm dev npm run mvp -w @kinos/cli -- approve <approvalId> deny
+docker compose run --rm dev npm run cli -w @kinos/cli -- approve <approvalId> grant
+docker compose run --rm dev npm run cli -w @kinos/cli -- approve <approvalId> deny
 ```
 
 The whole sequence shares one correlation id, so `audit <correlationId>` shows

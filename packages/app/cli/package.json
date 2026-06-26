@@ -11,7 +11,8 @@
     "@kinos/runtime-ollama": "*"
   },
   "scripts": {
-    "mvp": "tsx src/main.ts",
+    "mvp": "tsx src/main.ts mvp",
+    "cli": "tsx src/main.ts",
     "typecheck": "tsc --build"
   }
 }
