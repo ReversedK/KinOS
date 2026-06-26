@@ -19,6 +19,7 @@ import {
   importSphere,
   resolveApproval,
   resolveEffectiveProfile,
+  resolveImpersonatedSubject,
   type ApprovalStore,
   type AuditReader,
   type AuditSink,
@@ -205,6 +206,16 @@ export interface RunCapabilityArgs {
   readonly profile: "adult" | "child";
   readonly now: string;
   readonly correlationId: string;
+  /**
+   * Dev-only impersonation (RFC-006): act as a real member of the Sphere instead
+   * of the demo profile. Resolves the member's real role/age profile; the Policy
+   * Engine governs unchanged. Deny-by-default — disabled unless the flag is set.
+   */
+  readonly actAs?: {
+    readonly memberId: string;
+    readonly byDeveloper: string;
+    readonly devImpersonationEnabled: boolean;
+  };
 }
 
 function demoSubject(sphereId: string, profile: "adult" | "child"): PolicyRequest["subject"] {
@@ -236,8 +247,34 @@ export async function runCapability(
   if (snap === undefined) return `Sphere ${args.sphereId} not found.`;
   const imported = importSphere(snap);
 
+  let subject = demoSubject(args.sphereId, args.profile);
+  let actorLabel: string = args.profile;
+  if (args.actAs !== undefined) {
+    let resolved;
+    try {
+      resolved = resolveImpersonatedSubject(imported.sphere.members, {
+        actAsMemberId: args.actAs.memberId,
+        byDeveloper: args.actAs.byDeveloper,
+        devImpersonationEnabled: args.actAs.devImpersonationEnabled,
+      });
+    } catch (e) {
+      return `impersonation denied: ${(e as Error).message}`;
+    }
+    subject = resolved.subject;
+    actorLabel = `${resolved.subject.memberId} (impersonated by ${resolved.impersonatedBy})`;
+    // Security fact only: who-as-whom, under this correlation id (principle 7).
+    deps.audit.record({
+      type: "identity.impersonated",
+      sphereId: args.sphereId,
+      actorId: resolved.subject.memberId,
+      reason: `impersonated by ${resolved.impersonatedBy}`,
+      correlationId: args.correlationId,
+      createdAt: args.now,
+    });
+  }
+
   const request: CapabilityExecutionRequest = {
-    subject: demoSubject(args.sphereId, args.profile),
+    subject,
     capabilityName: args.capabilityName,
     input: {},
     context: {
@@ -263,7 +300,7 @@ export async function runCapability(
 
   const lines = [
     `capability: ${args.capabilityName}`,
-    `actor: ${args.profile}`,
+    `actor: ${actorLabel}`,
     `outcome: ${result.status}`,
     `reason: ${result.reason}`,
   ];

@@ -237,6 +237,85 @@ describe("CLI commands over a SphereStore (results-contract §1/§15)", () => {
     expect(executor.calls).toBe(0);
   });
 
+  // --- dev impersonation (RFC-006): run --as a real member ---
+
+  const asDev = (memberId: string, enabled = true) => ({
+    memberId,
+    byDeveloper: "dev-1",
+    devImpersonationEnabled: enabled,
+  });
+
+  it("runCapability --as a parent member executes and audits the impersonation", async () => {
+    const store = new InMemorySphereStore();
+    await seedDemoSphere(store, { id: "sph_demo", name: "Demo Family", now: NOW });
+    const executor = countingExecutor();
+    const audit = new InMemoryAuditSink();
+    const out = await runCapability(runDeps(store, executor, audit), {
+      sphereId: "sph_demo",
+      capabilityName: "calendar.create_event",
+      profile: "adult",
+      now: NOW,
+      correlationId: "cor_imp",
+      actAs: asDev("mbr_sph_demo_p1"),
+    });
+    expect(out).toContain("outcome: executed");
+    expect(out).toContain("impersonated by dev-1");
+    expect(executor.calls).toBe(1);
+    const types = audit.byCorrelation("cor_imp").map((e) => e.type);
+    expect(types).toContain("identity.impersonated");
+    expect(types).toContain("capability.executed");
+  });
+
+  it("runCapability --as a child does not elevate — denied, but impersonation is audited", async () => {
+    const store = new InMemorySphereStore();
+    await seedDemoSphere(store, { id: "sph_demo", name: "Demo Family", now: NOW });
+    const executor = countingExecutor();
+    const audit = new InMemoryAuditSink();
+    const out = await runCapability(runDeps(store, executor, audit), {
+      sphereId: "sph_demo",
+      capabilityName: "calendar.create_event",
+      profile: "adult", // ignored: actAs takes precedence
+      now: NOW,
+      correlationId: "cor_imp_child",
+      actAs: asDev("mbr_sph_demo_c1"),
+    });
+    expect(out).toContain("outcome: denied");
+    expect(executor.calls).toBe(0);
+    expect(audit.byCorrelation("cor_imp_child").map((e) => e.type)).toContain("identity.impersonated");
+  });
+
+  it("runCapability --as is deny-by-default when the dev flag is off", async () => {
+    const store = new InMemorySphereStore();
+    await seedDemoSphere(store, { id: "sph_demo", name: "Demo Family", now: NOW });
+    const executor = countingExecutor();
+    const out = await runCapability(runDeps(store, executor, new InMemoryAuditSink()), {
+      sphereId: "sph_demo",
+      capabilityName: "calendar.create_event",
+      profile: "adult",
+      now: NOW,
+      correlationId: "cor_imp_off",
+      actAs: asDev("mbr_sph_demo_p1", false),
+    });
+    expect(out).toMatch(/impersonation denied/i);
+    expect(out).toMatch(/disabled/i);
+    expect(executor.calls).toBe(0);
+  });
+
+  it("runCapability --as refuses an unknown member (fail closed)", async () => {
+    const store = new InMemorySphereStore();
+    await seedDemoSphere(store, { id: "sph_demo", name: "Demo Family", now: NOW });
+    const out = await runCapability(runDeps(store, countingExecutor(), new InMemoryAuditSink()), {
+      sphereId: "sph_demo",
+      capabilityName: "calendar.create_event",
+      profile: "adult",
+      now: NOW,
+      correlationId: "cor_imp_unknown",
+      actAs: asDev("mbr_nope"),
+    });
+    expect(out).toMatch(/impersonation denied/i);
+    expect(out).toMatch(/not found/i);
+  });
+
   // --- approval persistence: cross-process suspend -> grant -> execute ---
 
   const allowAdultPayment: Policy = {

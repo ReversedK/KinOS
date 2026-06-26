@@ -58,6 +58,31 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 37 — 2026-06-26 (post-§19; run --as wiring + audit, RFC-006)
+- **Done:** wired dev impersonation end-to-end through the governed `run` path.
+  Added the `identity.impersonated` audit event type (event-model.md + core
+  KinEventType). `runCapability` gained an optional `actAs` (memberId, byDeveloper,
+  devImpersonationEnabled): it resolves the acting subject via
+  `resolveImpersonatedSubject` against the loaded Sphere's members, records an
+  `identity.impersonated` security fact (who-as-whom, under the correlation id),
+  and runs the rest of the pipeline unchanged. Deny-by-default: flag off / unknown
+  / inactive member returns `impersonation denied: …` and executes nothing. CLI
+  `run <id> <cap> [adult|child] [--as <memberId>]` reads the dev flag from
+  `$KINOS_DEV_IMPERSONATION` and the developer from `$USER`. 4 new tests (parent
+  executes + audited, child not elevated → denied but audited, flag-off denial,
+  unknown-member refusal).
+- **Verified (in container):** `npm test commands + audit` → 22 passed (20 cli +
+  2 audit); `typecheck` → exit 0.
+- **Decisions:** impersonation audits even when the subsequent policy denies (the
+  impersonation happened; the denial is a separate fact in the same chain) —
+  faithful to "represent, never replace" + audit minimality. `actAs` takes
+  precedence over the demo `profile` arg.
+- **Next step:** RFC-006 is functionally complete CLI-side (multi-member testing
+  now possible via `--as`). Remaining for the requested UX: the governed **write
+  API** (api-contract endpoints still unbuilt) as the socle for **RFC-003** (admin
+  UI), then **RFC-005** (chat sessions). Natural point to start the write-API
+  slice (e.g. POST capability execution / integration enable) next.
+
 ### Iteration 36 — 2026-06-26 (post-§19; dev impersonation core, RFC-006)
 - **Done:** `packages/core/src/identity/impersonation.ts` — pure-core dev-only
   "act as <member>" identity resolution. `resolveImpersonatedSubject(members,

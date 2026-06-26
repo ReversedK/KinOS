@@ -72,6 +72,7 @@ All carry the same `correlationId`; each carries the deciding policy id/version 
 - external_transfer.requested
 - external_transfer.allowed
 - external_transfer.denied
+- identity.impersonated *(dev-only; records the impersonated member and the developer — RFC-006)*
 
 ## What an event may and may not carry
 

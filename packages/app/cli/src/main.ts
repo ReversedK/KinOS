@@ -167,9 +167,13 @@ async function main(argv: readonly string[]): Promise<number> {
       return 0;
     }
     case "run": {
-      const [sphereId, capabilityName, profileArg] = rest;
-      if (!sphereId || !capabilityName) {
-        console.error("usage: kinos run <id> <capability> [adult|child]");
+      // Optional dev-only impersonation: `run <id> <cap> --as <memberId>`.
+      const asIndex = rest.indexOf("--as");
+      const actAsMemberId = asIndex >= 0 ? rest[asIndex + 1] : undefined;
+      const positional = asIndex >= 0 ? rest.slice(0, asIndex) : rest;
+      const [sphereId, capabilityName, profileArg] = positional;
+      if (!sphereId || !capabilityName || (asIndex >= 0 && !actAsMemberId)) {
+        console.error("usage: kinos run <id> <capability> [adult|child] [--as <memberId>]");
         return 1;
       }
       const profile = profileArg === "child" ? "child" : "adult";
@@ -186,6 +190,15 @@ async function main(argv: readonly string[]): Promise<number> {
               profile,
               now: new Date().toISOString(),
               correlationId: randomUUID(),
+              ...(actAsMemberId !== undefined
+                ? {
+                    actAs: {
+                      memberId: actAsMemberId,
+                      byDeveloper: process.env["USER"] ?? "dev",
+                      devImpersonationEnabled: process.env["KINOS_DEV_IMPERSONATION"] === "1",
+                    },
+                  }
+                : {}),
             },
           ),
         );

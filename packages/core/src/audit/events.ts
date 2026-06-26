@@ -12,6 +12,7 @@
 
 export type KinEventType =
   | "sphere.created"
+  | "identity.impersonated"
   | "member.invited"
   | "member.joined"
   | "member.removed"
