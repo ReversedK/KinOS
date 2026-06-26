@@ -13,6 +13,7 @@ import { createMemoryItem, shareWithMembers } from "../memory/memory.js";
 import type { Policy } from "../policy/types.js";
 import type { CapabilityBinding } from "../capability/types.js";
 import { createRuntimeProfile, defaultRuntimeConfig, type SphereRuntimeConfig } from "../runtime/profile.js";
+import { createIntegration } from "../integration/integration.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
 
@@ -148,6 +149,32 @@ describe("Sphere export/import (results-contract §17, ADR-002)", () => {
     expect(() =>
       importSphere({ format: EXPORT_FORMAT, version: EXPORT_VERSION, sphere: {}, exportedAt: NOW, identities: [], agents: [], memory: [], policies: [], runtimeConfig: "nope" }),
     ).toThrow(/runtimeConfig/i);
+  });
+
+  it("round-trips integrations and defaults to empty when omitted", () => {
+    const f = fixture();
+    const integrations = [
+      createIntegration({
+        id: "int_1",
+        sphereId: "sph_1",
+        provider: "google",
+        scopes: ["calendar.read"],
+        secretRef: "secret://google/oauth",
+        providesCapabilities: ["calendar.create_event"],
+      }),
+    ];
+    const snap = exportSphere({ ...f, integrations, exportedAt: NOW });
+    expect(importSphere(JSON.parse(JSON.stringify(snap))).integrations).toEqual(integrations);
+
+    const legacy = JSON.parse(JSON.stringify(exportSphere({ ...f, exportedAt: NOW }))) as Record<string, unknown>;
+    delete legacy["integrations"];
+    expect(importSphere(legacy).integrations).toEqual([]);
+  });
+
+  it("rejects a non-array integrations section (fail closed)", () => {
+    expect(() =>
+      importSphere({ format: EXPORT_FORMAT, version: EXPORT_VERSION, sphere: {}, exportedAt: NOW, identities: [], agents: [], memory: [], policies: [], integrations: "nope" }),
+    ).toThrow(/integrations/i);
   });
 
   it("rejects an unknown format (fail closed)", () => {

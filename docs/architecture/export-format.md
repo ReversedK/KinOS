@@ -23,7 +23,8 @@ The export is a single UTF-8 JSON document. It is self-describing and versioned.
   "memory":     [ /* MemoryItem[] — canonical; no embeddings */ ],
   "policies":   [ /* Policy[] */ ],
   "bindings":   [ /* CapabilityBinding[] — optional */ ],
-  "runtimeConfig": { /* SphereRuntimeConfig — optional; defaults to local-first */ }
+  "runtimeConfig": { /* SphereRuntimeConfig — optional; defaults to local-first */ },
+  "integrations": [ /* Integration[] — optional; defaults to empty */ ]
 }
 ```
 
@@ -52,6 +53,10 @@ Each section uses the canonical domain shapes defined in
   providers, and the cloud-inference-enabled flag. Optional section: a snapshot
   without it imports to the local-first default (Ollama, cloud off). Changing the
   provider/model on restore stays "boring" — no memory or policy migration.
+- **integrations** — connectors (integration-model.md): provider, requested
+  scopes, a secret *reference* (never the value), provided capability names and
+  lifecycle status. Optional section: a snapshot without it imports to an empty
+  list. Restoring never re-enables a disabled/removed integration silently.
 
 ## Rules
 

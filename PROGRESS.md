@@ -58,6 +58,19 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 60 — 2026-06-26 (post-§19; persist integrations in export, integration-model)
+- **Done:** added an optional `integrations` (`Integration[]`) section to the
+  `SphereExport` snapshot — additive, no version bump (like bindings/runtimeConfig).
+  `exportSphere` defaults it to `[]`; `importSphere` defaults a missing section to
+  `[]` and fails closed on a non-array. Documented in `export-format.md` (provider,
+  scopes, secret *reference*, provided capabilities, status). Durable for free via
+  the SQLite snapshot store. 2 new tests (round-trip + default-on-omit, non-array
+  rejected).
+- **Verified (in container):** `npm test export` → 11 passed; `typecheck` → exit 0.
+- **Next step:** governed `integration.enable`/`integration.disable` capability +
+  API write endpoints (policy-checked, persist the updated integration in the
+  snapshot, audit), then a read endpoint + the connectors UI.
+
 ### Iteration 59 — 2026-06-26 (post-§19; Integration domain entity, RFC-003/integration-model)
 - **Done:** `packages/core/src/integration/integration.ts` — pure-core
   `Integration` entity (id, sphereId, provider, scopes, secretRef, providesCapabilities,

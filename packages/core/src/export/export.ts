@@ -17,6 +17,7 @@ import type { Identity } from "../identity/identity.js";
 import type { MemoryItem } from "../memory/memory.js";
 import type { Policy } from "../policy/types.js";
 import type { Sphere } from "../sphere/sphere.js";
+import type { Integration } from "../integration/integration.js";
 import { defaultRuntimeConfig, type SphereRuntimeConfig } from "../runtime/profile.js";
 
 export const EXPORT_FORMAT = "kinos.sphere.export";
@@ -36,6 +37,8 @@ export interface SphereExport {
   readonly bindings?: readonly CapabilityBinding[];
   /** Inference provider/model selection (RFC-004). Optional; defaults to local-first. */
   readonly runtimeConfig?: SphereRuntimeConfig;
+  /** Integrations/connectors (integration-model). Optional; defaults to empty. */
+  readonly integrations?: readonly Integration[];
 }
 
 export interface ExportSphereInput {
@@ -46,6 +49,7 @@ export interface ExportSphereInput {
   readonly policies: readonly Policy[];
   readonly bindings?: readonly CapabilityBinding[];
   readonly runtimeConfig?: SphereRuntimeConfig;
+  readonly integrations?: readonly Integration[];
   readonly exportedAt: string;
 }
 
@@ -61,6 +65,7 @@ export function exportSphere(input: ExportSphereInput): SphereExport {
     policies: [...input.policies],
     bindings: [...(input.bindings ?? [])],
     runtimeConfig: input.runtimeConfig ?? defaultRuntimeConfig(),
+    integrations: [...(input.integrations ?? [])],
   };
 }
 
@@ -72,6 +77,7 @@ export interface ImportedSphere {
   readonly policies: readonly Policy[];
   readonly bindings: readonly CapabilityBinding[];
   readonly runtimeConfig: SphereRuntimeConfig;
+  readonly integrations: readonly Integration[];
   readonly exportedAt: string;
 }
 
@@ -109,6 +115,9 @@ export function importSphere(data: unknown): ImportedSphere {
   ) {
     throw new Error("Malformed export snapshot: runtimeConfig must be an object");
   }
+  if (snap.integrations !== undefined && !Array.isArray(snap.integrations)) {
+    throw new Error("Malformed export snapshot: integrations must be an array");
+  }
   return {
     sphere: snap.sphere,
     identities: snap.identities,
@@ -117,6 +126,7 @@ export function importSphere(data: unknown): ImportedSphere {
     policies: snap.policies,
     bindings: snap.bindings ?? [],
     runtimeConfig: snap.runtimeConfig ?? defaultRuntimeConfig(),
+    integrations: snap.integrations ?? [],
     exportedAt: snap.exportedAt,
   };
 }
