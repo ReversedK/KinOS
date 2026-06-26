@@ -58,6 +58,27 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 43 — 2026-06-26 (post-§19; run-capability affordance on Sphere page, RFC-003)
+- **Done:** added a `RunCapability` client component to the Sphere detail page: a
+  member selector (acting "as" a member — anticipates RFC-006 impersonation), a
+  capability input (default `calendar.create_event`), and a Run button calling the
+  governed `executeCapability` endpoint, rendering the outcome (executed / pending
+  approval / denied with safe reason). The subject's age profile is derived from
+  the chosen member's role (mirrors the core `ageProfileForRole`). The page passes
+  the members list + base URL; the UI only triggers the governed action, the
+  Policy Engine decides (coding principle 1).
+- **Verified (in container):** `next build` → compiled, types valid;
+  `/spheres/[id]` is now a dynamic route carrying client JS (2.02 kB). ui/lib
+  tests (12) still green.
+- **Decisions:** member-as-subject in the client anticipates impersonation but
+  the real acting identity must be resolved server-side later (RFC-006); kept the
+  capability free-text for the dev MVP (a catalog-driven picker can come with the
+  store/connectors views).
+- **Next step:** the connectors (integrations) + provider/model config views
+  (needs the integration enable/disable + provider-set write endpoints), then
+  RFC-005 chat sessions. Consider an end-to-end UI smoke (serve API + drive the
+  two interactive pages) once more write endpoints land.
+
 ### Iteration 42 — 2026-06-26 (post-§19; interactive approvals page, RFC-003)
 - **Done:** the `/approvals` page is now interactive. Added a client component
   `ApprovalActions` (Grant/Deny buttons) that calls the governed

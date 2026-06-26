@@ -1,4 +1,5 @@
 import { apiBaseUrl, getAgents, getMembers, getSphere } from "../../../lib/api";
+import { RunCapability } from "./RunCapability";
 
 // Read-only Sphere detail: members and agents (security facts only — role,
 // status, capabilities), never private profile or memory content (§18).
@@ -46,6 +47,18 @@ export default async function SpherePage({ params }: { params: { id: string } })
               ))}
             </ul>
           )}
+        </section>
+
+        <section style={{ marginTop: "1.5rem" }}>
+          <h3>Run a capability</h3>
+          <p style={{ color: "#9aa0a6", fontSize: "0.85rem", marginTop: 0 }}>
+            Requests a governed execution; the Policy Engine decides (allow / deny / approval).
+          </p>
+          <RunCapability
+            baseUrl={base}
+            sphereId={params.id}
+            members={members.map((m) => ({ id: m.id, role: m.role }))}
+          />
         </section>
       </main>
     );
