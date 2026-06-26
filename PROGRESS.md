@@ -58,6 +58,26 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 67 — 2026-06-26 (post-§19; package dependency resolution, RFC-002)
+- **Done:** `packages/core/src/package/install-plan.ts` `resolveInstallPlan(rootId,
+  catalog, installedIds)` — pure dependency resolver satisfying the RFC-002 criterion
+  "installing a package resolves and dedups dependencies and installs an absent mcp
+  dependency". Post-order DFS over the curated catalog returns manifests with
+  dependencies before dependents, each once; already-installed ids are reused (not
+  reinstalled); unknown packages and dependency cycles throw (fail closed).
+  Version-range satisfaction is minimal for the MVP (presence by id). 6 tests
+  (order, transitive graph, dedup-installed, root-installed → empty, unknown/missing
+  dep, cycle).
+- **Verified (in container):** `npm install` + `npm test packages/core/src/package`
+  → 14 passed; `typecheck` → exit 0. (The dev container volume had been reset;
+  re-ran install.)
+- **Decisions:** kept semver range matching as a later refinement; the install API
+  endpoint can now resolve the plan and install each absent dependency in order
+  (wiring is the next step).
+- **Next step:** wire `resolveInstallPlan` into the `package.install` endpoint so
+  installing a skill also installs its absent mcp deps (each as an InstalledPackage,
+  audited); then optional items — real auth, add-connector flow, RFC-007 Hermes.
+
 ### Iteration 66 — 2026-06-26 (post-§19; store UI — requested surface COMPLETE, RFC-002)
 - **Done:** `/spheres/[id]/store` route + `Store` client component: browse the
   curated catalog with per-package Install, and an Installed list with

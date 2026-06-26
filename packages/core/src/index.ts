@@ -30,6 +30,7 @@ export * from "./persistence/store.js";
 export * from "./integration/integration.js";
 export * from "./package/package.js";
 export * from "./package/store-catalog.js";
+export * from "./package/install-plan.js";
 export * from "./capability/types.js";
 export * from "./capability/catalog.js";
 export * from "./capability/resolver.js";
