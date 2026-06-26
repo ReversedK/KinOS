@@ -28,6 +28,7 @@ export * from "./runtime/profile.js";
 export * from "./export/export.js";
 export * from "./persistence/store.js";
 export * from "./integration/integration.js";
+export * from "./package/package.js";
 export * from "./capability/types.js";
 export * from "./capability/catalog.js";
 export * from "./capability/resolver.js";

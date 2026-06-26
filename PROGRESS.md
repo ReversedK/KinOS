@@ -58,6 +58,25 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 63 — 2026-06-26 (post-§19; Package domain + lifecycle, RFC-002)
+- **Done:** `packages/core/src/package/package.ts` — pure-core `PackageManifest`
+  (id, type skill|mcp|bundle, title, plain description, version, publisher,
+  ageRating, dependencies, providesCapabilities) + `createManifest` (non-empty
+  title/description) and the per-Sphere `InstalledPackage` lifecycle:
+  `installPackage` → status `installed` (NOT enabled — **install ≠ authorization**,
+  RFC-002), `enablePackage`/`disablePackage` (immutable; only `enabled` is usable),
+  `uninstallPackage` (blocks the future). 5 tests.
+- **Verified (in container):** `npm test packages/core/src/package` → 5 passed;
+  `typecheck` → exit 0.
+- **Decisions:** kept signature verification, sandboxing and dependency
+  resolution/dedup as install-pipeline concerns outside the core (RFC-002); the
+  domain models the manifest + lifecycle only. Capability registration with
+  declared risk + the grant wizard's policies are governed separately.
+- **Next step:** persist installed packages in the snapshot (additive) + governed
+  `package.install`/`package.enable`/`package.disable` endpoints, then the store
+  browse/install UI. A curated in-memory store catalog can seed `available`
+  packages for the MVP.
+
 ### Iteration 62 — 2026-06-26 (post-§19; connectors UI, RFC-003/integration-model)
 - **Done:** `getIntegrations` + `setIntegrationEnabled` UI client wrappers (403
   denial returned as data) and a `Connectors` client component (list provider +
