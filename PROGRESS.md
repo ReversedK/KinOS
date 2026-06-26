@@ -58,6 +58,28 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 36 — 2026-06-26 (post-§19; dev impersonation core, RFC-006)
+- **Done:** `packages/core/src/identity/impersonation.ts` — pure-core dev-only
+  "act as <member>" identity resolution. `resolveImpersonatedSubject(members,
+  req)` returns the target member's real role + age profile (via
+  `ageProfileForRole`), plus the audit facts (impersonated member + developer).
+  It SELECTS whose rights apply, never elevates: a child resolves to a child
+  subject, so the Policy Engine still restricts it. Deny-by-default and fail
+  closed: dev flag off, unknown member, or non-active member all throw. The core
+  reads no environment — the dev flag is passed in by the caller (principle 1);
+  audit emission + env-flag reading belong to the app layer. 6 tests (real
+  role/profile, no minor elevation, flag-off denial, unknown/inactive refusal).
+- **Verified (in container):** `npm test packages/core/src/identity` → 8 passed
+  (2 existing + 6 new); `typecheck` → exit 0.
+- **Decisions:** kept the dev gate as an injected boolean, not an env read, to
+  preserve a provider/IO-free core; the resolver returns audit facts but emits
+  nothing itself (the app sink records `identity.impersonated`).
+- **Next step (RFC-006 cont.):** add an `identity.impersonated` audit event type
+  (event-model) and an app-layer wiring that reads the dev flag from the
+  environment (e.g. `KINOS_DEV_IMPERSONATION`), resolves the acting subject, and
+  records the audit fact — so a governed `run --as <member>` can be driven from
+  each member's viewpoint. Then the governed write API and the RFC-003 UI.
+
 ### Iteration 35 — 2026-06-26 (post-§19; persisted-config → runtime inspection, RFC-004)
 - **Done:** `describeRuntime(store, id)` command + CLI `kinos runtime <id>`. Loads
   a persisted Sphere snapshot, reads its `runtimeConfig` (via importSphere),

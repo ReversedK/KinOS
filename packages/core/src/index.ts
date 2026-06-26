@@ -10,6 +10,7 @@
 export const CORE_CONTRACT_VERSION = "0.1.0";
 
 export * from "./identity/identity.js";
+export * from "./identity/impersonation.js";
 export * from "./sphere/member.js";
 export * from "./sphere/sphere.js";
 export * from "./policy/types.js";
