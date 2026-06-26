@@ -18,6 +18,8 @@ import {
   createRuntimeProfile,
   createSession,
   defaultCapabilityCatalog,
+  disableIntegration,
+  enableIntegration,
   evaluate,
   exportSphere,
   importSphere,
@@ -316,6 +318,78 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     return ok({ status: "executed", provider: newProfile.providerId, model: newProfile.model, execution: newProfile.execution });
   }
 
+  // --- Governed connectors: enable/disable an integration (integration-model) ---
+  // POST /spheres/:id/integrations/:iid/enable | /disable
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 5 &&
+    segments[2] === "integrations" &&
+    (segments[4] === "enable" || segments[4] === "disable")
+  ) {
+    if (deps.auditSink === undefined) {
+      return err(501, "invalid_request", "Integration management is not enabled on this server");
+    }
+    const sphereId = segments[1] as string;
+    const integrationId = segments[3] as string;
+    const action = segments[4] === "enable" ? "enable" : "disable";
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+    const integration = imported.integrations.find((i) => i.id === integrationId);
+    if (integration === undefined) return err(404, "not_found", "Integration not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+
+    const capabilityName = action === "enable" ? "integration.enable" : "integration.disable";
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    const cap = defaultCapabilityCatalog().get(capabilityName);
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", `${capabilityName} is not allowed for this profile`);
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "integration", id: integrationId, capabilityName, riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      imported.policies,
+    );
+    if (decision.effect !== "allow") {
+      return err(403, "forbidden", decision.reason);
+    }
+
+    let updated;
+    try {
+      updated = action === "enable" ? enableIntegration(integration) : disableIntegration(integration);
+    } catch (e) {
+      return err(409, "invalid_request", (e as Error).message);
+    }
+    const integrations = imported.integrations.map((i) => (i.id === integrationId ? updated : i));
+    await deps.store.save(exportSphere({ ...imported, integrations, exportedAt: stamp }));
+    deps.auditSink.record({
+      type: action === "enable" ? "integration.enabled" : "integration.disabled",
+      sphereId,
+      resourceType: "integration",
+      resourceId: integrationId,
+      decision: "executed",
+      reason: `${capabilityName} provider=${integration.provider}`,
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+      ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+      ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+    });
+    return ok({ id: integrationId, status: updated.status });
+  }
+
   // --- Chat: create a session (RFC-005) ---
   // POST /spheres/:id/sessions  { subject, agentId, title? }
   if (req.method === "POST" && segments[0] === "spheres" && segments.length === 3 && segments[2] === "sessions") {
@@ -497,6 +571,20 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         state: session.state,
         updatedAt: session.updatedAt,
         messages: session.messages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })),
+      });
+    }
+    if (segments.length === 3 && segments[2] === "integrations") {
+      // Connectors (integration-model): facts only — never the secret value.
+      const snap = await deps.store.load(segments[1] as string);
+      if (snap === undefined) return err(404, "not_found", "Sphere not found");
+      return ok({
+        integrations: importSphere(snap).integrations.map((i) => ({
+          id: i.id,
+          provider: i.provider,
+          status: i.status,
+          scopes: i.scopes,
+          providesCapabilities: i.providesCapabilities,
+        })),
       });
     }
     if (segments.length === 3 && segments[2] === "runtime") {

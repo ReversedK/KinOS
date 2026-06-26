@@ -66,6 +66,22 @@ const CAPABILITIES: readonly Capability[] = [
     approvalFloor: false,
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
+  {
+    name: "integration.enable",
+    description: "Enable a connector/integration for the Sphere (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    name: "integration.disable",
+    description: "Disable a connector/integration for the Sphere (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
 ];
 
 /** A fresh catalog map keyed by capability name. */

@@ -5,6 +5,7 @@ import {
   InMemorySessionStore,
   InMemorySphereStore,
   createApprovalFromDecision,
+  createIntegration,
   createSphere,
   exportSphere,
   type CapabilityBinding,
@@ -662,5 +663,90 @@ describe("API router — chat sessions", () => {
       deps,
     );
     expect(res.status).toBe(403);
+  });
+});
+
+// --- Connectors: list + governed enable/disable (integration-model) ---
+
+describe("API router — integrations", () => {
+  const allowAdultEnable: Policy = {
+    id: "pol_int",
+    sphereId: "sph_1",
+    description: "Adults may manage connectors.",
+    subjectSelector: { ageProfiles: ["adult"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["integration.enable", "integration.disable"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+
+  async function intDeps(policies: Policy[]) {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe Family",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    const integrations = [
+      createIntegration({ id: "int_1", sphereId: "sph_1", provider: "google", scopes: ["calendar.read"], secretRef: "secret://g", providesCapabilities: ["calendar.create_event"] }),
+    ];
+    await store.save(exportSphere({ sphere, identities: [], agents: [], memory: [], policies, integrations, exportedAt: NOW }));
+    const audit = new InMemoryAuditSink();
+    let n = 0;
+    const deps: ApiDeps = {
+      store,
+      approvals: new InMemoryApprovalStore(),
+      audit,
+      auditSink: audit,
+      newCorrelationId: () => `req_${++n}`,
+      now: () => NOW,
+    };
+    return deps;
+  }
+
+  const adult = { subject: { memberId: "mbr_p1", role: "parent", ageProfile: "adult" } };
+  const child = { subject: { memberId: "mbr_c1", role: "child", ageProfile: "child" } };
+
+  it("lists integration summaries without the secret reference value path", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, await intDeps([]));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      integrations: [{ id: "int_1", provider: "google", status: "proposed", scopes: ["calendar.read"], providesCapabilities: ["calendar.create_event"] }],
+    });
+  });
+
+  it("enables an integration when policy allows, and persists it", async () => {
+    const deps = await intDeps([allowAdultEnable]);
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_1/enable", body: adult }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: "int_1", status: "enabled" });
+    const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
+    expect((list.body as { integrations: { status: string }[] }).integrations[0]?.status).toBe("enabled");
+  });
+
+  it("denies enabling by default when no policy allows it (403)", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_1/enable", body: adult }, await intDeps([]));
+    expect(res.status).toBe(403);
+  });
+
+  it("denies a minor by the catalog profile floor (403)", async () => {
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/integrations/int_1/enable", body: child },
+      await intDeps([{ ...allowAdultEnable, subjectSelector: {} }]),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("404s an unknown integration", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/nope/enable", body: adult }, await intDeps([allowAdultEnable]));
+    expect(res.status).toBe(404);
+  });
+
+  it("501 when integration management is not enabled (read-only deps)", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_1/enable", body: adult }, await deps());
+    expect(res.status).toBe(501);
   });
 });

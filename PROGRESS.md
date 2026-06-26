@@ -58,6 +58,24 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 61 — 2026-06-26 (post-§19; governed connector enable/disable API, RFC-003/integration-model)
+- **Done:** connector endpoints. `GET /spheres/:id/integrations` lists summaries
+  (id, provider, status, scopes, providesCapabilities) — never the secret value.
+  `POST /spheres/:id/integrations/:iid/{enable,disable}` adds `integration.enable`/
+  `integration.disable` catalog capabilities (high-risk, adults-only), enforces the
+  profile floor + Policy Engine (deny-by-default), applies enable/disable on the
+  snapshot's integration, persists, and audits (`integration.enabled/disabled`,
+  reusing existing event types). 409 if the integration was removed; 404 unknown;
+  501 when disabled. 6 new tests.
+- **Verified (in container):** `npm test router + capability` → 57 passed (router
+  49); `typecheck` → exit 0.
+- **Decisions:** integration management mirrors the runtime-set write (evaluate +
+  catalog floor + persist + audit); `add a connector` (create + grant wizard) and
+  scope updates are later slices.
+- **Next step:** the connectors UI (list + enable/disable buttons), an "add
+  connector" path, then the package store (RFC-002) browse/install. After that the
+  originally-requested surface is fully covered.
+
 ### Iteration 60 — 2026-06-26 (post-§19; persist integrations in export, integration-model)
 - **Done:** added an optional `integrations` (`Integration[]`) section to the
   `SphereExport` snapshot — additive, no version bump (like bindings/runtimeConfig).
