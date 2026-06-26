@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryApprovalStore,
   InMemoryAuditSink,
+  InMemorySessionStore,
   InMemorySphereStore,
   createApprovalFromDecision,
   createSphere,
@@ -510,6 +511,71 @@ describe("API router — runtime provider/model write", () => {
       { method: "POST", path, body: { subject: adult, profile: { providerId: "ollama", model: "mistral", execution: "local" } } },
       await deps(),
     );
+    expect(res.status).toBe(501);
+  });
+});
+
+// --- Chat sessions: create + list (RFC-005) ---
+
+describe("API router — chat sessions", () => {
+  async function sessionDeps() {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe Family",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    await store.save(exportSphere({ sphere, identities: [], agents: [], memory: [], policies: [], exportedAt: NOW }));
+    let n = 0;
+    let s = 0;
+    const deps: ApiDeps = {
+      store,
+      approvals: new InMemoryApprovalStore(),
+      audit: new InMemoryAuditSink(),
+      sessions: new InMemorySessionStore(),
+      newCorrelationId: () => `req_${++n}`,
+      newSessionId: () => `ses_${++s}`,
+      now: () => NOW,
+    };
+    return deps;
+  }
+
+  const owner = { subject: { memberId: "mbr_p1", role: "parent", ageProfile: "adult" }, agentId: "agt_1", title: "Plans" };
+
+  it("creates a session owned by the subject", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/sessions", body: owner }, await sessionDeps());
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: "ses_1", title: "Plans", agentId: "agt_1", ownerId: "mbr_p1", state: "active" });
+  });
+
+  it("lists an owner's session summaries without message content", async () => {
+    const deps = await sessionDeps();
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/sessions", body: owner }, deps);
+    const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/sessions", query: { ownerId: "mbr_p1" } }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      sessions: [{ id: "ses_1", title: "Plans", agentId: "agt_1", state: "active", updatedAt: NOW, messageCount: 0 }],
+    });
+  });
+
+  it("requires ownerId to list (400)", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/sessions" }, await sessionDeps());
+    expect(res.status).toBe(400);
+  });
+
+  it("requires subject.memberId and agentId to create (400)", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/sessions", body: { subject: {} } }, await sessionDeps());
+    expect(res.status).toBe(400);
+  });
+
+  it("404s creating a session in a missing sphere", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/nope/sessions", body: owner }, await sessionDeps());
+    expect(res.status).toBe(404);
+  });
+
+  it("501 when chat sessions are not enabled (read-only deps)", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/sessions", body: owner }, await deps());
     expect(res.status).toBe(501);
   });
 });

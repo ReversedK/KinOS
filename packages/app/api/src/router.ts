@@ -16,6 +16,7 @@ import {
   assertProfileAllowed,
   beginSensitiveAction,
   createRuntimeProfile,
+  createSession,
   defaultCapabilityCatalog,
   evaluate,
   exportSphere,
@@ -32,6 +33,7 @@ import {
   type Role,
   type RuntimeExecution,
   type RuntimeProviderId,
+  type SessionStore,
   type SphereStore,
 } from "@kinos/core";
 
@@ -44,6 +46,9 @@ export interface ApiDeps {
   readonly executor?: CapabilityExecutor;
   readonly auditSink?: AuditSink;
   readonly newApprovalId?: () => string;
+  /** Chat sessions (RFC-005). Absent → chat endpoints disabled. */
+  readonly sessions?: SessionStore;
+  readonly newSessionId?: () => string;
   /** Injectable clock for the execution context; defaults to wall-clock. */
   readonly now?: () => string;
 }
@@ -306,6 +311,35 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     return ok({ status: "executed", provider: newProfile.providerId, model: newProfile.model, execution: newProfile.execution });
   }
 
+  // --- Chat: create a session (RFC-005) ---
+  // POST /spheres/:id/sessions  { subject, agentId, title? }
+  if (req.method === "POST" && segments[0] === "spheres" && segments.length === 3 && segments[2] === "sessions") {
+    if (deps.sessions === undefined || deps.newSessionId === undefined) {
+      return err(501, "invalid_request", "Chat sessions are not enabled on this server");
+    }
+    const sphereId = segments[1] as string;
+    if ((await deps.store.load(sphereId)) === undefined) return err(404, "not_found", "Sphere not found");
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: { memberId?: string };
+      agentId?: string;
+      title?: string;
+    };
+    const ownerId = body.subject?.memberId;
+    if (typeof ownerId !== "string" || typeof body.agentId !== "string") {
+      return err(400, "invalid_request", "subject.memberId and agentId are required");
+    }
+    const session = createSession({
+      id: deps.newSessionId(),
+      sphereId,
+      agentId: body.agentId,
+      ownerId,
+      now: (deps.now ?? (() => new Date().toISOString()))(),
+      ...(body.title !== undefined ? { title: body.title } : {}),
+    });
+    await deps.sessions.save(session);
+    return ok({ id: session.id, title: session.title, agentId: session.agentId, ownerId: session.ownerId, state: session.state });
+  }
+
   if (req.method !== "GET") {
     return err(405, "invalid_request", "Only GET is supported by the read API");
   }
@@ -346,6 +380,26 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           ownerId: a.ownerId,
           state: a.state,
           enabledCapabilities: a.enabledCapabilities,
+        })),
+      });
+    }
+    if (segments.length === 3 && segments[2] === "sessions") {
+      // RFC-005: a member's session summaries (no message content — private).
+      if (deps.sessions === undefined) return err(501, "invalid_request", "Chat sessions are not enabled");
+      if ((await deps.store.load(segments[1] as string)) === undefined) return err(404, "not_found", "Sphere not found");
+      const ownerId = req.query?.["ownerId"];
+      if (typeof ownerId !== "string" || ownerId === "") {
+        return err(400, "invalid_request", "ownerId is required");
+      }
+      const list = await deps.sessions.listForOwner(segments[1] as string, ownerId);
+      return ok({
+        sessions: list.map((s) => ({
+          id: s.id,
+          title: s.title,
+          agentId: s.agentId,
+          state: s.state,
+          updatedAt: s.updatedAt,
+          messageCount: s.messages.length,
         })),
       });
     }

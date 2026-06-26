@@ -58,6 +58,24 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 54 — 2026-06-26 (post-§19; chat session create/list API, RFC-005)
+- **Done:** chat session endpoints in the router. `POST /spheres/:id/sessions`
+  ({subject, agentId, title?}) creates an owner-bound session and persists it;
+  `GET /spheres/:id/sessions?ownerId=` returns the owner's session **summaries**
+  (id, title, agentId, state, updatedAt, messageCount) — never message content
+  (private). Added optional `sessions: SessionStore` + `newSessionId` to ApiDeps;
+  endpoints 501 when absent, 404 on missing Sphere, 400 on bad input. 6 new tests.
+- **Verified (in container):** `npm test router` → 36 passed; `typecheck` → exit 0.
+- **Decisions:** owner is taken from the request subject (auth deferred — RFC-003/
+  006); list is owner-scoped at the store and returns no transcript content, so
+  even the summary view honours privacy. The single-session read (with messages,
+  policy-scoped) and the chat-turn POST (needs a runtime dep wired) are the next
+  slices.
+- **Next step:** wire an AgentRuntime into the API (select per Sphere via RFC-004)
+  and add `POST /spheres/:id/sessions/:sid/messages` running `runChatTurn`; a
+  policy-scoped single-session read; then the UI chat view. The server `main.ts`
+  gains a SqliteSessionStore + runtime.
+
 ### Iteration 53 — 2026-06-26 (post-§19; SQLite SessionStore adapter, RFC-005)
 - **Done:** `SqliteSessionStore` in `@kinos/persistence-sqlite` — implements the
   core `SessionStore` over a `sessions` table (id PK, sphere_id, owner_id, state,
