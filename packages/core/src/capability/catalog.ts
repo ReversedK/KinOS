@@ -58,6 +58,14 @@ const CAPABILITIES: readonly Capability[] = [
     approvalFloor: true,
     auditFacts: ["actor", "capability", "riskLevel", "decision", "correlationId"],
   },
+  {
+    name: "runtime.set_provider",
+    description: "Change the Sphere's inference provider/model (admin settings).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
 ];
 
 /** A fresh catalog map keyed by capability name. */

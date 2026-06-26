@@ -15,16 +15,23 @@ import {
   ageProfileForRole,
   assertProfileAllowed,
   beginSensitiveAction,
+  createRuntimeProfile,
   defaultCapabilityCatalog,
+  evaluate,
+  exportSphere,
   importSphere,
   resolveApproval,
   resolveEffectiveProfile,
+  setDefaultRuntimeProfile,
   type ApprovalStore,
   type AuditReader,
   type AuditSink,
   type CapabilityExecutionRequest,
   type CapabilityExecutor,
+  type PolicyRequest,
   type Role,
+  type RuntimeExecution,
+  type RuntimeProviderId,
   type SphereStore,
 } from "@kinos/core";
 
@@ -200,6 +207,103 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       status: result.status,
       reason: result.reason,
     });
+  }
+
+  // --- Governed settings write: set the Sphere's inference provider/model (RFC-004) ---
+  // POST /spheres/:id/runtime  { subject, profile }
+  if (req.method === "POST" && segments[0] === "spheres" && segments.length === 3 && segments[2] === "runtime") {
+    if (deps.auditSink === undefined) {
+      return err(501, "invalid_request", "Runtime configuration is not enabled on this server");
+    }
+    const sphereId = segments[1] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+      profile?: { providerId?: string; model?: string; execution?: string; baseUrl?: string; secretRef?: string };
+    };
+    const subject = body.subject;
+    const p = body.profile;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    if (p === undefined || typeof p.providerId !== "string" || typeof p.model !== "string" || typeof p.execution !== "string") {
+      return err(400, "invalid_request", "A profile with providerId, model and execution is required");
+    }
+
+    const imported = importSphere(snap);
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+
+    // Catalog profile floor: minors can never set the provider (deny by default).
+    const cap = defaultCapabilityCatalog().get("runtime.set_provider");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "runtime.set_provider is not allowed for this profile");
+    }
+
+    // Policy Engine decides (the router asserts no authorization the engine couldn't).
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "capability", capabilityName: "runtime.set_provider", riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      imported.policies,
+    );
+    if (decision.effect !== "allow") {
+      deps.auditSink.record({
+        type: "capability.denied",
+        sphereId,
+        resourceType: "capability",
+        resourceId: "runtime.set_provider",
+        decision: "deny",
+        reason: decision.reason,
+        correlationId,
+        createdAt: stamp,
+        ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+        ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+        ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+      });
+      return err(403, "forbidden", decision.reason);
+    }
+
+    let newProfile;
+    try {
+      newProfile = createRuntimeProfile({
+        providerId: p.providerId as RuntimeProviderId,
+        model: p.model,
+        execution: p.execution as RuntimeExecution,
+        ...(p.baseUrl !== undefined ? { baseUrl: p.baseUrl } : {}),
+        ...(p.secretRef !== undefined ? { secretRef: p.secretRef } : {}),
+      });
+    } catch (e) {
+      return err(400, "invalid_request", (e as Error).message);
+    }
+
+    let newConfig;
+    try {
+      newConfig = setDefaultRuntimeProfile(imported.runtimeConfig, newProfile);
+    } catch (e) {
+      // Deny-by-default: cannot switch to a disallowed provider / cloud-while-disabled.
+      return err(403, "forbidden", (e as Error).message);
+    }
+
+    await deps.store.save(exportSphere({ ...imported, runtimeConfig: newConfig, exportedAt: stamp }));
+    deps.auditSink.record({
+      type: "capability.executed",
+      sphereId,
+      resourceType: "capability",
+      resourceId: "runtime.set_provider",
+      decision: "executed",
+      reason: `provider=${newProfile.providerId} model=${newProfile.model}`,
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+      ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+      ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+    });
+    return ok({ status: "executed", provider: newProfile.providerId, model: newProfile.model, execution: newProfile.execution });
   }
 
   if (req.method !== "GET") {

@@ -58,6 +58,30 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 47 — 2026-06-26 (post-§19; governed provider/model write endpoint, RFC-004)
+- **Done:** governed settings-write `POST /spheres/:id/runtime`. Adds a
+  `runtime.set_provider` catalog capability (high risk, adults-only). The handler
+  enforces the catalog profile floor (minors denied), runs the **Policy Engine**
+  (`evaluate`) on `runtime.set_provider` — deny-by-default, so a Sphere with no
+  allowing policy refuses — then applies `setDefaultRuntimeProfile` (which itself
+  refuses switching to a disallowed provider / cloud-while-disabled), persists the
+  updated snapshot, and audits the decision (allowed→executed / denied) citing the
+  policy. Outcomes map to HTTP: 200 executed, 403 forbidden, 400 bad input, 404
+  missing Sphere, 501 when disabled. 6 new tests (allow+persist verified via GET,
+  deny-by-default, minor floor, disallowed-provider, missing-profile, 501).
+- **Verified (in container):** `npm test router + capability` → 38 passed (router
+  30); `typecheck` → exit 0.
+- **Decisions:** the router uses `evaluate` directly (that *is* the Policy Engine,
+  not a duplicated rule) since a settings change is a domain mutation, not a
+  capability-binding execution; a `require_approval` decision is treated as
+  not-yet-authorized (403, fails closed) — full approval-gated settings is a later
+  enhancement. Scope limited to the default profile (not widening allowed
+  providers / enabling cloud), consistent with `setDefaultRuntimeProfile`.
+- **Next step:** a UI affordance to change provider/model (client form → this
+  endpoint) on the Sphere page; the connectors view; then RFC-005 chat sessions.
+  Note: RFC-007 (Hermes governed runtime) landed externally — its
+  RuntimeConfigProjection / Sphere-MCP gateway are future implementation matter.
+
 ### Iteration 46 — 2026-06-26 (post-§19; setDefaultRuntimeProfile core helper, RFC-004)
 - **Done:** pure-core `setDefaultRuntimeProfile(config, newProfile)` — changes a
   Sphere's default inference profile while keeping its allowed providers + cloud

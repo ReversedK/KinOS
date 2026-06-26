@@ -412,3 +412,104 @@ describe("API router — approval resolution (write path)", () => {
     expect(res.status).toBe(501);
   });
 });
+
+// --- Governed settings write: POST /spheres/:id/runtime (RFC-004) ---
+
+describe("API router — runtime provider/model write", () => {
+  const allowAdultSetProvider: Policy = {
+    id: "pol_rt",
+    sphereId: "sph_1",
+    description: "Adults may change the inference provider.",
+    subjectSelector: { ageProfiles: ["adult"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["runtime.set_provider"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+
+  async function runtimeDeps(policies: Policy[]) {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe Family",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    await store.save(exportSphere({ sphere, identities: [], agents: [], memory: [], policies, exportedAt: NOW }));
+    const audit = new InMemoryAuditSink();
+    let n = 0;
+    const deps: ApiDeps = {
+      store,
+      approvals: new InMemoryApprovalStore(),
+      audit,
+      auditSink: audit,
+      newCorrelationId: () => `req_${++n}`,
+      now: () => NOW,
+    };
+    return { deps, audit };
+  }
+
+  const adult = { memberId: "mbr_p1", role: "parent", ageProfile: "adult" as const };
+  const child = { memberId: "mbr_c1", role: "child", ageProfile: "child" as const };
+  const path = "/spheres/sph_1/runtime";
+
+  it("sets the provider/model when policy allows, and persists it", async () => {
+    const { deps } = await runtimeDeps([allowAdultSetProvider]);
+    const res = await handleApiRequest(
+      { method: "POST", path, body: { subject: adult, profile: { providerId: "ollama", model: "mistral", execution: "local" } } },
+      deps,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "executed", provider: "ollama", model: "mistral" });
+    const after = await handleApiRequest({ method: "GET", path }, deps);
+    expect(after.body).toMatchObject({ model: "mistral" });
+  });
+
+  it("denies by default when no policy allows it (403)", async () => {
+    const { deps } = await runtimeDeps([]);
+    const res = await handleApiRequest(
+      { method: "POST", path, body: { subject: adult, profile: { providerId: "ollama", model: "mistral", execution: "local" } } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+    expect(res.code).toBe("forbidden");
+  });
+
+  it("denies a minor by the catalog profile floor even if a policy is permissive (403)", async () => {
+    const { deps } = await runtimeDeps([{ ...allowAdultSetProvider, subjectSelector: {} }]);
+    const res = await handleApiRequest(
+      { method: "POST", path, body: { subject: child, profile: { providerId: "ollama", model: "mistral", execution: "local" } } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses switching to a provider the Sphere does not allow (403)", async () => {
+    const { deps } = await runtimeDeps([allowAdultSetProvider]);
+    const res = await handleApiRequest(
+      {
+        method: "POST",
+        path,
+        body: { subject: adult, profile: { providerId: "openai", model: "gpt-4o-mini", execution: "cloud", secretRef: "secret://k" } },
+      },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a missing profile (400)", async () => {
+    const { deps } = await runtimeDeps([allowAdultSetProvider]);
+    const res = await handleApiRequest({ method: "POST", path, body: { subject: adult } }, deps);
+    expect(res.status).toBe(400);
+  });
+
+  it("501 when runtime configuration is not enabled (read-only deps)", async () => {
+    const res = await handleApiRequest(
+      { method: "POST", path, body: { subject: adult, profile: { providerId: "ollama", model: "mistral", execution: "local" } } },
+      await deps(),
+    );
+    expect(res.status).toBe(501);
+  });
+});
