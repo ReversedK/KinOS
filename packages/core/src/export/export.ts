@@ -18,6 +18,7 @@ import type { MemoryItem } from "../memory/memory.js";
 import type { Policy } from "../policy/types.js";
 import type { Sphere } from "../sphere/sphere.js";
 import type { Integration } from "../integration/integration.js";
+import type { InstalledPackage } from "../package/package.js";
 import { defaultRuntimeConfig, type SphereRuntimeConfig } from "../runtime/profile.js";
 
 export const EXPORT_FORMAT = "kinos.sphere.export";
@@ -39,6 +40,8 @@ export interface SphereExport {
   readonly runtimeConfig?: SphereRuntimeConfig;
   /** Integrations/connectors (integration-model). Optional; defaults to empty. */
   readonly integrations?: readonly Integration[];
+  /** Installed packages (RFC-002). Optional; defaults to empty. */
+  readonly packages?: readonly InstalledPackage[];
 }
 
 export interface ExportSphereInput {
@@ -50,6 +53,7 @@ export interface ExportSphereInput {
   readonly bindings?: readonly CapabilityBinding[];
   readonly runtimeConfig?: SphereRuntimeConfig;
   readonly integrations?: readonly Integration[];
+  readonly packages?: readonly InstalledPackage[];
   readonly exportedAt: string;
 }
 
@@ -66,6 +70,7 @@ export function exportSphere(input: ExportSphereInput): SphereExport {
     bindings: [...(input.bindings ?? [])],
     runtimeConfig: input.runtimeConfig ?? defaultRuntimeConfig(),
     integrations: [...(input.integrations ?? [])],
+    packages: [...(input.packages ?? [])],
   };
 }
 
@@ -78,6 +83,7 @@ export interface ImportedSphere {
   readonly bindings: readonly CapabilityBinding[];
   readonly runtimeConfig: SphereRuntimeConfig;
   readonly integrations: readonly Integration[];
+  readonly packages: readonly InstalledPackage[];
   readonly exportedAt: string;
 }
 
@@ -118,6 +124,9 @@ export function importSphere(data: unknown): ImportedSphere {
   if (snap.integrations !== undefined && !Array.isArray(snap.integrations)) {
     throw new Error("Malformed export snapshot: integrations must be an array");
   }
+  if (snap.packages !== undefined && !Array.isArray(snap.packages)) {
+    throw new Error("Malformed export snapshot: packages must be an array");
+  }
   return {
     sphere: snap.sphere,
     identities: snap.identities,
@@ -127,6 +136,7 @@ export function importSphere(data: unknown): ImportedSphere {
     bindings: snap.bindings ?? [],
     runtimeConfig: snap.runtimeConfig ?? defaultRuntimeConfig(),
     integrations: snap.integrations ?? [],
+    packages: snap.packages ?? [],
     exportedAt: snap.exportedAt,
   };
 }

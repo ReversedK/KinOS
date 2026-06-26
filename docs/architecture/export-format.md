@@ -24,7 +24,8 @@ The export is a single UTF-8 JSON document. It is self-describing and versioned.
   "policies":   [ /* Policy[] */ ],
   "bindings":   [ /* CapabilityBinding[] — optional */ ],
   "runtimeConfig": { /* SphereRuntimeConfig — optional; defaults to local-first */ },
-  "integrations": [ /* Integration[] — optional; defaults to empty */ ]
+  "integrations": [ /* Integration[] — optional; defaults to empty */ ],
+  "packages": [ /* InstalledPackage[] — optional; defaults to empty */ ]
 }
 ```
 
@@ -57,6 +58,11 @@ Each section uses the canonical domain shapes defined in
   scopes, a secret *reference* (never the value), provided capability names and
   lifecycle status. Optional section: a snapshot without it imports to an empty
   list. Restoring never re-enables a disabled/removed integration silently.
+- **packages** — installed Packages (RFC-002): the manifest (id, type, title,
+  plain description, version, publisher, age rating, dependencies, provided
+  capabilities) plus lifecycle status. Optional section: a snapshot without it
+  imports to an empty list. Install never grants use; restoring an `installed`/
+  `disabled` package does not enable it.
 
 ## Rules
 

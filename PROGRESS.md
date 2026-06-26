@@ -58,6 +58,24 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 64 — 2026-06-26 (post-§19; persist packages + store catalog, RFC-002)
+- **Done:** (1) added an optional `packages` (`InstalledPackage[]`) section to the
+  `SphereExport` snapshot — additive, defaults to `[]`, fails closed on a non-array,
+  documented in `export-format.md`; durable via the SQLite snapshot. (2)
+  `store-catalog.ts` — a curated in-memory list of installable `PackageManifest`s
+  (`defaultStoreCatalog`/`findStorePackage`) for the MVP store (`store.browse`),
+  incl. the amusement-park skill declaring its Minecraft-MCP dependency. 5 tests
+  (2 export round-trip/default/reject + 3 catalog).
+- **Verified (in container):** `npm test export + package` → 21 passed; `typecheck`
+  → exit 0.
+- **Decisions:** the catalog is metadata only; signature verification, dependency
+  resolution/dedup and sandboxing remain install-pipeline concerns (RFC-002).
+- **Next step:** a governed `package.install` (+ enable/disable/uninstall) API —
+  install resolves+dedups deps, registers capabilities, creates bindings DISABLED,
+  runs the grant wizard (adults allow / minors deny), persists the InstalledPackage;
+  a `store.browse` read endpoint; then the store UI. After that the full requested
+  surface (config, connectors, store, chat, dev impersonation) is demonstrable.
+
 ### Iteration 63 — 2026-06-26 (post-§19; Package domain + lifecycle, RFC-002)
 - **Done:** `packages/core/src/package/package.ts` — pure-core `PackageManifest`
   (id, type skill|mcp|bundle, title, plain description, version, publisher,
