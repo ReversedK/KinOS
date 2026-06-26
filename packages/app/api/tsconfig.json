@@ -7,11 +7,13 @@
     "baseUrl": ".",
     "paths": {
       "@kinos/core": ["../../core/src/index.ts"],
+      "@kinos/executor-local": ["../../adapters/executor-local/src/index.ts"],
       "@kinos/persistence-sqlite": ["../../adapters/persistence-sqlite/src/index.ts"]
     }
   },
   "references": [
     { "path": "../../core" },
+    { "path": "../../adapters/executor-local" },
     { "path": "../../adapters/persistence-sqlite" }
   ],
   "include": ["src/**/*.ts"],

@@ -58,6 +58,26 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 39 — 2026-06-26 (post-§19; write path reachable over HTTP, RFC-003)
+- **Done:** made the governed capability-execution endpoint reachable over HTTP.
+  `server.ts` now reads + JSON-parses the request body for non-GET methods
+  (malformed/empty → undefined) and threads it into the router. `main.ts` wires a
+  `LocalCapabilityExecutor` (calendar/pay/echo handlers, mirroring the CLI) plus
+  the audit sink + `newApprovalId`, so the server is no longer read-only. Added
+  `@kinos/executor-local` to the API package deps + tsconfig paths/references.
+  2 new HTTP server tests (POST executes a governed capability → 200 executed;
+  a child is denied → 403 forbidden) driving the full path fetch → server →
+  router → core pipeline → executor.
+- **Verified (in container):** `npm install` + `npm test packages/app/api` → 23
+  passed (router 17, server 4, e2e 2); `typecheck` → exit 0.
+- **Decisions:** the server stays transport-only (body parse + pass-through); all
+  decisions remain in the router + core. Reused the CLI's local handler set for
+  parity. The subject still comes from the request body (auth/identity resolution
+  deferred to RFC-003 wiring).
+- **Next step:** add the remaining governed writes the admin UI needs —
+  integration `enable`/`disable` and approval `grant`/`deny` endpoints — then
+  begin the RFC-003 UI actions (consume these endpoints), and RFC-005 chat.
+
 ### Iteration 38 — 2026-06-26 (post-§19; governed write API — capability execute, RFC-003)
 - **Done:** first governed **write** endpoint in the API router (api-contract
   §Capability): `POST /spheres/:id/capabilities/:name/execute`. ApiRequest gained
