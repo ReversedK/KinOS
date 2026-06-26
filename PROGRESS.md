@@ -58,6 +58,29 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 32 — 2026-06-26 (post-§19; OpenAI runtime adapter, RFC-004)
+- **Done:** `@kinos/runtime-openai` (`packages/adapters/runtime-openai`) —
+  `OpenAiRuntime` implements the core `AgentRuntime` port against the OpenAI HTTP
+  API (`GET /models`, `POST /chat/completions`, stream:false), mirroring the
+  Ollama adapter. Cloud-specific: it refuses to construct without a resolved API
+  key, never embeds the key in errors, and takes the key *injected* (the secret
+  store resolves `RuntimeProfile.secretRef` → key upstream; `$OPENAI_API_KEY` is a
+  dev-only fallback). Provider SDK stays out of the core (principle 1, 8); the
+  adapter decides no permissions. Registered in the root tsconfig references. 6
+  mocked-fetch tests (listModels w/ bearer, generate, missing-key refusal,
+  key-not-in-error, isAvailable up/down).
+- **Verified (in container):** `npm install` (link the new workspace) →
+  `npm test packages/adapters/runtime-openai` → 6 passed; `typecheck` → exit 0.
+- **Decisions:** key is injected, never a reference the adapter resolves (keeps
+  secret handling at the wiring boundary); a live test (real OpenAI call) is
+  deferred — it needs a real key and is an external-transfer/cost action.
+- **Next step (RFC-004 cont.):** thread `RuntimeProfile` into the Sphere export
+  snapshot (additive optional field, like bindings in it.20) + import round-trip,
+  so a Sphere persists its provider/model + cloud flag; add a CLI/select wiring
+  that builds the right runtime adapter (Ollama vs OpenAI) from a Sphere's
+  resolved profile via `assertProfileAllowed`/`resolveEffectiveProfile`. Then
+  RFC-006 (dev impersonation), the governed write API, and the RFC-003 UI.
+
 ### Iteration 31 — 2026-06-26 (post-§19; config design accepted + RuntimeProfile)
 - **Human design round (specs-first):** wrote and the human **accepted** four
   RFCs covering the requested configuration UX: **RFC-003** (Sphere Configuration

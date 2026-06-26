@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/adapters/runtime-ollama" },
+    { "path": "./packages/adapters/runtime-openai" },
     { "path": "./packages/adapters/persistence-sqlite" },
     { "path": "./packages/adapters/executor-local" },
     { "path": "./packages/app/cli" },
