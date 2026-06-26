@@ -58,6 +58,41 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 31 — 2026-06-26 (post-§19; config design accepted + RuntimeProfile)
+- **Human design round (specs-first):** wrote and the human **accepted** four
+  RFCs covering the requested configuration UX: **RFC-003** (Sphere Configuration
+  & Admin UI — the UI becomes a governed *write* surface; amends ADR-006's
+  "read-only consumer" note), **RFC-004** (Inference Provider & Model
+  Configuration — Ollama + OpenAI behind the AgentRuntime port; cloud =
+  consent + external-transfer + disableable + minors-denied; boring swap),
+  **RFC-005** (Agent Chat Sessions & Conversation History — new Session/Message
+  entities, distinct from canonical memory and audit), **RFC-006** (Developer
+  Impersonation — dev-only acting-as, deny-by-default, inert in prod, fully
+  audited). Propagated "Domain impact" into `domain-model.md` (RuntimeProfile,
+  Session, Message, Sphere/Agent fields), `entity-lifecycle.md` (Session
+  lifecycle), and the ADR-006 UI note. No code was written before acceptance.
+- **First code slice (RFC-004):** `packages/core/src/runtime/profile.ts` — pure
+  domain config: `RuntimeProfile` (providerId ollama|openai, model, execution
+  local|cloud, baseUrl?, secretRef?), `SphereRuntimeConfig`,
+  `createRuntimeProfile` (cloud requires a secret *reference* — keys never in the
+  profile), `defaultRuntimeConfig` (local-first: Ollama only, cloud off),
+  `assertProfileAllowed` (deny-by-default: provider must be allowed; cloud needs
+  cloud-enabled), `resolveEffectiveProfile` (agent model override = boring swap,
+  never escalates provider/execution). No provider SDK in core (principle 1).
+  Subject authorization (minors-deny-cloud, the grant to enable cloud) is left to
+  the Policy Engine, not duplicated here. 8 tests.
+- **Verified (in container):** `npm test packages/core/src/runtime/profile.test.ts`
+  → 8 passed; full `npm test` → 139 passed, **1 pre-existing live-Ollama
+  generation test timed out** (real model call, environmental — unrelated to this
+  slice); `typecheck` → exit 0.
+- **Next step (RFC-004 cont.):** the OpenAI runtime adapter
+  `packages/adapters/runtime-openai` implementing the `AgentRuntime` port (mirror
+  `runtime-ollama`; injectable fetch; reads a base URL + a secret-store reference,
+  never an inline key). Then thread `RuntimeProfile` into the Sphere snapshot/
+  export (additive, like bindings in it.20) so a Sphere persists its provider/
+  model choice. After RFC-004: RFC-006 (dev impersonation) to unblock
+  multi-member testing, then the governed write API + RFC-003 UI.
+
 ### Iteration 30 — 2026-06-25 (post-§19; API e2e over real SQLite)
 - **Done:** end-to-end test (`packages/app/api/src/e2e.test.ts`) booting
   createApiServer wired to the **real durable adapters** (SqliteSphereStore/
