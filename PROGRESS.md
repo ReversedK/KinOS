@@ -58,6 +58,27 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 49 — 2026-06-26 (post-§19; chat Session/Message domain, RFC-005)
+- **Done:** `packages/core/src/session/session.ts` — pure-core Session + Message
+  entities. `createSession` (active, empty, owner-bound, default title),
+  `appendMessage` (immutable; only an active session accepts turns — deny by
+  default), `archiveSession`, `deleteSession` (blocks future use + clears the
+  transcript; promoted memory/audit unaffected — invariant 5), `isOwnedBy`
+  (structural owner check). Role is conversational only (user/agent), never an
+  authorization role (principle 2). The transcript is private content, distinct
+  from canonical MemoryItems and from the audit log. 7 tests.
+- **Verified (in container):** `npm test packages/core/src/session` → 7 passed;
+  `typecheck` → exit 0.
+- **Decisions:** kept this slice to the entity + lifecycle + structural owner
+  check; policy-scoped read (the resolver asking the Policy Engine, mirroring the
+  memory resolver) and persistence (a SessionStore port + SQLite table) are the
+  next slices. Promotion-to-MemoryItem is a separate governed action, not modelled
+  here.
+- **Next step:** a `SessionStore` port + InMemory impl (then SQLite adapter), and
+  a policy-scoped session-read resolver; then the chat turn flow (policy-scoped
+  memory + owner history → AgentRuntime) and the UI chat view. Largest remaining
+  requested feature; building it bottom-up like memory.
+
 ### Iteration 48 — 2026-06-26 (post-§19; UI provider/model change form, RFC-004/003)
 - **Done:** added a `setRuntime` UI client wrapper (POST /spheres/:id/runtime;
   403 denial returned as data, 400/404/501 throw) and a `SetRuntime` client
