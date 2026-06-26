@@ -58,6 +58,25 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 42 — 2026-06-26 (post-§19; interactive approvals page, RFC-003)
+- **Done:** the `/approvals` page is now interactive. Added a client component
+  `ApprovalActions` (Grant/Deny buttons) that calls the governed
+  `grantApproval`/`denyApproval` endpoints and renders the returned outcome
+  (executed / denied / error). The page (server component) lists pending approvals
+  and mounts the action component per item, passing the API base URL. The UI only
+  *triggers* the governed action; the core approval rules (eligibility, minor
+  safety, quorum) and the Policy Engine decide — the UI decides nothing
+  (coding principle 1). The approver identity is a dev placeholder until real
+  auth/impersonation wiring (RFC-003/006).
+- **Verified (in container):** `next build` → compiled successfully, types valid;
+  `/approvals` is now a dynamic route carrying client JS (1.61 kB). Existing
+  `npm test ui/lib` (12) still green.
+- **Decisions:** passed the base URL as a prop from the server component (avoids
+  NEXT_PUBLIC_ env plumbing for the dev MVP); denials render as text, not errors.
+- **Next step:** a "run capability" affordance on the Sphere page (executeCapability
+  + a dev member/profile selector that anticipates RFC-006 impersonation), then the
+  connectors/provider config views, and RFC-005 chat sessions.
+
 ### Iteration 41 — 2026-06-26 (post-§19; UI write-action client, RFC-003)
 - **Done:** added governed **write** wrappers to the UI API client
   (`ui/lib/api.ts`): `executeCapability(sphereId, capability, subject)`,

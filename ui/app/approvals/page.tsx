@@ -1,4 +1,5 @@
 import { apiBaseUrl, getPendingApprovals } from "../../lib/api";
+import { ApprovalActions } from "./ApprovalActions";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function ApprovalsPage() {
               <div style={{ color: "#9aa0a6", fontSize: "0.9rem" }}>
                 approvers: {p.approverRoles.join(", ")} · {p.id}
               </div>
+              <ApprovalActions baseUrl={base} approvalId={p.id} />
             </li>
           ))}
         </ul>
