@@ -22,7 +22,8 @@ The export is a single UTF-8 JSON document. It is self-describing and versioned.
   "agents":     [ /* Agent[] */ ],
   "memory":     [ /* MemoryItem[] — canonical; no embeddings */ ],
   "policies":   [ /* Policy[] */ ],
-  "bindings":   [ /* CapabilityBinding[] — optional */ ]
+  "bindings":   [ /* CapabilityBinding[] — optional */ ],
+  "runtimeConfig": { /* SphereRuntimeConfig — optional; defaults to local-first */ }
 }
 ```
 
@@ -45,6 +46,12 @@ Each section uses the canonical domain shapes defined in
   risk, approval floor, status. The provider-specific `runtimeToolName` is an
   adapter detail carried for restoration; it is never used in domain reasoning
   or audit. Optional section: a snapshot without it imports to an empty list.
+- **runtimeConfig** — the Sphere's inference provider/model selection (RFC-004):
+  the default RuntimeProfile (providerId, model, execution, optional baseUrl, and
+  a secret *reference* for cloud credentials — never the key), the allowed
+  providers, and the cloud-inference-enabled flag. Optional section: a snapshot
+  without it imports to the local-first default (Ollama, cloud off). Changing the
+  provider/model on restore stays "boring" — no memory or policy migration.
 
 ## Rules
 

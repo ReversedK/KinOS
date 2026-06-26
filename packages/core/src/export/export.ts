@@ -17,6 +17,7 @@ import type { Identity } from "../identity/identity.js";
 import type { MemoryItem } from "../memory/memory.js";
 import type { Policy } from "../policy/types.js";
 import type { Sphere } from "../sphere/sphere.js";
+import { defaultRuntimeConfig, type SphereRuntimeConfig } from "../runtime/profile.js";
 
 export const EXPORT_FORMAT = "kinos.sphere.export";
 export const EXPORT_VERSION = 1;
@@ -33,6 +34,8 @@ export interface SphereExport {
   readonly policies: readonly Policy[];
   /** Capability bindings (ADR-001). Optional for backward compatibility. */
   readonly bindings?: readonly CapabilityBinding[];
+  /** Inference provider/model selection (RFC-004). Optional; defaults to local-first. */
+  readonly runtimeConfig?: SphereRuntimeConfig;
 }
 
 export interface ExportSphereInput {
@@ -42,6 +45,7 @@ export interface ExportSphereInput {
   readonly memory: readonly MemoryItem[];
   readonly policies: readonly Policy[];
   readonly bindings?: readonly CapabilityBinding[];
+  readonly runtimeConfig?: SphereRuntimeConfig;
   readonly exportedAt: string;
 }
 
@@ -56,6 +60,7 @@ export function exportSphere(input: ExportSphereInput): SphereExport {
     memory: [...input.memory],
     policies: [...input.policies],
     bindings: [...(input.bindings ?? [])],
+    runtimeConfig: input.runtimeConfig ?? defaultRuntimeConfig(),
   };
 }
 
@@ -66,6 +71,7 @@ export interface ImportedSphere {
   readonly memory: readonly MemoryItem[];
   readonly policies: readonly Policy[];
   readonly bindings: readonly CapabilityBinding[];
+  readonly runtimeConfig: SphereRuntimeConfig;
   readonly exportedAt: string;
 }
 
@@ -97,6 +103,12 @@ export function importSphere(data: unknown): ImportedSphere {
   if (snap.bindings !== undefined && !Array.isArray(snap.bindings)) {
     throw new Error("Malformed export snapshot: bindings must be an array");
   }
+  if (
+    snap.runtimeConfig !== undefined &&
+    (typeof snap.runtimeConfig !== "object" || snap.runtimeConfig === null)
+  ) {
+    throw new Error("Malformed export snapshot: runtimeConfig must be an object");
+  }
   return {
     sphere: snap.sphere,
     identities: snap.identities,
@@ -104,6 +116,7 @@ export function importSphere(data: unknown): ImportedSphere {
     memory: snap.memory,
     policies: snap.policies,
     bindings: snap.bindings ?? [],
+    runtimeConfig: snap.runtimeConfig ?? defaultRuntimeConfig(),
     exportedAt: snap.exportedAt,
   };
 }

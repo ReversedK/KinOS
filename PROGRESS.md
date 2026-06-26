@@ -58,6 +58,27 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 33 — 2026-06-26 (post-§19; persist RuntimeProfile in export, RFC-004)
+- **Done:** added an optional `runtimeConfig` (`SphereRuntimeConfig`) section to
+  the `SphereExport` snapshot — additive, no version bump (like `bindings` in
+  it.20). `exportSphere` defaults it to `defaultRuntimeConfig()` (local-first);
+  `importSphere` defaults a missing section to local-first and fails closed on a
+  non-object. `export-format.md` documents the field (provider/model, allowed
+  providers, cloud flag, secret *reference* only — never the key). Because
+  `SqliteSphereStore` persists the whole snapshot JSON, a Sphere's provider/model
+  choice is now durable for free (no adapter change). 3 new tests (custom
+  round-trip incl. secretRef, default-on-omit, non-object rejected).
+- **Verified (in container):** `npm test packages/core/src/export` → 9 passed;
+  `typecheck` → exit 0.
+- **Decisions:** kept EXPORT_VERSION=1 (additive optional field, backward
+  tolerant); cloud credentials are carried as a secret reference in the profile,
+  consistent with the secret-store rule.
+- **Next step (RFC-004 cont.):** a small selection/wiring helper that, given a
+  Sphere's resolved RuntimeProfile, builds the correct adapter (OllamaRuntime vs
+  OpenAiRuntime) after `assertProfileAllowed` — the seam the CLI/API will use to
+  pick a runtime per Sphere. Then RFC-006 (dev impersonation) to unblock
+  multi-member testing, the governed write API, and the RFC-003 UI.
+
 ### Iteration 32 — 2026-06-26 (post-§19; OpenAI runtime adapter, RFC-004)
 - **Done:** `@kinos/runtime-openai` (`packages/adapters/runtime-openai`) —
   `OpenAiRuntime` implements the core `AgentRuntime` port against the OpenAI HTTP

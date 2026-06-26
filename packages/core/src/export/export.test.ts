@@ -12,6 +12,7 @@ import { createAgent } from "../agent/agent.js";
 import { createMemoryItem, shareWithMembers } from "../memory/memory.js";
 import type { Policy } from "../policy/types.js";
 import type { CapabilityBinding } from "../capability/types.js";
+import { createRuntimeProfile, defaultRuntimeConfig, type SphereRuntimeConfig } from "../runtime/profile.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
 
@@ -114,6 +115,39 @@ describe("Sphere export/import (results-contract §17, ADR-002)", () => {
     const legacy = JSON.parse(JSON.stringify(snap)) as Record<string, unknown>;
     delete legacy["bindings"];
     expect(importSphere(legacy).bindings).toEqual([]);
+  });
+
+  it("round-trips a custom runtime config (RFC-004)", () => {
+    const f = fixture();
+    const runtimeConfig: SphereRuntimeConfig = {
+      defaultProfile: createRuntimeProfile({
+        providerId: "openai",
+        model: "gpt-4o-mini",
+        execution: "cloud",
+        secretRef: "secret://openai/key",
+      }),
+      allowedProviders: ["ollama", "openai"],
+      cloudInferenceEnabled: true,
+    };
+    const snap = exportSphere({ ...f, runtimeConfig, exportedAt: NOW });
+    const restored = importSphere(JSON.parse(JSON.stringify(snap)));
+    expect(restored.runtimeConfig).toEqual(runtimeConfig);
+    // the secret reference round-trips; no raw key is involved
+    expect(restored.runtimeConfig.defaultProfile.secretRef).toBe("secret://openai/key");
+  });
+
+  it("defaults runtimeConfig to local-first when the snapshot omits it", () => {
+    const f = fixture();
+    const snap = exportSphere({ ...f, exportedAt: NOW });
+    const legacy = JSON.parse(JSON.stringify(snap)) as Record<string, unknown>;
+    delete legacy["runtimeConfig"];
+    expect(importSphere(legacy).runtimeConfig).toEqual(defaultRuntimeConfig());
+  });
+
+  it("rejects a non-object runtimeConfig (fail closed)", () => {
+    expect(() =>
+      importSphere({ format: EXPORT_FORMAT, version: EXPORT_VERSION, sphere: {}, exportedAt: NOW, identities: [], agents: [], memory: [], policies: [], runtimeConfig: "nope" }),
+    ).toThrow(/runtimeConfig/i);
   });
 
   it("rejects an unknown format (fail closed)", () => {
