@@ -58,6 +58,23 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 53 — 2026-06-26 (post-§19; SQLite SessionStore adapter, RFC-005)
+- **Done:** `SqliteSessionStore` in `@kinos/persistence-sqlite` — implements the
+  core `SessionStore` over a `sessions` table (id PK, sphere_id, owner_id, state,
+  updated_at, payload JSON; WAL). `listForOwner` filters owner+sphere, excludes
+  deleted, orders newest-first in SQL. Transcripts live in their own table,
+  separate from the Sphere snapshot, canonical memory and the audit log. 3 tests
+  (save/load with messages, owner list ordering/exclusions, durability across a
+  file reopen).
+- **Verified (in container):** `npm test sqlite-session-store` → 3 passed;
+  `typecheck` → exit 0.
+- **Decisions:** mirrored the approval-store shape (JSON payload + queryable
+  columns); kept it a separate file/table — sessions are not part of the canonical
+  export (RFC-005: transcript ≠ canonical memory).
+- **Next step:** API endpoints for chat (create session, post a turn wiring the
+  store + runtime selection from RFC-004, list/read sessions) and the UI chat view
+  with session history; then RFC-005 is demonstrable end-to-end.
+
 ### Iteration 52 — 2026-06-26 (post-§19; chat-turn flow, RFC-005)
 - **Done:** `packages/core/src/session/chat.ts` `runChatTurn(deps, input)` — the
   core conversational turn, composing governance without adding authorization:
