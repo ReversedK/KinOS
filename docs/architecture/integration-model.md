@@ -103,12 +103,23 @@ n8n may be used as an execution engine for workflows. It must never be the sourc
 - A workflow must not re-enter KinOS to grant itself rights, read unauthorized memory, or call capabilities the requesting agent lacks.
 - n8n credentials are KinOS secret references, scoped to the binding.
 
+## Sphere MCP (governed capability gateway)
+
+KinOS exposes **one governed gateway per Sphere**, realized as a single MCP server (the "Sphere MCP"). It is the concrete, scoped tool surface ADR-001 hands to the runtime, materialized as an MCP server rather than an in-process list, and it is the **only** tool surface KinOS registers in an agent's runtime.
+
+- Its tools are **capabilities, never raw provider tools**: `memory.search` / `memory.write` (policy-scoped), the Sphere's connector capabilities, and the capabilities of installed packages.
+- It is **permissioned per calling-agent identity**: each agent's runtime authenticates with its own scoped credential (secret-store reference, never the value). Every call resolves `credential -> agent identity -> Identity Resolver -> Policy Engine -> Memory/Capability Resolver -> authorized result only`. Two agents on the same Sphere MCP see different surfaces.
+- The offered surface is the first filter; the **per-call policy re-check** (ADR-001) is the enforced one. Authorization is anchored to the agent credential, never to an identity asserted inside the runtime or a prompt.
+- **One Sphere MCP per Sphere, not one per agent**: differentiation stays in KinOS (where governance belongs), with a single gateway lifecycle.
+- New capabilities reach the gateway only through the governed package store (RFC-002); a runtime never installs its own MCP or tools. See `docs/rfcs/007-hermes-governed-runtime.md`.
+
 ## Hermes
 
 Hermes may expose integration tools. KinOS must still map them through capability bindings and evaluate policies before exposing them to agents.
 
 - Hermes executes; it never decides permissions, memory sharing, approvals or confidentiality (invariant 28).
 - A Hermes tool is never offered to an agent directly. It is wrapped by a capability and a binding, and only surfaced after a policy check.
+- Hermes' own configuration is a **projection of Sphere config** (RFC-007): KinOS owns it, registers only the Sphere MCP, sets the allowed capability/native-tool surface deny-by-default, and disables autonomous MCP install. One Hermes install serves many agents via profiles; KinOS governs at the profile/MCP layer, never the process layer.
 - Replacing Hermes with another runtime must not change capabilities, bindings semantics, policies or memory.
 
 ## Acceptance criteria

@@ -24,7 +24,9 @@ Fields/concepts:
 - memory;
 - integrations;
 - runtime profile (selected inference provider + model; cloud inference disableable — see RuntimeProfile);
-- installed packages.
+- installed packages;
+- runtime gateway (the per-Sphere governed capability gateway exposed to agent runtimes, policy-scoped per calling agent — realized as the Sphere MCP; see `docs/architecture/integration-model.md`);
+- agent runtime configuration projections (per-agent governed runtime config derived from Sphere config — see RuntimeConfigProjection).
 
 ### Member
 
@@ -51,7 +53,9 @@ Fields/concepts:
 - runtime configuration;
 - model preference (a governed selection *within* the Sphere's allowed providers/models; never a provider the Sphere has disabled — see RuntimeProfile, RFC-004);
 - enabled capabilities;
-- memory access profile.
+- memory access profile;
+- runtime configuration projection (the governed runtime config derived from the Sphere's config and this agent's policy scope — see RuntimeConfigProjection, RFC-007);
+- runtime state snapshot (opaque, restorable runtime working state; non-canonical — see RuntimeStateSnapshot).
 
 ### MemoryItem
 
@@ -157,6 +161,53 @@ external transfer. An Agent's model preference is constrained to what the Sphere
 allows. Changing provider or model is "boring": no memory migration, no policy
 change.
 
+### RuntimeConfigProjection
+
+The governed, per-agent runtime configuration KinOS derives from Sphere config and
+the agent's policy scope, then writes to the agent's runtime instance. The domain
+owns the projection; the runtime never edits its own governance config. Provider-
+agnostic: for the Hermes reference runtime it is realized in the adapter as a
+per-agent profile (its config file plus a scoped credential), and that realization
+name never enters the domain. See `docs/rfcs/007-hermes-governed-runtime.md`.
+
+Fields/concepts:
+
+- agent;
+- Sphere;
+- runtime profile (provider/model — see RuntimeProfile);
+- runtime gateway reference plus the agent's scoped credential reference (secret-store reference, never the value);
+- allowed capability surface (the capabilities the Policy Engine authorizes for this agent — deny by default);
+- native-tool allow-list (deny by default);
+- autonomous tool/integration install disabled;
+- version and audit references.
+
+The runtime gains new capabilities only through the governed package store
+(RFC-002); it never installs its own. Reprojection is a governed, audited action
+(`runtime.config.project`).
+
+### RuntimeStateSnapshot
+
+An opaque, restorable backup of an agent's runtime working state (the runtime's
+own sessions, working memory, skills and state). **Non-canonical**: distinct from
+canonical MemoryItems and from KinOS Sessions — the runtime's internal working
+memory is private runtime state, never canonical Sphere memory. Stored local-first
+and encrypted, held by reference; KinOS backs it up and restores it without reading
+its content. It provides runtime continuity (crash, restart, migration), not
+cross-runtime portability — canonical memory remains the portable record. See
+`docs/rfcs/007-hermes-governed-runtime.md`.
+
+Fields/concepts:
+
+- agent;
+- Sphere;
+- snapshot reference (encrypted blob, by reference — never inline content);
+- created at;
+- lifecycle / retention state;
+- audit references.
+
+Backup and restore are governed, audited actions (`runtime.session.backup`,
+`runtime.session.restore`) recording the fact only, never session content.
+
 ### Session
 
 A conversation between a member and an agent, holding the running transcript for
@@ -259,6 +310,9 @@ Fields/concepts:
 - A Policy controls access to MemoryItems, Capabilities, Integrations and Sphere resources.
 - A Package is installed into a Sphere; a `skill` package composes Capabilities, an `mcp` package provides an Integration, and a Package may depend on other Packages.
 - A Sphere has one RuntimeProfile selecting the inference provider and model; an Agent's model preference is constrained to what that profile allows.
+- A Sphere exposes one governed runtime gateway (the Sphere MCP) surfacing policy-scoped capabilities to agent runtimes; each agent's runtime authenticates with its own scoped credential and sees only its authorized capability surface.
+- Each Agent has one RuntimeConfigProjection derived from Sphere config and its policy scope; the runtime never edits its own governance config and gains new capabilities only via the package store.
+- Each Agent's runtime working state may be captured as a RuntimeStateSnapshot — opaque, encrypted, restorable, non-canonical, and distinct from Sessions and MemoryItems.
 - A Member owns many Sessions; a Session belongs to one Agent and one owning Member and contains many Messages; a Session is neither a MemoryItem nor an AuditEvent, and a fact is moved from a Session to canonical memory only by an explicit, governed promotion.
 - An ApprovalRequest is raised when a Policy returns require_approval; it links subject, capability and approvers via a correlation id.
 - An AuditEvent records a security-relevant decision and carries the correlation id chaining policy check, approval, runtime call and integration call.
