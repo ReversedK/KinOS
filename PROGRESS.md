@@ -58,6 +58,27 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 46 — 2026-06-26 (post-§19; setDefaultRuntimeProfile core helper, RFC-004)
+- **Done:** pure-core `setDefaultRuntimeProfile(config, newProfile)` — changes a
+  Sphere's default inference profile while keeping its allowed providers + cloud
+  flag, immutably. Deny-by-default: the new profile must pass `assertProfileAllowed`
+  (provider allowed; cloud only when enabled), so it can never widen what the
+  Sphere permits — switching to a disallowed provider or to cloud-while-disabled
+  is refused. This is the domain mutation the governed settings-write endpoint will
+  call once the authorization path exists. 3 tests (model swap immutable,
+  disallowed-provider refused, cloud-disabled refused).
+- **Verified (in container):** `npm test profile.test.ts` → 11 passed; `typecheck`
+  → exit 0.
+- **Decisions:** kept the helper scoped to the default profile (not the allowed
+  set / cloud flag) — enabling cloud or widening providers is the higher-privilege
+  change that must be separately, explicitly authorized. Built the pure piece
+  first so the eventual endpoint only adds the policy check + persistence, not new
+  domain logic.
+- **Next step:** the governed settings-write endpoint POST /spheres/:id/runtime —
+  policy-check `runtime.set_provider` (catalog entry + a Sphere policy) via the
+  engine, then `setDefaultRuntimeProfile` + persist + audit; allow/deny/approval
+  mapped like the execute endpoint. Then connectors view and RFC-005 chat.
+
 ### Iteration 45 — 2026-06-26 (post-§19; render runtime info on Sphere page, RFC-003)
 - **Done:** the Sphere detail page now shows an "Inference runtime" section
   (provider · model · execution, cloud on/disabled, allowed providers, and a flag

@@ -4,6 +4,7 @@ import {
   createRuntimeProfile,
   defaultRuntimeConfig,
   resolveEffectiveProfile,
+  setDefaultRuntimeProfile,
 } from "./profile.js";
 
 describe("RuntimeProfile (RFC-004)", () => {
@@ -87,5 +88,40 @@ describe("RuntimeProfile (RFC-004)", () => {
   it("returns the Sphere default profile when no agent override is given", () => {
     const config = defaultRuntimeConfig();
     expect(resolveEffectiveProfile(config)).toEqual(config.defaultProfile);
+  });
+
+  describe("setDefaultRuntimeProfile", () => {
+    it("changes the default profile within the allowed providers (immutably)", () => {
+      const config = defaultRuntimeConfig();
+      const next = setDefaultRuntimeProfile(
+        config,
+        createRuntimeProfile({ providerId: "ollama", model: "mistral", execution: "local" }),
+      );
+      expect(next.defaultProfile.model).toBe("mistral");
+      expect(config.defaultProfile.model).toBe("llama3.2"); // original unchanged
+      expect(next.allowedProviders).toEqual(config.allowedProviders);
+    });
+
+    it("refuses switching to a provider the Sphere does not allow", () => {
+      const config = defaultRuntimeConfig(); // ollama only
+      const cloud = createRuntimeProfile({
+        providerId: "openai",
+        model: "gpt-4o-mini",
+        execution: "cloud",
+        secretRef: "secret://openai/key",
+      });
+      expect(() => setDefaultRuntimeProfile(config, cloud)).toThrow(/allow/i);
+    });
+
+    it("refuses switching to cloud while cloud inference is disabled", () => {
+      const config = { ...defaultRuntimeConfig(), allowedProviders: ["ollama", "openai"] as const };
+      const cloud = createRuntimeProfile({
+        providerId: "openai",
+        model: "gpt-4o-mini",
+        execution: "cloud",
+        secretRef: "secret://openai/key",
+      });
+      expect(() => setDefaultRuntimeProfile(config, cloud)).toThrow(/cloud/i);
+    });
   });
 });

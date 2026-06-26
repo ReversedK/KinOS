@@ -87,6 +87,23 @@ export function assertProfileAllowed(config: SphereRuntimeConfig, profile: Runti
 }
 
 /**
+ * Change a Sphere's default inference profile (RFC-004), keeping the allowed
+ * providers and cloud flag. Deny-by-default: the new profile must pass
+ * `assertProfileAllowed` (provider allowed; cloud only when cloud is enabled),
+ * so this never widens what the Sphere permits — switching to a disallowed
+ * provider or to cloud while cloud is disabled is refused. Immutable: returns a
+ * new config; the input is unchanged. Enabling cloud or changing the allowed set
+ * is a separate, higher-privilege change, not done here.
+ */
+export function setDefaultRuntimeProfile(
+  config: SphereRuntimeConfig,
+  newDefault: RuntimeProfile,
+): SphereRuntimeConfig {
+  assertProfileAllowed(config, newDefault);
+  return { ...config, defaultProfile: newDefault };
+}
+
+/**
  * Resolve the profile to use for a turn. An agent's model preference overrides
  * only the model string on the Sphere's default provider — a "boring" swap that
  * never escalates provider or execution class (coding principle 9, RFC-004).
