@@ -176,6 +176,47 @@ export async function executeCapability(
   throw new Error(`execute ${capability} failed: ${status}`);
 }
 
+export interface SetRuntimeInput {
+  readonly providerId: string;
+  readonly model: string;
+  readonly execution: string;
+  readonly baseUrl?: string;
+  readonly secretRef?: string;
+}
+
+export interface SetRuntimeOutcome {
+  /** "executed" on success; undefined on a denial. */
+  readonly status?: string;
+  readonly provider?: string;
+  readonly model?: string;
+  readonly execution?: string;
+  /** Set on a denial (HTTP 403): "forbidden". */
+  readonly code?: string;
+  readonly message?: string;
+}
+
+/**
+ * Change a Sphere's inference provider/model via the governed write endpoint. A
+ * denial (403) is a governed outcome and is returned, not thrown; bad input (400)
+ * and unexpected statuses (404/501/5xx) throw.
+ */
+export async function setRuntime(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  profile: SetRuntimeInput,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SetRuntimeOutcome> {
+  const { status, body } = await postJson<SetRuntimeOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/runtime`,
+    { subject, profile },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403) return body;
+  throw new Error(`set runtime failed: ${status}`);
+}
+
 export interface ApproverRef {
   readonly memberId: string;
   readonly role: string;

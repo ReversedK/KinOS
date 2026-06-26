@@ -58,6 +58,26 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 48 — 2026-06-26 (post-§19; UI provider/model change form, RFC-004/003)
+- **Done:** added a `setRuntime` UI client wrapper (POST /spheres/:id/runtime;
+  403 denial returned as data, 400/404/501 throw) and a `SetRuntime` client
+  component (acting-member select, provider select ollama/openai, model input,
+  Save) mounted in the Sphere page's runtime section. Closes the provider/model
+  config loop in the UI: the admin picks a provider/model, the governed endpoint
+  policy-checks + persists, and the page shows the outcome (executed / denied).
+  The UI only triggers; the Policy Engine + core decide. 2 new client tests
+  (POST subject+profile body asserted; 403 denial returned).
+- **Verified (in container):** `npm test ui/lib` → 15 passed; `next build` →
+  compiled, types valid (`/spheres/[id]` 2.31 kB).
+- **Decisions:** provider→execution derived in the form (ollama=local,
+  openai=cloud); acting member chosen for the dev MVP (anticipates auth/RFC-006).
+  Switching to openai will be denied until cloud is enabled + provider allowed
+  (core deny-by-default), surfaced as "denied" in the UI.
+- **Next step:** the connectors (integrations) view, and RFC-005 chat sessions
+  (the largest remaining requested feature). A `runtime.set_provider` entry in the
+  doc `capability-catalog.md` is a small follow-up (deferred to avoid colliding
+  with the parallel RFC-007 edits to that file).
+
 ### Iteration 47 — 2026-06-26 (post-§19; governed provider/model write endpoint, RFC-004)
 - **Done:** governed settings-write `POST /spheres/:id/runtime`. Adds a
   `runtime.set_provider` catalog capability (high risk, adults-only). The handler

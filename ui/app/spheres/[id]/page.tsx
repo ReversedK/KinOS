@@ -1,5 +1,6 @@
 import { apiBaseUrl, getAgents, getMembers, getRuntime, getSphere } from "../../../lib/api";
 import { RunCapability } from "./RunCapability";
+import { SetRuntime } from "./SetRuntime";
 
 // Read-only Sphere detail: members and agents (security facts only — role,
 // status, capabilities), never private profile or memory content (§18).
@@ -63,6 +64,7 @@ export default async function SpherePage({ params }: { params: { id: string } })
               {runtime.allowed ? "" : " · current profile not permitted"}
             </div>
           </div>
+          <SetRuntime baseUrl={base} sphereId={params.id} members={members.map((m) => ({ id: m.id, role: m.role }))} />
         </section>
 
         <section style={{ marginTop: "1.5rem" }}>

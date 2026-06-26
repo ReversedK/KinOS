@@ -10,6 +10,7 @@ import {
   getSphere,
   getSpheres,
   grantApproval,
+  setRuntime,
 } from "./api";
 
 function fakeFetch(body: unknown, status = 200): typeof fetch {
@@ -141,5 +142,33 @@ describe("UI API client", () => {
     await expect(
       grantApproval("http://x", "apr_1", { memberId: "mbr_p2", role: "parent" }, fakeFetch({}, 409)),
     ).rejects.toThrow(/failed: 409/);
+  });
+
+  it("setRuntime POSTs subject + profile and returns the outcome", async () => {
+    const { impl, calls } = capturingFetch({ status: "executed", provider: "ollama", model: "mistral", execution: "local" });
+    const out = await setRuntime(
+      "http://x",
+      "sph_1",
+      { memberId: "mbr_p1", role: "parent", ageProfile: "adult" },
+      { providerId: "ollama", model: "mistral", execution: "local" },
+      impl,
+    );
+    expect(out).toMatchObject({ status: "executed", model: "mistral" });
+    expect(calls[0]?.url).toBe("http://x/spheres/sph_1/runtime");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      subject: { memberId: "mbr_p1", role: "parent", ageProfile: "adult" },
+      profile: { providerId: "ollama", model: "mistral", execution: "local" },
+    });
+  });
+
+  it("setRuntime returns a denial (403) instead of throwing", async () => {
+    const out = await setRuntime(
+      "http://x",
+      "sph_1",
+      { role: "child", ageProfile: "child" },
+      { providerId: "ollama", model: "mistral", execution: "local" },
+      fakeFetch({ code: "forbidden", message: "denied" }, 403),
+    );
+    expect(out).toMatchObject({ code: "forbidden" });
   });
 });
