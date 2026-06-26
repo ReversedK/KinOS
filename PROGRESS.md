@@ -58,6 +58,31 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 38 — 2026-06-26 (post-§19; governed write API — capability execute, RFC-003)
+- **Done:** first governed **write** endpoint in the API router (api-contract
+  §Capability): `POST /spheres/:id/capabilities/:name/execute`. ApiRequest gained
+  a parsed `body`; ApiDeps gained optional write deps (`executor`, `auditSink`,
+  `newApprovalId`, injectable `now`). The handler loads the Sphere, runs
+  `beginSensitiveAction` over its catalog/bindings/policies, threads the entry
+  correlation id through the execution context + audit chain, persists a pending
+  approval, and maps outcomes to HTTP: executed → 200, denied → 403 `forbidden`,
+  require_approval → 202 `approval_required` (referencing the ApprovalRequest).
+  Deny-by-default: missing write deps → 501; missing subject → 400; missing
+  Sphere → 404. The router still decides no authorization the Policy Engine
+  couldn't (coding principle 1). 6 new tests (executed+audited, child denied by
+  profile floor, 202 approval persisted, 404, 400, 501).
+- **Verified (in container):** `npm test packages/app/api/src/router.test.ts` →
+  17 passed; `typecheck` → exit 0.
+- **Decisions:** the subject is taken from the request body for this dev slice
+  (real identity resolution / auth is deferred — RFC-003); the Policy Engine still
+  governs every call so a client-claimed role cannot exceed policy. Kept the read
+  server read-only (no executor wired in main.ts yet → 501), and did not touch
+  server.ts body-parsing — both are the next wiring step.
+- **Next step:** wire the HTTP server (`server.ts` body parsing) + `main.ts`
+  (executor-local + audit sink + newApprovalId) so the write endpoint is reachable
+  over HTTP, then add more governed writes (integration enable/disable, approval
+  grant/deny) and the RFC-003 UI actions on top.
+
 ### Iteration 37 — 2026-06-26 (post-§19; run --as wiring + audit, RFC-006)
 - **Done:** wired dev impersonation end-to-end through the governed `run` path.
   Added the `identity.impersonated` audit event type (event-model.md + core

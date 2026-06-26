@@ -11,19 +11,37 @@
  * only surfaces already-governed state (coding principle 1).
  */
 
-import type { ApprovalStore, AuditReader, SphereStore } from "@kinos/core";
+import {
+  beginSensitiveAction,
+  defaultCapabilityCatalog,
+  importSphere,
+  type ApprovalStore,
+  type AuditReader,
+  type AuditSink,
+  type CapabilityExecutionRequest,
+  type CapabilityExecutor,
+  type SphereStore,
+} from "@kinos/core";
 
 export interface ApiDeps {
   readonly store: SphereStore;
   readonly approvals: ApprovalStore;
   readonly audit: AuditReader;
   readonly newCorrelationId: () => string;
+  /** Write path (governed capability execution). Absent → execution disabled. */
+  readonly executor?: CapabilityExecutor;
+  readonly auditSink?: AuditSink;
+  readonly newApprovalId?: () => string;
+  /** Injectable clock for the execution context; defaults to wall-clock. */
+  readonly now?: () => string;
 }
 
 export interface ApiRequest {
   readonly method: string;
   readonly path: string;
   readonly query?: Readonly<Record<string, string | undefined>>;
+  /** Parsed JSON body for write requests. */
+  readonly body?: unknown;
 }
 
 export interface ApiResponse {
@@ -43,11 +61,80 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     body: { code, message },
   });
 
+  const segments = req.path.split("/").filter((s) => s.length > 0);
+
+  // --- Governed write path: request capability execution (api-contract §Capability) ---
+  // POST /spheres/:id/capabilities/:name/execute
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 5 &&
+    segments[2] === "capabilities" &&
+    segments[4] === "execute"
+  ) {
+    if (deps.executor === undefined || deps.auditSink === undefined || deps.newApprovalId === undefined) {
+      return err(501, "invalid_request", "Capability execution is not enabled on this server");
+    }
+    const sphereId = segments[1] as string;
+    const capabilityName = decodeURIComponent(segments[3] as string);
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: CapabilityExecutionRequest["subject"];
+      input?: unknown;
+      execution?: "local" | "cloud";
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+
+    const imported = importSphere(snap);
+    const request: CapabilityExecutionRequest = {
+      subject,
+      capabilityName,
+      input: body.input === undefined ? {} : body.input,
+      context: {
+        sphereId,
+        time: (deps.now ?? (() => new Date().toISOString()))(),
+        execution: body.execution === "cloud" ? "cloud" : "local",
+        correlationId,
+      },
+    };
+
+    const result = await beginSensitiveAction(request, {
+      catalog: defaultCapabilityCatalog(),
+      bindings: imported.bindings,
+      policies: imported.policies,
+      executor: deps.executor,
+      audit: deps.auditSink,
+      newApprovalId: deps.newApprovalId,
+    });
+
+    if (result.status === "pending_approval" && result.approval !== undefined) {
+      await deps.approvals.save({ approval: result.approval, request });
+      return {
+        status: 202,
+        correlationId,
+        code: "approval_required",
+        body: {
+          status: result.status,
+          reason: result.reason,
+          approvalId: result.approval.id,
+          approverRoles: result.approval.approverRoles,
+        },
+      };
+    }
+    if (result.status === "denied") {
+      return err(403, "forbidden", result.reason);
+    }
+    return ok({ status: result.status, reason: result.reason });
+  }
+
   if (req.method !== "GET") {
     return err(405, "invalid_request", "Only GET is supported by the read API");
   }
-
-  const segments = req.path.split("/").filter((s) => s.length > 0);
 
   if (segments.length === 1 && segments[0] === "health") {
     return ok({ ok: true });
