@@ -58,6 +58,30 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 34 — 2026-06-26 (post-§19; runtime selection helper, RFC-004)
+- **Done:** `packages/app/cli/src/runtime-select.ts` `selectRuntime(config,
+  agentModelPreference?, deps?)` — app-layer composition that resolves the
+  effective RuntimeProfile, enforces the Sphere's allow rules via the core's
+  `assertProfileAllowed` (deny-by-default), then constructs the matching adapter
+  (OllamaRuntime local / OpenAiRuntime cloud). Cloud credentials are resolved here
+  from `profile.secretRef` through an injected `SecretResolver`; the profile only
+  ever holds the reference. No fallback to a default provider on denial/missing
+  secret (principle 6). Adapters are imported only in the app layer, never the
+  core (principle 1). Added `@kinos/runtime-openai` to the CLI tsconfig
+  paths/references + package deps. 6 tests (ollama default, model override,
+  openai-when-allowed+secret, provider-not-allowed, cloud-disabled, secret-
+  unresolvable).
+- **Verified (in container):** `npm install` + `npm test
+  packages/app/cli/src/runtime-select.test.ts` → 6 passed; `typecheck` → exit 0.
+- **Decisions:** helper lives in the CLI for now; promote to a shared app module
+  when the read/write API needs it too. The MVP scenario/`run` still wire Ollama
+  directly — switching them to `selectRuntime` (reading the Sphere's persisted
+  runtimeConfig) is the natural follow-up.
+- **Next step:** wire `selectRuntime` into the governed `run`/scenario paths so a
+  Sphere's persisted provider/model actually drives inference; then RFC-006 (dev
+  impersonation) to unblock multi-member testing, the governed write API, and the
+  RFC-003 UI.
+
 ### Iteration 33 — 2026-06-26 (post-§19; persist RuntimeProfile in export, RFC-004)
 - **Done:** added an optional `runtimeConfig` (`SphereRuntimeConfig`) section to
   the `SphereExport` snapshot — additive, no version bump (like `bindings` in

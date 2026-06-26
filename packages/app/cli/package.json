@@ -8,7 +8,8 @@
     "@kinos/core": "*",
     "@kinos/executor-local": "*",
     "@kinos/persistence-sqlite": "*",
-    "@kinos/runtime-ollama": "*"
+    "@kinos/runtime-ollama": "*",
+    "@kinos/runtime-openai": "*"
   },
   "scripts": {
     "mvp": "tsx src/main.ts mvp",

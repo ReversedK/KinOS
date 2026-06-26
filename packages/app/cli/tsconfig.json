@@ -8,6 +8,7 @@
     "paths": {
       "@kinos/core": ["../../core/src/index.ts"],
       "@kinos/runtime-ollama": ["../../adapters/runtime-ollama/src/index.ts"],
+      "@kinos/runtime-openai": ["../../adapters/runtime-openai/src/index.ts"],
       "@kinos/persistence-sqlite": ["../../adapters/persistence-sqlite/src/index.ts"],
       "@kinos/executor-local": ["../../adapters/executor-local/src/index.ts"]
     }
@@ -15,6 +16,7 @@
   "references": [
     { "path": "../../core" },
     { "path": "../../adapters/runtime-ollama" },
+    { "path": "../../adapters/runtime-openai" },
     { "path": "../../adapters/persistence-sqlite" },
     { "path": "../../adapters/executor-local" }
   ],
