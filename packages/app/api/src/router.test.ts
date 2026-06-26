@@ -269,3 +269,135 @@ describe("API router — capability execution (write path)", () => {
     expect(res.status).toBe(501);
   });
 });
+
+// --- Governed write path: POST approval grant/deny (api-contract §Approval) ---
+
+describe("API router — approval resolution (write path)", () => {
+  const allowAdultPayment: Policy = {
+    id: "pol_pay",
+    sphereId: "sph_1",
+    description: "Adults may execute payments.",
+    subjectSelector: { ageProfiles: ["adult"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["payment.execute"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+  const paymentBinding: CapabilityBinding = {
+    capability: "payment.execute",
+    runtime: "local",
+    runtimeToolName: "local.pay",
+    execution: "local",
+    risk: "critical",
+    requiresApproval: false,
+    status: "enabled",
+  };
+
+  async function approvalDeps() {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe Family",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    await store.save(
+      exportSphere({ sphere, identities: [], agents: [], memory: [], policies: [allowAdultPayment], bindings: [paymentBinding], exportedAt: NOW }),
+    );
+    const approvals = new InMemoryApprovalStore();
+    const decision: PolicyDecision = {
+      effect: "require_approval",
+      reason: "payment needs a parent",
+      matchedPolicyId: "pol_pay",
+      matchedPolicyVersion: 1,
+      approval: { approverRoles: ["parent"], expiresInSeconds: 3600 },
+      correlationId: "cor_y",
+    };
+    await approvals.save({
+      approval: createApprovalFromDecision({
+        id: "apr_1",
+        sphereId: "sph_1",
+        decision,
+        requestedBy: { agentId: "agt_0", onBehalfOf: "mbr_p1" },
+        action: { capabilityName: "payment.execute", riskLevel: "critical", summary: "pay" },
+        createdAt: NOW,
+      }),
+      request: {
+        subject: { memberId: "mbr_p1", role: "parent", ageProfile: "adult" },
+        capabilityName: "payment.execute",
+        input: {},
+        context: { sphereId: "sph_1", time: NOW, execution: "local", correlationId: "cor_y" },
+      },
+    });
+    const audit = new InMemoryAuditSink();
+    let calls = 0;
+    const executor: CapabilityExecutor = {
+      async execute() {
+        calls += 1;
+        return { paid: true };
+      },
+    };
+    let n = 0;
+    const deps: ApiDeps = {
+      store,
+      approvals,
+      audit,
+      auditSink: audit,
+      executor,
+      newCorrelationId: () => `req_${++n}`,
+      newApprovalId: () => "apr_1",
+      now: () => NOW,
+    };
+    return { deps, approvals, calls: () => calls };
+  }
+
+  const parentApprover = { approver: { memberId: "mbr_p2", role: "parent" } };
+
+  it("grant resumes the authorized action (200 executed)", async () => {
+    const { deps, calls } = await approvalDeps();
+    const res = await handleApiRequest(
+      { method: "POST", path: "/approvals/apr_1/grant", body: parentApprover },
+      deps,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ approvalId: "apr_1", status: "executed" });
+    expect(calls()).toBe(1);
+  });
+
+  it("deny records a denial and executes nothing (200 denied)", async () => {
+    const { deps, calls } = await approvalDeps();
+    const res = await handleApiRequest(
+      { method: "POST", path: "/approvals/apr_1/deny", body: parentApprover },
+      deps,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "denied" });
+    expect(calls()).toBe(0);
+  });
+
+  it("404s an unknown approval", async () => {
+    const { deps } = await approvalDeps();
+    const res = await handleApiRequest({ method: "POST", path: "/approvals/nope/grant", body: parentApprover }, deps);
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects a missing approver (400)", async () => {
+    const { deps } = await approvalDeps();
+    const res = await handleApiRequest({ method: "POST", path: "/approvals/apr_1/grant", body: {} }, deps);
+    expect(res.status).toBe(400);
+  });
+
+  it("409s an already-resolved approval", async () => {
+    const { deps } = await approvalDeps();
+    await handleApiRequest({ method: "POST", path: "/approvals/apr_1/grant", body: parentApprover }, deps);
+    const again = await handleApiRequest({ method: "POST", path: "/approvals/apr_1/grant", body: parentApprover }, deps);
+    expect(again.status).toBe(409);
+  });
+
+  it("501 when resolution is not enabled (read-only deps)", async () => {
+    const res = await handleApiRequest({ method: "POST", path: "/approvals/apr_1/grant", body: parentApprover }, await deps());
+    expect(res.status).toBe(501);
+  });
+});

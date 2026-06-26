@@ -12,14 +12,17 @@
  */
 
 import {
+  ageProfileForRole,
   beginSensitiveAction,
   defaultCapabilityCatalog,
   importSphere,
+  resolveApproval,
   type ApprovalStore,
   type AuditReader,
   type AuditSink,
   type CapabilityExecutionRequest,
   type CapabilityExecutor,
+  type Role,
   type SphereStore,
 } from "@kinos/core";
 
@@ -130,6 +133,71 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       return err(403, "forbidden", result.reason);
     }
     return ok({ status: result.status, reason: result.reason });
+  }
+
+  // --- Governed write path: resolve an approval (api-contract §Approval) ---
+  // POST /approvals/:id/grant | /approvals/:id/deny
+  if (
+    req.method === "POST" &&
+    segments[0] === "approvals" &&
+    segments.length === 3 &&
+    (segments[2] === "grant" || segments[2] === "deny")
+  ) {
+    if (deps.executor === undefined || deps.auditSink === undefined) {
+      return err(501, "invalid_request", "Approval resolution is not enabled on this server");
+    }
+    const approvalId = segments[1] as string;
+    const decision = segments[2] === "grant" ? "grant" : "deny";
+
+    const pending = await deps.approvals.load(approvalId);
+    if (pending === undefined) return err(404, "not_found", "Approval not found");
+    if (pending.approval.state !== "pending") {
+      return err(409, "invalid_request", `Approval is already ${pending.approval.state}`);
+    }
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      approver?: { memberId?: string; role?: string };
+    };
+    const approver = body.approver;
+    if (approver === undefined || typeof approver.memberId !== "string" || typeof approver.role !== "string") {
+      return err(400, "invalid_request", "An approver with memberId and role is required");
+    }
+
+    const snap = await deps.store.load(pending.approval.sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+
+    const result = await resolveApproval(
+      pending.approval,
+      {
+        approver: {
+          memberId: approver.memberId,
+          roles: [approver.role],
+          ageProfile: ageProfileForRole(approver.role as Role),
+        },
+        decision,
+        at: (deps.now ?? (() => new Date().toISOString()))(),
+      },
+      pending.request,
+      {
+        catalog: defaultCapabilityCatalog(),
+        bindings: imported.bindings,
+        policies: imported.policies,
+        executor: deps.executor,
+        audit: deps.auditSink,
+        newApprovalId: () => approvalId,
+      },
+    );
+
+    if (result.approval !== undefined) {
+      await deps.approvals.save({ approval: result.approval, request: pending.request });
+    }
+    return ok({
+      approvalId,
+      capability: pending.approval.action.capabilityName,
+      status: result.status,
+      reason: result.reason,
+    });
   }
 
   if (req.method !== "GET") {

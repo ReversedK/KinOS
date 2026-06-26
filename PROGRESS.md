@@ -58,6 +58,28 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 40 — 2026-06-26 (post-§19; governed approval grant/deny API, RFC-003)
+- **Done:** added governed approval-resolution write endpoints to the router
+  (api-contract §Approval): `POST /approvals/:id/grant` and `/deny`. Loads the
+  persisted pending action, derives the approver's age profile from their role
+  (`ageProfileForRole` — so a minor approver is rejected by the core, never
+  elevated), runs `resolveApproval` over the Sphere's catalog/bindings/policies +
+  executor + audit sink, persists the updated approval, and returns the recorded
+  outcome (executed / denied / still pending) under the correlation id. Mirrors
+  the CLI `approve` command on the HTTP surface. Deny-by-default / fail closed:
+  501 when write deps absent, 404 unknown approval, 400 missing approver, 409
+  already-resolved. 6 new tests (grant→executed, deny→denied + nothing run, 404,
+  400, 409, 501).
+- **Verified (in container):** `npm test packages/app/api/src/router.test.ts` →
+  23 passed; `typecheck` → exit 0.
+- **Decisions:** approver age profile is derived from role (not client-claimed),
+  preserving "a minor can never approve"; the action is referenced (re-run via
+  the persisted request), never copied (ADR-004).
+- **Next step:** wire grant/deny into the HTTP server path (already generic via
+  body parsing — add a server test), then governed integration enable/disable;
+  after that, start the RFC-003 UI actions consuming these endpoints, and RFC-005
+  chat sessions.
+
 ### Iteration 39 — 2026-06-26 (post-§19; write path reachable over HTTP, RFC-003)
 - **Done:** made the governed capability-execution endpoint reachable over HTTP.
   `server.ts` now reads + JSON-parses the request body for non-GET methods
