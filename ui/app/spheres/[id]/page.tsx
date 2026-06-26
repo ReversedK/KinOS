@@ -1,4 +1,4 @@
-import { apiBaseUrl, getAgents, getMembers, getSphere } from "../../../lib/api";
+import { apiBaseUrl, getAgents, getMembers, getRuntime, getSphere } from "../../../lib/api";
 import { RunCapability } from "./RunCapability";
 
 // Read-only Sphere detail: members and agents (security facts only — role,
@@ -6,10 +6,11 @@ import { RunCapability } from "./RunCapability";
 export default async function SpherePage({ params }: { params: { id: string } }) {
   const base = apiBaseUrl();
   try {
-    const [sphere, members, agents] = await Promise.all([
+    const [sphere, members, agents, runtime] = await Promise.all([
       getSphere(base, params.id),
       getMembers(base, params.id),
       getAgents(base, params.id),
+      getRuntime(base, params.id),
     ]);
 
     return (
@@ -47,6 +48,21 @@ export default async function SpherePage({ params }: { params: { id: string } })
               ))}
             </ul>
           )}
+        </section>
+
+        <section style={{ marginTop: "1.5rem" }}>
+          <h3>Inference runtime</h3>
+          <div style={{ border: "1px solid #2a2d34", borderRadius: 6, padding: "0.5rem 0.75rem" }}>
+            <strong>{runtime.provider}</strong> · {runtime.model}{" "}
+            <span style={{ color: "#9aa0a6" }}>
+              · {runtime.execution}
+              {runtime.execution === "cloud" ? (runtime.cloudInferenceEnabled ? " (cloud on)" : " (cloud disabled)") : ""}
+            </span>
+            <div style={{ color: "#9aa0a6", fontSize: "0.85rem" }}>
+              allowed providers: {runtime.allowedProviders.join(", ")}
+              {runtime.allowed ? "" : " · current profile not permitted"}
+            </div>
+          </div>
         </section>
 
         <section style={{ marginTop: "1.5rem" }}>

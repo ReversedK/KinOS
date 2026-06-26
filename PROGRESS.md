@@ -58,6 +58,21 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 45 — 2026-06-26 (post-§19; render runtime info on Sphere page, RFC-003)
+- **Done:** the Sphere detail page now shows an "Inference runtime" section
+  (provider · model · execution, cloud on/disabled, allowed providers, and a flag
+  if the current profile isn't permitted), fetched read-only via `getRuntime` in
+  the server component. Completes the read-side config display next to
+  members/agents; no secrets shown.
+- **Verified (in container):** `next build` → compiled, types valid (route sizes
+  unchanged; the new fetch is server-side).
+- **Decisions:** purely additive read display; the provider/model **write** still
+  awaits the governed-settings slice (it.44 rationale).
+- **Next step:** design the governed admin-settings path (a `runtime.set_provider`
+  capability the Policy Engine checks) to enable a provider/model write, then the
+  connectors view and RFC-005 chat sessions. An end-to-end UI smoke (serve API +
+  drive the pages) is now worthwhile given three interactive/read views exist.
+
 ### Iteration 44 — 2026-06-26 (post-§19; runtime read endpoint + UI client, RFC-004/003)
 - **Done:** `GET /spheres/:id/runtime` — the API counterpart of the CLI
   `describeRuntime`: returns the Sphere's resolved inference profile (provider,
