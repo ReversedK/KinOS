@@ -30,15 +30,20 @@ describe("OllamaRuntime — live (skipped when no Ollama is reachable)", () => {
     expect(Array.isArray(models)).toBe(true);
   });
 
-  it("generates a short completion when a chat model is available", async (ctx) => {
-    const model = pickChatModel(models);
-    if (!available || model === undefined) ctx.skip();
-    const res = await runtime.generate({
-      model: model as string,
-      messages: [{ role: "user", content: "Reply with the single word: ok" }],
-    });
-    expect(typeof res.content).toBe("string");
-    expect(res.content.length).toBeGreaterThan(0);
-    expect(res.model).toBeTruthy();
-  });
+  // Real inference can include a cold model load; allow well beyond the default.
+  it(
+    "generates a short completion when a chat model is available",
+    async (ctx) => {
+      const model = pickChatModel(models);
+      if (!available || model === undefined) ctx.skip();
+      const res = await runtime.generate({
+        model: model as string,
+        messages: [{ role: "user", content: "Reply with the single word: ok" }],
+      });
+      expect(typeof res.content).toBe("string");
+      expect(res.content.length).toBeGreaterThan(0);
+      expect(res.model).toBeTruthy();
+    },
+    60_000,
+  );
 });

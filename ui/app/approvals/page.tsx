@@ -1,5 +1,7 @@
 import { apiBaseUrl, getPendingApprovals } from "../../lib/api";
 
+export const dynamic = "force-dynamic";
+
 // Read-only pending approvals: a supervisor sees what awaits a human decision —
 // capability, Sphere, eligible approver roles — never the action's private
 // payload (§18, privacy-model audit minimality).

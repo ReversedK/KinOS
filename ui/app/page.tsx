@@ -1,5 +1,8 @@
 import { apiBaseUrl, getSphere, getSpheres, type SphereSummary } from "../lib/api";
 
+// Renders against the live read API on every request (never prerendered stale).
+export const dynamic = "force-dynamic";
+
 // Read-only view: lists Spheres and their summaries from the API. The UI shows
 // Spheres/members, never embeddings, vector stores, MCP internals or runtime
 // details (results-contract §18).
