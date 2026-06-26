@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createSession,
   denyApproval,
   executeCapability,
   getAgents,
   getMembers,
   getPendingApprovals,
   getRuntime,
+  getSession,
   getSphere,
   getSpheres,
   grantApproval,
+  listSessions,
+  postChatTurn,
   setRuntime,
 } from "./api";
 
@@ -170,5 +174,51 @@ describe("UI API client", () => {
       fakeFetch({ code: "forbidden", message: "denied" }, 403),
     );
     expect(out).toMatchObject({ code: "forbidden" });
+  });
+
+  // --- chat sessions (RFC-005) ---
+
+  it("listSessions returns the owner's summaries", async () => {
+    const out = await listSessions(
+      "http://x",
+      "sph_1",
+      "mbr_p1",
+      fakeFetch({ sessions: [{ id: "ses_1", title: "Plans", agentId: "agt_1", state: "active", updatedAt: "t", messageCount: 2 }] }),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.id).toBe("ses_1");
+  });
+
+  it("getSession requests the owner-scoped transcript", async () => {
+    const { impl, calls } = capturingFetch({ id: "ses_1", title: "Plans", agentId: "agt_1", state: "active", updatedAt: "t", messages: [] });
+    const out = await getSession("http://x", "sph_1", "ses_1", "mbr_p1", impl);
+    expect(out.id).toBe("ses_1");
+    expect(calls[0]?.url).toBe("http://x/spheres/sph_1/sessions/ses_1?ownerId=mbr_p1");
+  });
+
+  it("createSession POSTs the subject + agentId and returns the new session", async () => {
+    const { impl, calls } = capturingFetch({ id: "ses_1", title: "Plans", agentId: "agt_1", ownerId: "mbr_p1", state: "active" });
+    const out = await createSession("http://x", "sph_1", { memberId: "mbr_p1", role: "parent", ageProfile: "adult" }, "agt_1", "Plans", impl);
+    expect(out.id).toBe("ses_1");
+    expect(calls[0]?.url).toBe("http://x/spheres/sph_1/sessions");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      subject: { memberId: "mbr_p1", role: "parent", ageProfile: "adult" },
+      agentId: "agt_1",
+      title: "Plans",
+    });
+  });
+
+  it("postChatTurn POSTs the text and returns the reply", async () => {
+    const { impl, calls } = capturingFetch({ sessionId: "ses_1", reply: "hello back", messageCount: 2 });
+    const out = await postChatTurn("http://x", "sph_1", "ses_1", { memberId: "mbr_p1", role: "parent", ageProfile: "adult" }, "hi", impl);
+    expect(out.reply).toBe("hello back");
+    expect(calls[0]?.url).toBe("http://x/spheres/sph_1/sessions/ses_1/messages");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ text: "hi" });
+  });
+
+  it("postChatTurn throws on a denial (403)", async () => {
+    await expect(
+      postChatTurn("http://x", "sph_1", "ses_1", { role: "parent", ageProfile: "adult" }, "hi", fakeFetch({}, 403)),
+    ).rejects.toThrow(/failed: 403/);
   });
 });

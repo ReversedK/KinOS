@@ -176,6 +176,97 @@ export async function executeCapability(
   throw new Error(`execute ${capability} failed: ${status}`);
 }
 
+// --- Chat sessions (RFC-005) ---
+
+export interface SessionSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly agentId: string;
+  readonly state: string;
+  readonly updatedAt: string;
+  readonly messageCount: number;
+}
+
+export interface ChatMessage {
+  readonly id: string;
+  readonly role: string;
+  readonly content: string;
+  readonly createdAt: string;
+}
+
+export interface SessionDetail {
+  readonly id: string;
+  readonly title: string;
+  readonly agentId: string;
+  readonly state: string;
+  readonly updatedAt: string;
+  readonly messages: readonly ChatMessage[];
+}
+
+export async function listSessions(
+  baseUrl: string,
+  sphereId: string,
+  ownerId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly SessionSummary[]> {
+  const body = await getJson<{ sessions: readonly SessionSummary[] }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/sessions?ownerId=${encodeURIComponent(ownerId)}`,
+    fetchImpl,
+  );
+  return body.sessions;
+}
+
+export async function getSession(
+  baseUrl: string,
+  sphereId: string,
+  sessionId: string,
+  ownerId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SessionDetail> {
+  return getJson<SessionDetail>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/sessions/${encodeURIComponent(sessionId)}?ownerId=${encodeURIComponent(ownerId)}`,
+    fetchImpl,
+  );
+}
+
+export async function createSession(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  agentId: string,
+  title: string | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ readonly id: string; readonly title: string; readonly agentId: string; readonly ownerId: string; readonly state: string }> {
+  const { status, body } = await postJson<{ id: string; title: string; agentId: string; ownerId: string; state: string }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/sessions`,
+    { subject, agentId, ...(title !== undefined ? { title } : {}) },
+    fetchImpl,
+  );
+  if (status !== 200) throw new Error(`create session failed: ${status}`);
+  return body;
+}
+
+export async function postChatTurn(
+  baseUrl: string,
+  sphereId: string,
+  sessionId: string,
+  subject: ActingSubject,
+  text: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ readonly sessionId: string; readonly reply: string; readonly messageCount: number }> {
+  const { status, body } = await postJson<{ sessionId: string; reply: string; messageCount: number }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/sessions/${encodeURIComponent(sessionId)}/messages`,
+    { subject, text },
+    fetchImpl,
+  );
+  if (status !== 200) throw new Error(`chat turn failed: ${status}`);
+  return body;
+}
+
 export interface SetRuntimeInput {
   readonly providerId: string;
   readonly model: string;

@@ -58,6 +58,23 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 57 — 2026-06-26 (post-§19; UI chat client wrappers, RFC-005)
+- **Done:** added chat wrappers to the UI API client: `listSessions`,
+  `getSession` (owner-scoped transcript), `createSession`, `postChatTurn`, plus
+  `SessionSummary`/`SessionDetail`/`ChatMessage` types. GETs reuse `getJson`; POSTs
+  reuse `postJson` and throw on non-200 (the chat UI acts as the owner). 5 new
+  tests (list, owner-scoped get URL, create POST body, turn POST body + reply,
+  403 throws).
+- **Verified (in container):** `npm test ui/lib` → 20 passed (TS compiled by
+  vitest; full UI validated by `next build` when the page lands).
+- **Decisions:** ownerId is threaded explicitly (auth deferred); postChatTurn
+  throws on denial since the chat composer is owner-driven (unlike capability
+  execution where a 403 is shown inline).
+- **Next step:** the chat page/components — a session list + new-conversation
+  action, a transcript view, and a composer posting turns — mounted under the
+  Sphere (or a dedicated /spheres/[id]/chat route); validate with `next build`.
+  That completes RFC-005 end-to-end and the originally-requested feature set.
+
 ### Iteration 56 — 2026-06-26 (post-§19; session read endpoint + HTTP chat wiring, RFC-005)
 - **Done:** (1) `GET /spheres/:id/sessions/:sid?ownerId=` reads one session with
   its transcript, policy-scoped: the subject's **role is derived from the Sphere's
