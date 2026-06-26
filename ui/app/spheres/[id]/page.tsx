@@ -23,6 +23,11 @@ export default async function SpherePage({ params }: { params: { id: string } })
         <div style={{ color: "#9aa0a6", fontSize: "0.9rem" }}>
           {sphere.type} · {sphere.status}
         </div>
+        <p style={{ marginTop: "0.5rem" }}>
+          <a href={`/spheres/${encodeURIComponent(params.id)}/chat`} style={{ color: "#8ab4f8" }}>
+            Chat with an agent →
+          </a>
+        </p>
 
         <section style={{ marginTop: "1.5rem" }}>
           <h3>Members ({members.length})</h3>

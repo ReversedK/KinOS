@@ -58,6 +58,28 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 58 — 2026-06-26 (post-§19; UI chat view — RFC-005 END-TO-END)
+- **Done:** `/spheres/[id]/chat` route + `Chat` client component: pick the acting
+  member (owner) + agent, start a new conversation, see the owner's session list,
+  open a transcript, and send turns (composer) — all through the governed chat
+  endpoints. A link was added from the Sphere page. The UI only triggers governed
+  actions and renders what the owner is allowed to read (coding principle 1).
+- **Verified (in container):** `next build` → compiled, types valid; new dynamic
+  route `/spheres/[id]/chat` (2.88 kB). ui/lib chat client (20 tests) green.
+- **Milestone:** **RFC-005 is complete end-to-end** — Session/Message domain →
+  store (InMemory + SQLite) → policy-scoped resolver → chat-turn flow (filter
+  before runtime) → API (create/list/read/turn over HTTP, Ollama-wired) → UI chat
+  view. Transcripts stay owner-private and separate from canonical memory + audit.
+- **Requested feature set status:** chat-with-your-agent + session history (RFC-005)
+  ✅; provider/model selection incl. cloud governance (RFC-004) ✅ end-to-end; dev
+  impersonation (RFC-006) ✅ CLI + resolver; admin/config UI + governed write API
+  (RFC-003) ✅ for capability execution, approvals, provider. Remaining from the
+  original ask: the **connectors (integrations)** and **store (packages)** UIs —
+  governed by integration-model + RFC-002, API/UI not yet built.
+- **Next step:** integrations enable/disable governed endpoint + connectors UI;
+  then the package store (RFC-002) browse/install UI. Natural point to pause and
+  summarize if desired — the core requested experiences are demonstrable.
+
 ### Iteration 57 — 2026-06-26 (post-§19; UI chat client wrappers, RFC-005)
 - **Done:** added chat wrappers to the UI API client: `listSessions`,
   `getSession` (owner-scoped transcript), `createSession`, `postChatTurn`, plus
