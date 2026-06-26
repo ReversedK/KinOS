@@ -3,6 +3,7 @@ import {
   InMemoryApprovalStore,
   InMemoryAuditSink,
   InMemorySphereStore,
+  createRuntimeProfile,
   createSphere,
   exportSphere,
   type CapabilityBinding,
@@ -19,6 +20,7 @@ import {
   runCapability,
   approveCapability,
   seedDemoSphere,
+  describeRuntime,
 } from "./commands.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
@@ -39,6 +41,54 @@ describe("CLI commands over a SphereStore (results-contract §1/§15)", () => {
   it("show reports a missing Sphere", async () => {
     const store = new InMemorySphereStore();
     expect(await showSphere(store, "nope")).toMatch(/not found/i);
+  });
+
+  it("describeRuntime reports the local-first default for a freshly init'd Sphere", async () => {
+    const store = new InMemorySphereStore();
+    await initSphere(store, { id: "sph_1", name: "Doe Family", founderName: "P", now: NOW });
+    const out = await describeRuntime(store, "sph_1");
+    expect(out).toContain("provider: ollama");
+    expect(out).toContain("execution: local");
+    expect(out).toContain("cloudInferenceEnabled: false");
+    expect(out).toContain("allowed: yes");
+  });
+
+  it("describeRuntime flags a cloud profile when cloud inference is disabled", async () => {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_2",
+      type: "family",
+      name: "Cloud Family",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    await store.save(
+      exportSphere({
+        sphere,
+        identities: [],
+        agents: [],
+        memory: [],
+        policies: [],
+        runtimeConfig: {
+          defaultProfile: createRuntimeProfile({
+            providerId: "openai",
+            model: "gpt-4o-mini",
+            execution: "cloud",
+            secretRef: "secret://openai/key",
+          }),
+          allowedProviders: ["ollama", "openai"],
+          cloudInferenceEnabled: false,
+        },
+        exportedAt: NOW,
+      }),
+    );
+    const out = await describeRuntime(store, "sph_2");
+    expect(out).toContain("provider: openai");
+    expect(out).toContain("execution: cloud");
+    expect(out).toMatch(/allowed: no/i);
+  });
+
+  it("describeRuntime reports a missing Sphere", async () => {
+    expect(await describeRuntime(new InMemorySphereStore(), "nope")).toMatch(/not found/i);
   });
 
   it("init refuses to overwrite an existing Sphere (deny by default)", async () => {

@@ -9,6 +9,7 @@
  *   export <id>               print a Sphere's export snapshot JSON
  *   run <id> <cap> [adult|child]  run a capability through the governed pipeline
  *   approve <approvalId> [grant|deny]  resolve a pending approval
+ *   runtime <id>              show the inference runtime a Sphere would use
  *   audit <correlationId>     show an action's audit chain
  *
  * Persistence is SQLite at $KINOS_DB (default ./data/kinos.sqlite); the audit
@@ -30,6 +31,7 @@ import { OllamaRuntime } from "@kinos/runtime-ollama";
 
 import {
   approveCapability,
+  describeRuntime,
   exportSphereJson,
   initSphere,
   listSpheres,
@@ -79,7 +81,7 @@ async function runMvp(): Promise<number> {
 }
 
 const USAGE =
-  "usage: kinos <mvp | seed-demo <id> <name> | init <id> <name> | list | show <id> | export <id> | run <id> <cap> [adult|child] | approve <approvalId> [grant|deny] | audit <correlationId>>";
+  "usage: kinos <mvp | seed-demo <id> <name> | init <id> <name> | list | show <id> | export <id> | run <id> <cap> [adult|child] | approve <approvalId> [grant|deny] | runtime <id> | audit <correlationId>>";
 
 async function main(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv;
@@ -221,6 +223,20 @@ async function main(argv: readonly string[]): Promise<number> {
         store.close();
         audit.close();
         approvals.close();
+      }
+      return 0;
+    }
+    case "runtime": {
+      const [id] = rest;
+      if (!id) {
+        console.error("usage: kinos runtime <id>");
+        return 1;
+      }
+      const store = openStore();
+      try {
+        console.log(await describeRuntime(store, id));
+      } finally {
+        store.close();
       }
       return 0;
     }

@@ -58,6 +58,28 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 35 — 2026-06-26 (post-§19; persisted-config → runtime inspection, RFC-004)
+- **Done:** `describeRuntime(store, id)` command + CLI `kinos runtime <id>`. Loads
+  a persisted Sphere snapshot, reads its `runtimeConfig` (via importSphere),
+  resolves the effective RuntimeProfile (`resolveEffectiveProfile`) and reports
+  provider/model/execution, the cloud flag, allowed providers, and whether the
+  profile is permitted (`assertProfileAllowed`, deny-by-default — a cloud profile
+  with cloud disabled reports `allowed: no`). Read-only and provider-free: it
+  inspects the persisted choice without constructing an adapter or a model call.
+  Closes the loop persisted runtimeConfig → resolution end-to-end from the CLI.
+  3 new tests (local-first default, cloud-disabled denial, missing Sphere).
+- **Verified (in container):** `npm test packages/app/cli/src/commands.test.ts` →
+  16 passed; `typecheck` → exit 0.
+- **Decisions:** kept inspection separate from `selectRuntime` (it.34) so it stays
+  network-free and pure-core (no adapter import); the adapter-constructing path is
+  exercised by runtime-select.test.ts. Wiring the chosen runtime into a
+  model-backed capability execution (executor using `selectRuntime` per Sphere)
+  remains, but needs a model-backed binding to be meaningful.
+- **Next step:** start **RFC-006** (dev impersonation) — the identity-resolution
+  `actAs` path behind a dev flag, deny-by-default, audited — to unblock
+  multi-member testing; then the governed write API and the RFC-003 UI. RFC-004 is
+  now end-to-end (config → adapter → persistence → selection → inspection).
+
 ### Iteration 34 — 2026-06-26 (post-§19; runtime selection helper, RFC-004)
 - **Done:** `packages/app/cli/src/runtime-select.ts` `selectRuntime(config,
   agentModelPreference?, deps?)` — app-layer composition that resolves the

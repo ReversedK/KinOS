@@ -9,6 +9,7 @@
 
 import {
   addMember,
+  assertProfileAllowed,
   beginSensitiveAction,
   createAgent,
   createIdentity,
@@ -17,6 +18,7 @@ import {
   exportSphere,
   importSphere,
   resolveApproval,
+  resolveEffectiveProfile,
   type ApprovalStore,
   type AuditReader,
   type AuditSink,
@@ -158,6 +160,33 @@ export async function showSphere(store: SphereStore, id: string): Promise<string
     `status: ${snap.sphere.status}`,
     `members: ${snap.sphere.members.length}`,
     `identities: ${snap.identities.length}`,
+  ].join("\n");
+}
+
+/**
+ * Describe the inference runtime a persisted Sphere would use (RFC-004): resolve
+ * the effective RuntimeProfile from the stored runtimeConfig and report whether
+ * it is permitted (deny-by-default). Read-only and provider-free — it inspects
+ * the persisted choice without constructing an adapter or making a model call.
+ */
+export async function describeRuntime(store: SphereStore, id: string): Promise<string> {
+  const snap = await store.load(id);
+  if (snap === undefined) return `Sphere ${id} not found.`;
+  const { runtimeConfig } = importSphere(snap);
+  const profile = resolveEffectiveProfile(runtimeConfig);
+  let allowed = "yes";
+  try {
+    assertProfileAllowed(runtimeConfig, profile);
+  } catch (e) {
+    allowed = `no (${(e as Error).message})`;
+  }
+  return [
+    `provider: ${profile.providerId}`,
+    `model: ${profile.model}`,
+    `execution: ${profile.execution}`,
+    `cloudInferenceEnabled: ${runtimeConfig.cloudInferenceEnabled}`,
+    `allowedProviders: ${runtimeConfig.allowedProviders.join(", ")}`,
+    `allowed: ${allowed}`,
   ].join("\n");
 }
 
