@@ -817,6 +817,15 @@ describe("API router — package store", () => {
     expect(res.body).toMatchObject({ id: "family-calendar", status: "enabled" });
   });
 
+  it("installs absent dependencies (RFC-002 resolve + dedup)", async () => {
+    const deps = await pkgDeps([allowAdultPackages]);
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "minecraft-themepark" } }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: "minecraft-themepark", installed: ["minecraft-mcp", "minecraft-themepark"] });
+    const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/packages" }, deps);
+    expect((list.body as { packages: { id: string }[] }).packages.map((p) => p.id).sort()).toEqual(["minecraft-mcp", "minecraft-themepark"]);
+  });
+
   it("denies install by default when no policy allows it (403)", async () => {
     const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, await pkgDeps([]));
     expect(res.status).toBe(403);

@@ -58,6 +58,23 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 68 — 2026-06-26 (post-§19; wire dependency resolution into install, RFC-002)
+- **Done:** the `package.install` endpoint now calls `resolveInstallPlan` over the
+  curated catalog + already-installed ids, installing each absent dependency in
+  order (each as an `InstalledPackage`, each audited `package.installed`) and
+  deduping ones already present — fulfilling the RFC-002 criterion end-to-end. The
+  response reports `installed: [...ids]`. Unknown package → 404, cycle → 409,
+  already-installed root → 409. 1 new test (installing the amusement-park skill
+  also installs the Minecraft MCP dependency).
+- **Verified (in container):** `npm test router` → 57 passed; `typecheck` → exit 0.
+- **Decisions:** dropped the single-manifest lookup for the resolver; semver range
+  matching stays minimal (presence by id). Sandbox provisioning + the grant-wizard
+  policy emission remain RFC-002 pipeline concerns; install still grants no use.
+- **Next step:** optional remaining items — real authentication (replace dev
+  subject selection), an "add a connector" create + grant-wizard flow, RFC-007
+  Hermes runtime projection, or per-Sphere cloud runtime selection in the API.
+  The originally-requested surface remains complete; these are enhancements.
+
 ### Iteration 67 — 2026-06-26 (post-§19; package dependency resolution, RFC-002)
 - **Done:** `packages/core/src/package/install-plan.ts` `resolveInstallPlan(rootId,
   catalog, installedIds)` — pure dependency resolver satisfying the RFC-002 criterion

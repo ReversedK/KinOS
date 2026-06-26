@@ -25,9 +25,9 @@ import {
   enablePackage,
   evaluate,
   exportSphere,
-  findStorePackage,
   importSphere,
   installPackage,
+  resolveInstallPlan,
   authorizeSessionRead,
   resolveApproval,
   resolveEffectiveProfile,
@@ -435,28 +435,37 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     );
     if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
 
-    const manifest = findStorePackage(body.packageId);
-    if (manifest === undefined) return err(404, "not_found", "Package not in store");
-    if (imported.packages.some((p) => p.manifest.id === body.packageId)) {
+    const installedIds = imported.packages.map((p) => p.manifest.id);
+    if (installedIds.includes(body.packageId)) {
       return err(409, "invalid_request", "Package already installed");
     }
-    // Install != authorization: status is `installed`; use is granted only by policy.
-    const pkg = installPackage(manifest, sphereId);
-    await deps.store.save(exportSphere({ ...imported, packages: [...imported.packages, pkg], exportedAt: stamp }));
-    deps.auditSink.record({
-      type: "package.installed",
-      sphereId,
-      resourceType: "package",
-      resourceId: manifest.id,
-      decision: "executed",
-      reason: `package.install type=${manifest.type}`,
-      correlationId,
-      createdAt: stamp,
-      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
-      ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
-      ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
-    });
-    return ok({ id: manifest.id, status: pkg.status });
+    // Resolve + dedup dependencies (RFC-002): install absent deps in order.
+    let plan;
+    try {
+      plan = resolveInstallPlan(body.packageId, defaultStoreCatalog(), installedIds);
+    } catch (e) {
+      const msg = (e as Error).message;
+      return /not found/i.test(msg) ? err(404, "not_found", msg) : err(409, "invalid_request", msg);
+    }
+    // Install != authorization: each package is `installed`; use is granted only by policy.
+    const newPackages = plan.map((m) => installPackage(m, sphereId));
+    await deps.store.save(exportSphere({ ...imported, packages: [...imported.packages, ...newPackages], exportedAt: stamp }));
+    for (const m of plan) {
+      deps.auditSink.record({
+        type: "package.installed",
+        sphereId,
+        resourceType: "package",
+        resourceId: m.id,
+        decision: "executed",
+        reason: `package.install type=${m.type}`,
+        correlationId,
+        createdAt: stamp,
+        ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+        ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+        ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+      });
+    }
+    return ok({ id: body.packageId, status: "installed", installed: plan.map((m) => m.id) });
   }
 
   // POST /spheres/:id/packages/:pid/enable | /disable
