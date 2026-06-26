@@ -58,6 +58,27 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 55 — 2026-06-26 (post-§19; chat-turn API endpoint, RFC-005)
+- **Done:** `POST /spheres/:id/sessions/:sid/messages` runs a governed chat turn.
+  Loads the Sphere + session (404 on either missing / sphere mismatch), resolves
+  the model from the Sphere's RuntimeProfile (RFC-004), and calls `runChatTurn`
+  with the Sphere's memory + policies through the injected `AgentRuntime`
+  (added optional `runtime` to ApiDeps). A non-owner turn is refused (403, the
+  flow's owner-private guard); empty text → 400; chat disabled → 501. Persists the
+  updated session and returns the reply + message count (no transcript echoed
+  beyond the reply). 5 new tests (owner turn + persistence, non-owner 403, missing
+  session 404, empty text 400, 501).
+- **Verified (in container):** `npm test router` → 41 passed; `typecheck` → exit 0.
+- **Decisions:** the API uses a single injected runtime + the Sphere's model
+  (per-Sphere adapter selection via `selectRuntime`/cloud is a later server-wiring
+  enhancement); message ids are derived from the correlation id. The turn reply is
+  returned but the full transcript is read via the (future) policy-scoped single-
+  session GET, keeping content access on the owner path.
+- **Next step:** wire SqliteSessionStore + an Ollama runtime into the API
+  `main.ts` so chat works over HTTP; a policy-scoped single-session read endpoint;
+  then the UI chat view (session list + transcript + composer). RFC-005 nears
+  end-to-end.
+
 ### Iteration 54 — 2026-06-26 (post-§19; chat session create/list API, RFC-005)
 - **Done:** chat session endpoints in the router. `POST /spheres/:id/sessions`
   ({subject, agentId, title?}) creates an owner-bound session and persists it;

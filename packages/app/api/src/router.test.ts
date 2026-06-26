@@ -534,6 +534,17 @@ describe("API router — chat sessions", () => {
       approvals: new InMemoryApprovalStore(),
       audit: new InMemoryAuditSink(),
       sessions: new InMemorySessionStore(),
+      runtime: {
+        async listModels() {
+          return ["test-model"];
+        },
+        async generate(request) {
+          return { model: request.model, content: "hello back" };
+        },
+        async isAvailable() {
+          return true;
+        },
+      },
       newCorrelationId: () => `req_${++n}`,
       newSessionId: () => `ses_${++s}`,
       now: () => NOW,
@@ -576,6 +587,57 @@ describe("API router — chat sessions", () => {
 
   it("501 when chat sessions are not enabled (read-only deps)", async () => {
     const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/sessions", body: owner }, await deps());
+    expect(res.status).toBe(501);
+  });
+
+  async function withSession() {
+    const deps = await sessionDeps();
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/sessions", body: owner }, deps);
+    return deps; // session ses_1 now exists, owned by mbr_p1
+  }
+
+  const ownerSubject = { memberId: "mbr_p1", role: "parent", ageProfile: "adult" };
+  const turnPath = "/spheres/sph_1/sessions/ses_1/messages";
+
+  it("posts a chat turn and returns the reply (owner)", async () => {
+    const deps = await withSession();
+    const res = await handleApiRequest(
+      { method: "POST", path: turnPath, body: { subject: ownerSubject, text: "what's on today?" } },
+      deps,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ sessionId: "ses_1", reply: "hello back", messageCount: 2 });
+    // persisted
+    const read = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/sessions", query: { ownerId: "mbr_p1" } }, deps);
+    expect((read.body as { sessions: { messageCount: number }[] }).sessions[0]?.messageCount).toBe(2);
+  });
+
+  it("refuses a turn from a non-owner (403)", async () => {
+    const deps = await withSession();
+    const res = await handleApiRequest(
+      { method: "POST", path: turnPath, body: { subject: { memberId: "mbr_p2", role: "parent", ageProfile: "adult" }, text: "hi" } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("404s a turn on a missing session", async () => {
+    const deps = await withSession();
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/sessions/nope/messages", body: { subject: ownerSubject, text: "hi" } },
+      deps,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an empty text (400)", async () => {
+    const deps = await withSession();
+    const res = await handleApiRequest({ method: "POST", path: turnPath, body: { subject: ownerSubject, text: "  " } }, deps);
+    expect(res.status).toBe(400);
+  });
+
+  it("501 for a chat turn when chat is not enabled (read-only deps)", async () => {
+    const res = await handleApiRequest({ method: "POST", path: turnPath, body: { subject: ownerSubject, text: "hi" } }, await deps());
     expect(res.status).toBe(501);
   });
 });

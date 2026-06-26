@@ -23,7 +23,9 @@ import {
   importSphere,
   resolveApproval,
   resolveEffectiveProfile,
+  runChatTurn,
   setDefaultRuntimeProfile,
+  type AgentRuntime,
   type ApprovalStore,
   type AuditReader,
   type AuditSink,
@@ -49,6 +51,8 @@ export interface ApiDeps {
   /** Chat sessions (RFC-005). Absent → chat endpoints disabled. */
   readonly sessions?: SessionStore;
   readonly newSessionId?: () => string;
+  /** Agent runtime for chat turns. Absent → the turn endpoint is disabled. */
+  readonly runtime?: AgentRuntime;
   /** Injectable clock for the execution context; defaults to wall-clock. */
   readonly now?: () => string;
 }
@@ -338,6 +342,69 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     });
     await deps.sessions.save(session);
     return ok({ id: session.id, title: session.title, agentId: session.agentId, ownerId: session.ownerId, state: session.state });
+  }
+
+  // --- Chat: post a turn (RFC-005) ---
+  // POST /spheres/:id/sessions/:sid/messages  { subject, text, systemPrompt? }
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 5 &&
+    segments[2] === "sessions" &&
+    segments[4] === "messages"
+  ) {
+    if (deps.sessions === undefined || deps.runtime === undefined) {
+      return err(501, "invalid_request", "Chat is not enabled on this server");
+    }
+    const sphereId = segments[1] as string;
+    const sessionId = segments[3] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const session = await deps.sessions.load(sessionId);
+    if (session === undefined || session.sphereId !== sphereId) return err(404, "not_found", "Session not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+      text?: string;
+      systemPrompt?: string;
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    if (typeof body.text !== "string" || body.text.trim() === "") {
+      return err(400, "invalid_request", "A non-empty text is required");
+    }
+
+    const imported = importSphere(snap);
+    const model = resolveEffectiveProfile(imported.runtimeConfig).model;
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+
+    let result;
+    try {
+      result = await runChatTurn(
+        { runtime: deps.runtime },
+        {
+          session,
+          subject,
+          userText: body.text,
+          memory: imported.memory,
+          policies: imported.policies,
+          model,
+          now: stamp,
+          correlationId,
+          userMessageId: `${correlationId}-u`,
+          agentMessageId: `${correlationId}-a`,
+          ...(body.systemPrompt !== undefined ? { systemPrompt: body.systemPrompt } : {}),
+        },
+      );
+    } catch {
+      // Owner-private: a non-owner subject is refused (deny by default).
+      return err(403, "forbidden", "Not authorized for this session");
+    }
+
+    await deps.sessions.save(result.session);
+    return ok({ sessionId, reply: result.reply, messageCount: result.session.messages.length });
   }
 
   if (req.method !== "GET") {
