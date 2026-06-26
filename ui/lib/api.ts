@@ -176,6 +176,60 @@ export async function executeCapability(
   throw new Error(`execute ${capability} failed: ${status}`);
 }
 
+// --- Connectors / integrations (integration-model) ---
+
+export interface IntegrationSummary {
+  readonly id: string;
+  readonly provider: string;
+  readonly status: string;
+  readonly scopes: readonly string[];
+  readonly providesCapabilities: readonly string[];
+}
+
+export async function getIntegrations(
+  baseUrl: string,
+  sphereId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly IntegrationSummary[]> {
+  const body = await getJson<{ integrations: readonly IntegrationSummary[] }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/integrations`,
+    fetchImpl,
+  );
+  return body.integrations;
+}
+
+export interface IntegrationToggleOutcome {
+  readonly id?: string;
+  readonly status?: string;
+  /** Set on a denial (HTTP 403): "forbidden". */
+  readonly code?: string;
+  readonly message?: string;
+}
+
+/**
+ * Enable or disable a connector via the governed endpoint. A denial (403) is a
+ * governed outcome and is returned, not thrown; unexpected statuses throw.
+ */
+export async function setIntegrationEnabled(
+  baseUrl: string,
+  sphereId: string,
+  integrationId: string,
+  enabled: boolean,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<IntegrationToggleOutcome> {
+  const action = enabled ? "enable" : "disable";
+  const { status, body } = await postJson<IntegrationToggleOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/integrations/${encodeURIComponent(integrationId)}/${action}`,
+    { subject },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403) return body;
+  throw new Error(`${action} integration failed: ${status}`);
+}
+
 // --- Chat sessions (RFC-005) ---
 
 export interface SessionSummary {

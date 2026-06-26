@@ -7,6 +7,7 @@ import {
   getAgents,
   getMembers,
   getPendingApprovals,
+  getIntegrations,
   getRuntime,
   getSession,
   getSphere,
@@ -14,6 +15,7 @@ import {
   grantApproval,
   listSessions,
   postChatTurn,
+  setIntegrationEnabled,
   setRuntime,
 } from "./api";
 
@@ -173,6 +175,32 @@ describe("UI API client", () => {
       { providerId: "ollama", model: "mistral", execution: "local" },
       fakeFetch({ code: "forbidden", message: "denied" }, 403),
     );
+    expect(out).toMatchObject({ code: "forbidden" });
+  });
+
+  // --- connectors (integration-model) ---
+
+  it("getIntegrations returns the summaries", async () => {
+    const out = await getIntegrations(
+      "http://x",
+      "sph_1",
+      fakeFetch({ integrations: [{ id: "int_1", provider: "google", status: "proposed", scopes: [], providesCapabilities: [] }] }),
+    );
+    expect(out[0]?.provider).toBe("google");
+  });
+
+  it("setIntegrationEnabled posts to enable/disable and returns the outcome", async () => {
+    const { impl, calls } = capturingFetch({ id: "int_1", status: "enabled" });
+    const out = await setIntegrationEnabled("http://x", "sph_1", "int_1", true, { memberId: "mbr_p1", role: "parent", ageProfile: "adult" }, impl);
+    expect(out).toMatchObject({ id: "int_1", status: "enabled" });
+    expect(calls[0]?.url).toBe("http://x/spheres/sph_1/integrations/int_1/enable");
+    const off = capturingFetch({ id: "int_1", status: "disabled" });
+    await setIntegrationEnabled("http://x", "sph_1", "int_1", false, { role: "parent", ageProfile: "adult" }, off.impl);
+    expect(off.calls[0]?.url).toBe("http://x/spheres/sph_1/integrations/int_1/disable");
+  });
+
+  it("setIntegrationEnabled returns a denial (403) instead of throwing", async () => {
+    const out = await setIntegrationEnabled("http://x", "sph_1", "int_1", true, { role: "child", ageProfile: "child" }, fakeFetch({ code: "forbidden" }, 403));
     expect(out).toMatchObject({ code: "forbidden" });
   });
 

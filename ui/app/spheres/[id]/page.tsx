@@ -1,4 +1,5 @@
-import { apiBaseUrl, getAgents, getMembers, getRuntime, getSphere } from "../../../lib/api";
+import { apiBaseUrl, getAgents, getIntegrations, getMembers, getRuntime, getSphere } from "../../../lib/api";
+import { Connectors } from "./Connectors";
 import { RunCapability } from "./RunCapability";
 import { SetRuntime } from "./SetRuntime";
 
@@ -7,11 +8,12 @@ import { SetRuntime } from "./SetRuntime";
 export default async function SpherePage({ params }: { params: { id: string } }) {
   const base = apiBaseUrl();
   try {
-    const [sphere, members, agents, runtime] = await Promise.all([
+    const [sphere, members, agents, runtime, integrations] = await Promise.all([
       getSphere(base, params.id),
       getMembers(base, params.id),
       getAgents(base, params.id),
       getRuntime(base, params.id),
+      getIntegrations(base, params.id),
     ]);
 
     return (
@@ -70,6 +72,16 @@ export default async function SpherePage({ params }: { params: { id: string } })
             </div>
           </div>
           <SetRuntime baseUrl={base} sphereId={params.id} members={members.map((m) => ({ id: m.id, role: m.role }))} />
+        </section>
+
+        <section style={{ marginTop: "1.5rem" }}>
+          <h3>Connectors</h3>
+          <Connectors
+            baseUrl={base}
+            sphereId={params.id}
+            members={members.map((m) => ({ id: m.id, role: m.role }))}
+            integrations={integrations}
+          />
         </section>
 
         <section style={{ marginTop: "1.5rem" }}>

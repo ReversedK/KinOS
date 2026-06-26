@@ -58,6 +58,22 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 62 — 2026-06-26 (post-§19; connectors UI, RFC-003/integration-model)
+- **Done:** `getIntegrations` + `setIntegrationEnabled` UI client wrappers (403
+  denial returned as data) and a `Connectors` client component (list provider +
+  status + provided capabilities, Enable/Disable per row, acting-member select)
+  mounted in a new "Connectors" section on the Sphere page. The UI only triggers
+  the governed endpoints; secrets are never shown. 3 new client tests.
+- **Verified (in container):** `npm test ui/lib` → 23 passed; `next build` →
+  compiled, types valid (`/spheres/[id]` 3.1 kB).
+- **Decisions:** disable/enable derived from current status; acting member chosen
+  for the dev MVP. "Add a connector" (create + grant wizard) and scope editing
+  remain; the enable/disable management loop is complete UI-side.
+- **Next step:** the package **store** (RFC-002) — browse/install UI + governed
+  package.install path — is the last originally-requested surface. After that the
+  full requested experience (config, connectors, store, chat, dev impersonation)
+  is demonstrable; a good point to pause and summarize.
+
 ### Iteration 61 — 2026-06-26 (post-§19; governed connector enable/disable API, RFC-003/integration-model)
 - **Done:** connector endpoints. `GET /spheres/:id/integrations` lists summaries
   (id, provider, status, scopes, providesCapabilities) — never the secret value.
