@@ -58,6 +58,25 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 59 — 2026-06-26 (post-§19; Integration domain entity, RFC-003/integration-model)
+- **Done:** `packages/core/src/integration/integration.ts` — pure-core
+  `Integration` entity (id, sphereId, provider, scopes, secretRef, providesCapabilities,
+  status) with lifecycle `proposed → enabled → disabled → removed` mirroring the
+  capability-binding lifecycle. `createIntegration` starts **proposed** (deny by
+  default — unavailable until a governed enable); enable/disable/remove/updateScopes
+  are immutable; removed blocks the future; secrets are held by reference only. The
+  concrete provider operation names stay in adapters/bindings, not the domain. 5
+  tests.
+- **Verified (in container):** `npm test packages/core/src/integration` → 5 passed;
+  `typecheck` → exit 0.
+- **Decisions:** modelled the governance-relevant facts only; integration "enable"
+  changes how capabilities run, never whether they're allowed (integration-model
+  rules). Persistence (snapshot field), governed enable/disable endpoints, and the
+  connectors UI are the next slices — same bottom-up path as runtimeConfig/sessions.
+- **Next step:** add `integrations` to the export snapshot (additive), then a
+  governed `integration.enable`/`integration.disable` capability + API endpoints,
+  then the connectors UI; finally the package store (RFC-002).
+
 ### Iteration 58 — 2026-06-26 (post-§19; UI chat view — RFC-005 END-TO-END)
 - **Done:** `/spheres/[id]/chat` route + `Chat` client component: pick the acting
   member (owner) + agent, start a new conversation, see the owner's session list,

@@ -1,0 +1,58 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  createIntegration,
+  disableIntegration,
+  enableIntegration,
+  isActive,
+  removeIntegration,
+  updateScopes,
+} from "./integration.js";
+
+function base() {
+  return createIntegration({
+    id: "int_1",
+    sphereId: "sph_1",
+    provider: "google",
+    scopes: ["calendar.read"],
+    secretRef: "secret://google/oauth",
+    providesCapabilities: ["calendar.create_event"],
+  });
+}
+
+describe("Integration (integration-model.md, RFC-003)", () => {
+  it("is created proposed (deny by default) with a secret reference, not a secret", () => {
+    const i = base();
+    expect(i.status).toBe("proposed");
+    expect(isActive(i)).toBe(false);
+    expect(i.secretRef).toBe("secret://google/oauth");
+    expect(i.providesCapabilities).toEqual(["calendar.create_event"]);
+  });
+
+  it("rejects an empty provider", () => {
+    expect(() => createIntegration({ id: "x", sphereId: "sph_1", provider: "  " })).toThrow(/provider/i);
+  });
+
+  it("enables and disables (immutably)", () => {
+    const i = base();
+    const on = enableIntegration(i);
+    expect(on.status).toBe("enabled");
+    expect(isActive(on)).toBe(true);
+    expect(i.status).toBe("proposed"); // original unchanged
+    expect(disableIntegration(on).status).toBe("disabled");
+  });
+
+  it("blocks the future after removal", () => {
+    const removed = removeIntegration(base());
+    expect(removed.status).toBe("removed");
+    expect(() => enableIntegration(removed)).toThrow(/removed/i);
+    expect(() => disableIntegration(removed)).toThrow(/removed/i);
+  });
+
+  it("updates scopes immutably", () => {
+    const i = base();
+    const next = updateScopes(i, ["calendar.read", "calendar.write"]);
+    expect(next.scopes).toEqual(["calendar.read", "calendar.write"]);
+    expect(i.scopes).toEqual(["calendar.read"]);
+  });
+});
