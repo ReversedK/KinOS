@@ -34,6 +34,7 @@ import {
   initSphere,
   listSpheres,
   runCapability,
+  seedDemoSphere,
   showAudit,
   showSphere,
 } from "./commands.js";
@@ -78,13 +79,27 @@ async function runMvp(): Promise<number> {
 }
 
 const USAGE =
-  "usage: kinos <mvp | init <id> <name> | list | show <id> | export <id> | run <id> <cap> [adult|child] | approve <approvalId> [grant|deny] | audit <correlationId>>";
+  "usage: kinos <mvp | seed-demo <id> <name> | init <id> <name> | list | show <id> | export <id> | run <id> <cap> [adult|child] | approve <approvalId> [grant|deny] | audit <correlationId>>";
 
 async function main(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv;
   switch (command) {
     case "mvp":
       return runMvp();
+    case "seed-demo": {
+      const [id, ...nameParts] = rest;
+      if (!id || nameParts.length === 0) {
+        console.error("usage: kinos seed-demo <id> <name>");
+        return 1;
+      }
+      const store = openStore();
+      try {
+        console.log(await seedDemoSphere(store, { id, name: nameParts.join(" "), now: new Date().toISOString() }));
+      } finally {
+        store.close();
+      }
+      return 0;
+    }
     case "init": {
       const [id, ...nameParts] = rest;
       if (!id || nameParts.length === 0) {

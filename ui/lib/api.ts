@@ -44,7 +44,8 @@ export function apiBaseUrl(): string {
 }
 
 async function getJson<T>(baseUrl: string, path: string, fetchImpl: typeof fetch): Promise<T> {
-  const res = await fetchImpl(`${baseUrl}${path}`);
+  // Live read: never serve a cached response (Next caches fetch by default).
+  const res = await fetchImpl(`${baseUrl}${path}`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`GET ${path} failed: ${res.status}`);
   }

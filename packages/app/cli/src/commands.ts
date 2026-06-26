@@ -8,7 +8,9 @@
  */
 
 import {
+  addMember,
   beginSensitiveAction,
+  createAgent,
   createIdentity,
   createSphere,
   defaultCapabilityCatalog,
@@ -18,8 +20,10 @@ import {
   type ApprovalStore,
   type AuditReader,
   type AuditSink,
+  type CapabilityBinding,
   type CapabilityExecutionRequest,
   type CapabilityExecutor,
+  type Policy,
   type PolicyRequest,
   type SphereStore,
 } from "@kinos/core";
@@ -68,6 +72,75 @@ export async function initSphere(store: SphereStore, args: InitSphereArgs): Prom
     });
   }
   return `Initialized Sphere ${args.id} ("${args.name}").`;
+}
+
+export interface SeedDemoArgs {
+  readonly id: string;
+  readonly name: string;
+  readonly now: string;
+}
+
+/**
+ * Seed the results-contract §19 demo Sphere: two adults and one child, an agent
+ * per member (adult agents may create calendar events), plus the matching
+ * policy + binding so a governed `run` is demonstrable. Persists the snapshot;
+ * refuses to overwrite an existing Sphere.
+ */
+export async function seedDemoSphere(store: SphereStore, args: SeedDemoArgs): Promise<string> {
+  if ((await store.load(args.id)) !== undefined) {
+    throw new Error(`Sphere ${args.id} already exists`);
+  }
+  const member = (n: string, role: "parent" | "child") => ({
+    memberId: `mbr_${args.id}_${n}`,
+    identityId: `idy_${args.id}_${n}`,
+    role,
+  });
+  const p1 = member("p1", "parent");
+  const p2 = member("p2", "parent");
+  const c1 = member("c1", "child");
+
+  let sphere = createSphere({ id: args.id, type: "family", name: args.name, founder: p1 });
+  sphere = addMember(sphere, p2);
+  sphere = addMember(sphere, c1);
+
+  const identities = [
+    createIdentity({ id: p1.identityId, displayName: "Parent One" }),
+    createIdentity({ id: p2.identityId, displayName: "Parent Two" }),
+    createIdentity({ id: c1.identityId, displayName: "Child One" }),
+  ];
+  const agents = [
+    createAgent({ id: `agt_${args.id}_p1`, ownerId: p1.memberId, ownerType: "member", sphereId: args.id, name: "Parent One's agent", enabledCapabilities: ["calendar.create_event"] }),
+    createAgent({ id: `agt_${args.id}_p2`, ownerId: p2.memberId, ownerType: "member", sphereId: args.id, name: "Parent Two's agent", enabledCapabilities: ["calendar.create_event"] }),
+    createAgent({ id: `agt_${args.id}_c1`, ownerId: c1.memberId, ownerType: "member", sphereId: args.id, name: "Child One's agent" }),
+  ];
+  const policies: Policy[] = [
+    {
+      id: `pol_${args.id}_calendar`,
+      sphereId: args.id,
+      description: "Adults may create calendar events.",
+      subjectSelector: { ageProfiles: ["adult"] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["calendar.create_event"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    },
+  ];
+  const bindings: CapabilityBinding[] = [
+    {
+      capability: "calendar.create_event",
+      runtime: "local",
+      runtimeToolName: "local.calendar",
+      execution: "local",
+      risk: "medium",
+      requiresApproval: false,
+      status: "enabled",
+    },
+  ];
+
+  await store.save(exportSphere({ sphere, identities, agents, memory: [], policies, bindings, exportedAt: args.now }));
+  return `Seeded demo Sphere ${args.id} ("${args.name}"): 3 members, 3 agents, 1 policy, 1 binding.`;
 }
 
 export async function listSpheres(store: SphereStore): Promise<string> {

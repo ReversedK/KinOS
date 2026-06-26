@@ -18,6 +18,7 @@ import {
   showAudit,
   runCapability,
   approveCapability,
+  seedDemoSphere,
 } from "./commands.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
@@ -258,6 +259,19 @@ describe("CLI commands over a SphereStore (results-contract §1/§15)", () => {
       { approvalId: "nope", decision: "grant", approverMemberId: "mbr_p2", approverRole: "parent", now: NOW },
     );
     expect(out).toMatch(/not found/i);
+  });
+
+  it("seedDemoSphere creates the §19 demo (3 members, 3 agents) and refuses overwrite", async () => {
+    const store = new InMemorySphereStore();
+    await seedDemoSphere(store, { id: "sph_demo", name: "Demo Family", now: NOW });
+
+    expect(await showSphere(store, "sph_demo")).toContain("members: 3");
+    const snap = await store.load("sph_demo");
+    expect(snap?.agents).toHaveLength(3);
+    expect(snap?.sphere.members).toHaveLength(3);
+    expect(snap?.bindings).toHaveLength(1);
+
+    await expect(seedDemoSphere(store, { id: "sph_demo", name: "X", now: NOW })).rejects.toThrow(/exists/i);
   });
 
   it("showAudit renders a correlation chain and reports an empty one", () => {

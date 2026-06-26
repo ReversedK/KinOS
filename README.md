@@ -154,10 +154,28 @@ A read-only Next.js UI (`ui/`) lists Spheres and (soon) members/agents/approvals
 from the read API, hiding all technical internals (results-contract §18). It
 reads `KINOS_API_URL` (default `http://localhost:8787`).
 
+Seed a demo Sphere (2 adults + 1 child, an agent per member) and run the API +
+UI together in one container (the UI server-renders by calling the API, so they
+share a container; absolute DB paths keep every process on the same database):
+
 ```bash
-docker compose run --rm dev npm run build -w @kinos/ui    # compile + typecheck
-docker compose run --rm -p 3000:3000 dev npm run dev -w @kinos/ui   # dev server
+# 1. seed the §19 demo Sphere
+docker compose run --rm -e KINOS_DB=/app/data/kinos.sqlite dev \
+  npm run cli -w @kinos/cli -- seed-demo sph_demo "Demo Family"
+
+# 2. build, then serve API (:8787) + UI (:3000)
+docker compose run --rm dev npm run build -w @kinos/ui
+docker compose run --rm -p 3000:3000 -p 8787:8787 \
+  -e KINOS_DB=/app/data/kinos.sqlite \
+  -e KINOS_AUDIT_DB=/app/data/audit.sqlite \
+  -e KINOS_APPROVALS_DB=/app/data/approvals.sqlite \
+  -e KINOS_API_URL=http://localhost:8787 \
+  dev sh -lc '(cd packages/app/api && npx tsx src/main.ts &) ; cd ui && npx next start -p 3000'
 ```
+
+Then open <http://localhost:3000>: the Spheres list → a Sphere's members and
+agents → pending approvals. For iterative work, replace `next start` with
+`npm run dev -w @kinos/ui`.
 
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 
