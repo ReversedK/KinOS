@@ -58,6 +58,24 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 50 — 2026-06-26 (post-§19; SessionStore port, RFC-005)
+- **Done:** `packages/core/src/session/store.ts` — `SessionStore` port
+  (save/load/listForOwner/delete) + `InMemorySessionStore` reference impl.
+  `listForOwner(sphereId, ownerId)` returns the member's sessions newest-first,
+  excluding deleted ones and other owners (owner-scoped at the data layer; policy
+  still governs access). Stores/returns JSON clones so callers can't mutate
+  persisted state. 5 tests (clone isolation, missing→undefined, owner+sphere
+  scoping + newest-first + deleted excluded, idempotent delete).
+- **Verified (in container):** `npm test packages/core/src/session` → 12 passed
+  (7 entity + 5 store); `typecheck` → exit 0.
+- **Decisions:** owner-scoping at the store is convenience + defence-in-depth, not
+  the authorization boundary — the policy-scoped resolver (next slice) is. Kept the
+  store separate from SphereStore (sessions aren't part of the Sphere snapshot).
+- **Next step:** a policy-scoped session-read resolver (ask the Policy Engine, like
+  the memory resolver), then a SQLite SessionStore adapter, the chat-turn flow
+  (policy-scoped memory + owner history → AgentRuntime via the Sphere's profile),
+  and the UI chat view + API endpoints.
+
 ### Iteration 49 — 2026-06-26 (post-§19; chat Session/Message domain, RFC-005)
 - **Done:** `packages/core/src/session/session.ts` — pure-core Session + Message
   entities. `createSession` (active, empty, owner-bound, default title),

@@ -19,6 +19,7 @@ export * from "./memory/memory.js";
 export * from "./memory/resolver.js";
 export * from "./agent/agent.js";
 export * from "./session/session.js";
+export * from "./session/store.js";
 export * from "./approval/approval.js";
 export * from "./runtime/runtime.js";
 export * from "./runtime/profile.js";
