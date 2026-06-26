@@ -58,6 +58,31 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 66 — 2026-06-26 (post-§19; store UI — requested surface COMPLETE, RFC-002)
+- **Done:** `/spheres/[id]/store` route + `Store` client component: browse the
+  curated catalog with per-package Install, and an Installed list with
+  Enable/Disable — all via the governed store endpoints. Client wrappers
+  `getStoreCatalog`/`getInstalledPackages`/`installStorePackage`/`setPackageEnabled`
+  (403 denial returned as data). Links to chat + store added on the Sphere page.
+  The UI only triggers; install never grants use; the Policy Engine gates. 5 new
+  client tests.
+- **Verified (in container):** `npm test ui/lib` → 28 passed; `next build` →
+  compiled, types valid; new route `/spheres/[id]/store` (2.76 kB).
+- **MILESTONE — the originally-requested surface is complete end-to-end:**
+  - configure a Sphere: **connectors** (enable/disable, governed) ✅, **provider/
+    model** incl. cloud governance (RFC-004) ✅, **packages/store** browse+install
+    +enable/disable (RFC-002) ✅ — all via governed write API + admin UI (RFC-003);
+  - **chat** with your agent + **session history** (RFC-005) ✅ end-to-end;
+  - **dev impersonation** to act as any member (RFC-006) ✅ (CLI + run --as; UI
+    member selectors anticipate it).
+  Everything is behind the governance pipeline (deny-by-default, policy-checked,
+  audited, secrets by reference, minors restricted, filter-before-runtime).
+- **Remaining / optional (not in the original ask):** real authentication to
+  replace dev subject selection; "add a connector" create+grant-wizard flow;
+  package dependency resolution/dedup + sandbox provisioning (RFC-002 pipeline);
+  per-Sphere cloud runtime selection wiring in the API; RFC-007 Hermes runtime
+  projection. Natural point to pause the loop and summarize.
+
 ### Iteration 65 — 2026-06-26 (post-§19; governed store/package API, RFC-002)
 - **Done:** store endpoints. `GET /store` returns the curated catalog
   (store.browse); `GET /spheres/:id/packages` lists installed packages (manifest

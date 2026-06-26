@@ -7,15 +7,19 @@ import {
   getAgents,
   getMembers,
   getPendingApprovals,
+  getInstalledPackages,
   getIntegrations,
   getRuntime,
   getSession,
   getSphere,
   getSpheres,
+  getStoreCatalog,
   grantApproval,
+  installStorePackage,
   listSessions,
   postChatTurn,
   setIntegrationEnabled,
+  setPackageEnabled,
   setRuntime,
 } from "./api";
 
@@ -176,6 +180,37 @@ describe("UI API client", () => {
       fakeFetch({ code: "forbidden", message: "denied" }, 403),
     );
     expect(out).toMatchObject({ code: "forbidden" });
+  });
+
+  // --- package store (RFC-002) ---
+
+  it("getStoreCatalog returns the catalog", async () => {
+    const out = await getStoreCatalog("http://x", fakeFetch({ packages: [{ id: "p1", type: "skill", title: "P", description: "d", version: "1", publisher: "k", ageRating: "all", dependencies: [], providesCapabilities: [] }] }));
+    expect(out[0]?.id).toBe("p1");
+  });
+
+  it("getInstalledPackages returns installed summaries", async () => {
+    const out = await getInstalledPackages("http://x", "sph_1", fakeFetch({ packages: [{ id: "p1", type: "skill", title: "P", description: "d", status: "installed" }] }));
+    expect(out[0]?.status).toBe("installed");
+  });
+
+  it("installStorePackage posts the packageId and returns the outcome", async () => {
+    const { impl, calls } = capturingFetch({ id: "family-calendar", status: "installed" });
+    const out = await installStorePackage("http://x", "sph_1", { memberId: "mbr_p1", role: "parent", ageProfile: "adult" }, "family-calendar", impl);
+    expect(out).toMatchObject({ id: "family-calendar", status: "installed" });
+    expect(calls[0]?.url).toBe("http://x/spheres/sph_1/packages/install");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ packageId: "family-calendar" });
+  });
+
+  it("installStorePackage returns a denial (403) instead of throwing", async () => {
+    const out = await installStorePackage("http://x", "sph_1", { role: "child", ageProfile: "child" }, "p1", fakeFetch({ code: "forbidden" }, 403));
+    expect(out).toMatchObject({ code: "forbidden" });
+  });
+
+  it("setPackageEnabled posts to enable/disable", async () => {
+    const { impl, calls } = capturingFetch({ id: "p1", status: "enabled" });
+    await setPackageEnabled("http://x", "sph_1", "p1", true, { role: "parent", ageProfile: "adult" }, impl);
+    expect(calls[0]?.url).toBe("http://x/spheres/sph_1/packages/p1/enable");
   });
 
   // --- connectors (integration-model) ---

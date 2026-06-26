@@ -176,6 +176,89 @@ export async function executeCapability(
   throw new Error(`execute ${capability} failed: ${status}`);
 }
 
+// --- Package store (RFC-002) ---
+
+export interface StorePackage {
+  readonly id: string;
+  readonly type: string;
+  readonly title: string;
+  readonly description: string;
+  readonly version: string;
+  readonly publisher: string;
+  readonly ageRating: string;
+  readonly dependencies: ReadonlyArray<{ readonly packageId: string; readonly versionRange: string }>;
+  readonly providesCapabilities: readonly string[];
+}
+
+export interface InstalledPackageSummary {
+  readonly id: string;
+  readonly type: string;
+  readonly title: string;
+  readonly description: string;
+  readonly status: string;
+}
+
+export interface PackageActionOutcome {
+  readonly id?: string;
+  readonly status?: string;
+  readonly code?: string;
+  readonly message?: string;
+}
+
+export async function getStoreCatalog(baseUrl: string, fetchImpl: typeof fetch = fetch): Promise<readonly StorePackage[]> {
+  const body = await getJson<{ packages: readonly StorePackage[] }>(baseUrl, "/store", fetchImpl);
+  return body.packages;
+}
+
+export async function getInstalledPackages(
+  baseUrl: string,
+  sphereId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly InstalledPackageSummary[]> {
+  const body = await getJson<{ packages: readonly InstalledPackageSummary[] }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/packages`,
+    fetchImpl,
+  );
+  return body.packages;
+}
+
+export async function installStorePackage(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  packageId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PackageActionOutcome> {
+  const { status, body } = await postJson<PackageActionOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/packages/install`,
+    { subject, packageId },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403 || status === 409) return body;
+  throw new Error(`install failed: ${status}`);
+}
+
+export async function setPackageEnabled(
+  baseUrl: string,
+  sphereId: string,
+  packageId: string,
+  enabled: boolean,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PackageActionOutcome> {
+  const action = enabled ? "enable" : "disable";
+  const { status, body } = await postJson<PackageActionOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/packages/${encodeURIComponent(packageId)}/${action}`,
+    { subject },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403) return body;
+  throw new Error(`${action} package failed: ${status}`);
+}
+
 // --- Connectors / integrations (integration-model) ---
 
 export interface IntegrationSummary {
