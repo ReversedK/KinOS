@@ -58,6 +58,27 @@ orchestrator. 60 unit/acceptance tests pass; strict tsc clean.
     SQLite audit sink (it.17) are now DONE; Sphere-agent persona and embeddings
     remain.
 
+### Iteration 52 — 2026-06-26 (post-§19; chat-turn flow, RFC-005)
+- **Done:** `packages/core/src/session/chat.ts` `runChatTurn(deps, input)` — the
+  core conversational turn, composing governance without adding authorization:
+  (1) refuses the turn unless the subject owns the session (policy-scoped read);
+  (2) **filters before the runtime** — only `resolveReadableMemory` output + the
+  owner's own history are put in the prompt (coding principle 4); (3) calls the
+  `AgentRuntime` port (provider-free; no permissions in the prompt — principle 2);
+  (4) appends the user message + reply to the session under the correlation id.
+  4 tests, incl. a filter-before-runtime test proving another member's private
+  memory never reaches the runtime, a non-owner refusal that never calls the
+  runtime, and ordered history.
+- **Verified (in container):** `npm test packages/core/src/session` → 21 passed
+  (entity 7 + store 5 + resolver 5 + chat 4); `typecheck` → exit 0.
+- **Decisions:** the flow returns the updated session + reply; persistence and any
+  capability calls the agent makes are the caller's governed responsibility. Memory
+  is injected as an "Authorized context" system message built only from the
+  authorized subset. System prompt is behavioural only (no authorization).
+- **Next step:** a SQLite SessionStore adapter, then API endpoints (create session,
+  post a chat turn, list/read sessions) wiring the store + runtime selection
+  (RFC-004), and the UI chat view with session history. RFC-005 then end-to-end.
+
 ### Iteration 51 — 2026-06-26 (post-§19; policy-scoped session resolver, RFC-005)
 - **Done:** `packages/core/src/session/resolver.ts` — `authorizeSessionRead` /
   `resolveReadableSessions`, mirroring the memory resolver: owner-only structural
