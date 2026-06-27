@@ -1457,3 +1457,40 @@ Runtime adapter → integrations/Packages → UI.
   + transport: local socket vs loopback HTTP), then add the Sphere MCP server
   transport (task #8) and the mutating runtime-governance API endpoints + admin
   UI (task #7) on top of the existing core dispatch.
+
+### Iterations 76–78 — 2026-06-27 (ADR-007; Sphere MCP transport + agent tokens)
+- **ADR-007 drafted + accepted**, resolving RFC-007's two open questions: private
+  transport (Unix socket co-located, else private-network Streamable HTTP) with
+  the **per-agent bearer token as the security boundary**; tokens as secret-store
+  credentials (additive `agent-runtime` owner kind), minted at projection time
+  into the profile `.env` only, resolved at the gateway by one-way hash, rotated/
+  revoked via the existing secret-store lifecycle (stable `secretRef.id`), audited
+  as facts only. Amended `secret-store.md` (owner kind) and `event-model.md`
+  (`runtime.token.provisioned/rotated/revoked`).
+- **76 — token store:** core `AgentTokenStore` port (value never enters the
+  domain) + `SqliteAgentTokenStore`: mints a high-entropy token, returns the raw
+  value once, persists only a SHA-256 hash + a stable `secretRef`; `resolve()` is
+  fail-closed (active-only). Rotation keeps the ref stable; revocation denies
+  future resolution. + `runtime.token.*` audit event types.
+- **77 — Sphere MCP server transport:** minimal MCP JSON-RPC surface
+  (`tools/list` + `tools/call`) over the tested core dispatch, bearer-authenticated
+  (ADR-007). Wired at `POST /spheres/:id/mcp` (served only when MCP deps are
+  present) + `main.ts` with the SQLite token store. **e2e over real HTTP + SQLite:
+  provision token → list → call; a forged token fails closed.**
+- **78 — projection preview endpoint + admin UI:** `POST
+  /spheres/:id/agents/:aid/runtime/projection` (admin-gated, read/compute, no
+  mutation) returns the exact governed config that would be written to an agent's
+  Hermes profile — single Sphere MCP, deny-by-default authorized tool surface,
+  native tools, install disabled, credential by reference. Computed for the
+  **agent's own** policy scope (owner-derived), not the admin caller. UI: per-agent
+  "Preview Hermes projection" panel on the Sphere page.
+- **Verified (in container):** core + adapters + api + ui `tsc` clean; targeted
+  suites green (token store 4, MCP server 5, router 60, e2e 4, projection 5).
+- **Now usable end-to-end:** a Hermes container set with `KINOS_RUNTIME=hermes`
+  chats via the Hermes adapter and calls back into the **Sphere MCP** with its
+  per-agent token to reach policy-scoped capabilities.
+- **Deferred (task #9):** the *mutating* approval-gated capabilities
+  (`runtime.config.project` mint/rotate + profile write, `session.backup/restore`)
+  — they need execution routed through bindings + a runtime-governance executor so
+  the approval floor + grant re-run compose, and a live Hermes profile dir to
+  write/back up. Best built against a running Hermes.
