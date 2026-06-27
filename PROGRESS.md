@@ -1528,3 +1528,26 @@ Runtime adapter → integrations/Packages → UI.
   env/`.env`; note that `hermes mcp test` CLI needs the mcp[cli]/typer extra).
 - **Verified (in container):** full suite `npx vitest run` (excl. live-ollama)
   → 328 passed; `tsc` clean. Live Hermes integration verified as above.
+
+### Iteration 84 — 2026-06-27 (retire HermesRuntime; Hermes inference via OpenAI adapter)
+- **Confirmed from the hermes-agent source** that Hermes exposes an
+  **OpenAI-compatible API server** (`gateway/platforms/api_server.py`):
+  `GET /v1/models`, `POST /v1/chat/completions` (+ `/v1/responses`, `/v1/runs*`),
+  default port **8642**, Bearer `API_SERVER_KEY` (server refuses to start without
+  it; refuses a `<16`-char key on a `0.0.0.0` bind), and **the `model` field
+  selects the Hermes profile** (`API_SERVER_MODEL_NAME` defaults to the profile
+  name, `hermes-agent` for the default profile).
+- **Retired the bespoke `HermesRuntime`** (it assumed a non-existent
+  `/agents/{profile}/messages` endpoint) and the now-dead `RuntimeRequest.agentId`
+  field. Hermes-as-inference now **reuses `@kinos/runtime-openai`** pointed at
+  `HERMES_BASE_URL` (default `http://localhost:8642/v1`) with `HERMES_API_KEY`;
+  `KINOS_RUNTIME=hermes` selects it (a boring swap). The `runtime-hermes` package
+  keeps its RFC-007 config-projection writer. api deps/tsconfig + compose env
+  updated.
+- **Verified against the real Hermes image** (`gateway run` with a strong
+  `API_SERVER_KEY` on `0.0.0.0`): the **actual KinOS `OpenAiRuntime`** →
+  `isAvailable: true`, `listModels: ["hermes-agent"]`; a wrong key →
+  `isAvailable: false` + `401 Unauthorized` from the adapter. (Full
+  `/v1/chat/completions` generation needs Hermes configured with an LLM provider —
+  operator setup; the wire/auth path is identical to the proven `listModels`.)
+- **Verified (in container):** 250 targeted tests green; `tsc` clean.
