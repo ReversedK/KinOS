@@ -41,9 +41,12 @@ services:
       - KINOS_API_PORT=8787
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       # Boring runtime swap (coding principle 9). Default local-first Ollama;
-      # set to "hermes" once the hermes service below is enabled.
+      # set to "hermes" once the hermes service below is enabled. Hermes-as-
+      # inference reuses the OpenAI adapter against Hermes' OpenAI-compatible API
+      # server (/v1, default :8642), Bearer-authenticated by API_SERVER_KEY.
       - KINOS_RUNTIME=${KINOS_RUNTIME:-ollama}
-      - HERMES_BASE_URL=http://hermes:9001
+      - HERMES_BASE_URL=http://hermes:8642/v1
+      - HERMES_API_KEY=${HERMES_API_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # ADR-007 hardening note: the Sphere MCP is currently path-mounted on this

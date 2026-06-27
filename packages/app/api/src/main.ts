@@ -19,21 +19,32 @@ import {
   SqliteSessionStore,
   SqliteSphereStore,
 } from "@kinos/persistence-sqlite";
-import { HermesRuntime } from "@kinos/runtime-hermes";
 import { OllamaRuntime } from "@kinos/runtime-ollama";
+import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
 
 /**
  * Select the agent runtime. A "boring" swap (coding principle 9): changing the
- * runtime needs no policy, memory or capability migration. RFC-007's Hermes is
- * opt-in via KINOS_RUNTIME=hermes; the default stays local-first Ollama so dev
- * without a Hermes container keeps working.
+ * runtime needs no policy, memory or capability migration. Hermes is opt-in via
+ * KINOS_RUNTIME=hermes; the default stays local-first Ollama so dev without a
+ * Hermes container keeps working.
+ *
+ * Hermes exposes an OpenAI-compatible API server (`/v1/chat/completions`,
+ * `/v1/models`, Bearer-authenticated by API_SERVER_KEY — verified against the
+ * NousResearch/hermes-agent image), so Hermes-as-inference reuses the OpenAI
+ * adapter pointed at it. There is no bespoke Hermes runtime. The request `model`
+ * selects the Hermes profile (one profile per agent); set the Sphere's model
+ * (RFC-004) to the target profile name.
  */
 function selectRuntime(): AgentRuntime {
-  return (process.env["KINOS_RUNTIME"] ?? "ollama").toLowerCase() === "hermes"
-    ? new HermesRuntime()
-    : new OllamaRuntime();
+  if ((process.env["KINOS_RUNTIME"] ?? "ollama").toLowerCase() === "hermes") {
+    return new OpenAiRuntime({
+      baseUrl: process.env["HERMES_BASE_URL"] ?? "http://localhost:8642/v1",
+      apiKey: process.env["HERMES_API_KEY"] ?? "",
+    });
+  }
+  return new OllamaRuntime();
 }
 
 function ensureDir(path: string): string {

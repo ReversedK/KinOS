@@ -20,12 +20,6 @@ export interface RuntimeRequest {
   /** Model tag/preference; the runtime owns no memory and is replaceable. */
   readonly model: string;
   readonly messages: readonly RuntimeMessage[];
-  /**
-   * The calling agent, used by runtimes that route per-agent (RFC-007: one
-   * Hermes profile per principal). Provider-free runtimes (Ollama, OpenAI)
-   * ignore it; it is never an authorization (authorization is decided upstream).
-   */
-  readonly agentId?: string;
 }
 
 export interface RuntimeResponse {
