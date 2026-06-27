@@ -1577,3 +1577,30 @@ Runtime adapter → integrations/Packages → UI.
 - **Remaining (task #9b):** `runtime.session.backup` / `restore` — need an
   encrypted-blob adapter (tar+encrypt a profile dir) + a SQLite SnapshotStore.
   Deferred; the snapshot entity/guard + capabilities already exist.
+
+### Iteration 86 — 2026-06-27 (task #9b: runtime.session.backup/restore, governed + live)
+- **Encrypted-blob + snapshot persistence** (persistence-sqlite):
+  `FsEncryptedBlobStore` (AES-256-GCM; dependency-free directory capture as
+  `{path->base64}` JSON, encrypted; restore overwrites the dest) and
+  `SqliteSnapshotStore` (RuntimeStateSnapshot records — metadata + blob ref, never
+  content). Core gained the `RuntimeStateBlobStore` port + `InMemorySnapshotStore`.
+- **Side effects** (`backupAgentState` / `restoreAgentState`, app/api): backup
+  captures the agent's profile dir → records a snapshot (fact only); restore is
+  **deny-by-default** via `assertSnapshotRestorable` (available + same agent/Sphere)
+  then replays the blob. Wired as the `runtime.backup`/`runtime.restore` executor
+  tools (main.ts) — backup has no approval floor, restore is approval-gated
+  (catalog). Execute + grant responses now surface the executor `output` (so
+  backup returns its `snapshotId`). Audit: `runtime.session.backed_up/restored`
+  (ref only) + event-model.
+- **Verified end-to-end against real SQLite + AES-GCM blobs** (governed API):
+  project → backup (returns snapshotId + encrypted blob) → corrupt `config.yaml`
+  → restore (**202** approval floor → grant) → `config.yaml` restored to the
+  original. Restore self-approval refused; deny-by-default on unknown/foreign
+  snapshots.
+- **Verified (in container):** full suite (excl. live-ollama) → **340 passed**;
+  `tsc` clean. New tests: blob roundtrip (encrypted/byte-exact/overwrite/wrong-key),
+  snapshot store, backup/restore side effects, and the backup(200)/restore(202→grant)
+  pipeline.
+- **RFC-007 / ADR-007 are now fully implemented and live-verified** — governance
+  (Sphere MCP), inference (OpenAI adapter → Hermes /v1), and all three mutating
+  runtime-governance capabilities (config.project, session.backup, session.restore).
