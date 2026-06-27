@@ -41,6 +41,8 @@ export type KinEventType =
   | "runtime.token.provisioned"
   | "runtime.token.rotated"
   | "runtime.token.revoked"
+  | "runtime.session.backed_up"
+  | "runtime.session.restored"
   | "external_transfer.requested"
   | "external_transfer.allowed"
   | "external_transfer.denied";

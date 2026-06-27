@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  InMemorySnapshotStore,
   InMemorySphereStore,
   createAgent,
   createSphere,
@@ -10,10 +11,11 @@ import {
   type Policy,
   type ProvisionedToken,
   type ResolvedToken,
+  type RuntimeStateBlobStore,
 } from "@kinos/core";
 import type { HermesFsPort } from "@kinos/runtime-hermes";
 
-import { projectAgentConfig, type RuntimeGovernanceDeps } from "./runtime-governance.js";
+import { backupAgentState, projectAgentConfig, restoreAgentState, type RuntimeGovernanceDeps } from "./runtime-governance.js";
 
 const NOW = "2026-06-27T10:00:00.000Z";
 
@@ -125,5 +127,58 @@ describe("projectAgentConfig (RFC-007/ADR-007 — runtime.config.project side ef
     await expect(projectAgentConfig(deps, { sphereId: "sph_1" })).rejects.toThrow(/agentId/i);
     await expect(projectAgentConfig(deps, { sphereId: "nope", agentId: "agt_0" })).rejects.toThrow(/not found/i);
     await expect(projectAgentConfig(deps, { sphereId: "sph_1", agentId: "ghost" })).rejects.toThrow(/not found/i);
+  });
+});
+
+/** A fake blob store recording captured dirs and supporting restore by ref. */
+class FakeBlobs implements RuntimeStateBlobStore {
+  readonly captured: Array<{ id: string; dir: string }> = [];
+  readonly restored: Array<{ ref: string; dir: string }> = [];
+  async capture(id: string, sourceDir: string): Promise<string> {
+    this.captured.push({ id, dir: sourceDir });
+    return `blob://${id}`;
+  }
+  async restore(ref: string, destDir: string): Promise<void> {
+    this.restored.push({ ref, dir: destDir });
+  }
+}
+
+async function seedSnapshots(): Promise<{ deps: RuntimeGovernanceDeps; blobs: FakeBlobs }> {
+  const base = await seed();
+  const blobs = new FakeBlobs();
+  let n = 0;
+  const deps: RuntimeGovernanceDeps = {
+    ...base.deps,
+    snapshots: new InMemorySnapshotStore(),
+    blobs,
+    newSnapshotId: () => `snap_${++n}`,
+  };
+  return { deps, blobs };
+}
+
+describe("backup/restoreAgentState (RFC-007/ADR-007 — runtime.session.* side effects)", () => {
+  it("backup captures the agent profile dir and records a restorable snapshot", async () => {
+    const { deps, blobs } = await seedSnapshots();
+    const res = await backupAgentState(deps, { sphereId: "sph_1", agentId: "agt_0" });
+    expect(res.snapshotId).toBe("snap_1");
+    expect(res.ref).toBe("blob://snap_1");
+    expect(blobs.captured).toEqual([{ id: "snap_1", dir: "/opt/data/agt_0" }]);
+    expect(await deps.snapshots!.load("snap_1")).toMatchObject({ agentId: "agt_0", sphereId: "sph_1", state: "available" });
+  });
+
+  it("restore replays a snapshot belonging to the same agent into its profile dir", async () => {
+    const { deps, blobs } = await seedSnapshots();
+    const { snapshotId } = await backupAgentState(deps, { sphereId: "sph_1", agentId: "agt_0" });
+    const res = await restoreAgentState(deps, { sphereId: "sph_1", agentId: "agt_0", snapshotId });
+    expect(res).toEqual({ restored: true, snapshotId });
+    expect(blobs.restored).toEqual([{ ref: "blob://snap_1", dir: "/opt/data/agt_0" }]);
+  });
+
+  it("restore is deny-by-default: refuses an unknown snapshot or another agent's snapshot", async () => {
+    const { deps } = await seedSnapshots();
+    const { snapshotId } = await backupAgentState(deps, { sphereId: "sph_1", agentId: "agt_0" });
+    await expect(restoreAgentState(deps, { sphereId: "sph_1", agentId: "agt_0", snapshotId: "ghost" })).rejects.toThrow(/not found/i);
+    // agt_9 doesn't exist in the sphere → loadAgent fails closed before the guard.
+    await expect(restoreAgentState(deps, { sphereId: "sph_1", agentId: "agt_9", snapshotId })).rejects.toThrow(/not found/i);
   });
 });

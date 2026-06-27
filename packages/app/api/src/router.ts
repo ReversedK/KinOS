@@ -162,7 +162,11 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     if (result.status === "denied") {
       return err(403, "forbidden", result.reason);
     }
-    return ok({ status: result.status, reason: result.reason });
+    return ok({
+      status: result.status,
+      reason: result.reason,
+      ...(result.output !== undefined ? { output: result.output } : {}),
+    });
   }
 
   // --- Governed write path: resolve an approval (api-contract §Approval) ---
@@ -227,6 +231,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       capability: pending.approval.action.capabilityName,
       status: result.status,
       reason: result.reason,
+      ...(result.output !== undefined ? { output: result.output } : {}),
     });
   }
 

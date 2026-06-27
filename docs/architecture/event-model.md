@@ -76,6 +76,8 @@ All carry the same `correlationId`; each carries the deciding policy id/version 
 - runtime.token.provisioned *(ADR-007; records sphere/agent + secretRef id, never the token value)*
 - runtime.token.rotated *(ADR-007; secretRef id stable across rotation, never the value)*
 - runtime.token.revoked *(ADR-007; future resolution denied; past usage remains as facts)*
+- runtime.session.backed_up *(RFC-007; records the snapshot ref, never session content)*
+- runtime.session.restored *(RFC-007; records the snapshot ref, never session content)*
 
 ## What an event may and may not carry
 

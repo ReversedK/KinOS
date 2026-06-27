@@ -6,7 +6,7 @@
  * (capability execution) runs the core pipeline through a local executor.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -14,10 +14,12 @@ import { dirname } from "node:path";
 import { RUNTIME_GOVERNANCE_TOOLS, type AgentRuntime } from "@kinos/core";
 import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
 import {
+  FsEncryptedBlobStore,
   SqliteAgentTokenStore,
   SqliteApprovalStore,
   SqliteAuditSink,
   SqliteSessionStore,
+  SqliteSnapshotStore,
   SqliteSphereStore,
 } from "@kinos/persistence-sqlite";
 import type { HermesFsPort } from "@kinos/runtime-hermes";
@@ -25,7 +27,15 @@ import { OllamaRuntime } from "@kinos/runtime-ollama";
 import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
-import { projectAgentConfig, type RuntimeGovernanceDeps, type RuntimeProjectInput } from "./runtime-governance.js";
+import {
+  backupAgentState,
+  projectAgentConfig,
+  restoreAgentState,
+  type RuntimeBackupInput,
+  type RuntimeGovernanceDeps,
+  type RuntimeProjectInput,
+  type RuntimeRestoreInput,
+} from "./runtime-governance.js";
 
 /**
  * Select the agent runtime. A "boring" swap (coding principle 9): changing the
@@ -60,6 +70,16 @@ const approvals = new SqliteApprovalStore(ensureDir(process.env["KINOS_APPROVALS
 const audit = new SqliteAuditSink(ensureDir(process.env["KINOS_AUDIT_DB"] ?? "data/audit.sqlite"));
 const sessions = new SqliteSessionStore(ensureDir(process.env["KINOS_SESSIONS_DB"] ?? "data/sessions.sqlite"));
 const tokens = new SqliteAgentTokenStore(ensureDir(process.env["KINOS_TOKENS_DB"] ?? "data/tokens.sqlite"));
+const snapshots = new SqliteSnapshotStore(ensureDir(process.env["KINOS_SNAPSHOTS_DB"] ?? "data/snapshots.sqlite"));
+
+// Snapshot blob encryption key (ADR-007: from the secret store; env in dev).
+// A generated key is fine for a single run but makes prior blobs unreadable on
+// restart — set KINOS_SNAPSHOT_KEY (64 hex chars) to persist across restarts.
+const snapshotKeyHex = process.env["KINOS_SNAPSHOT_KEY"];
+const snapshotKey = snapshotKeyHex !== undefined && snapshotKeyHex.length === 64
+  ? Buffer.from(snapshotKeyHex, "hex")
+  : randomBytes(32);
+const blobs = new FsEncryptedBlobStore({ dir: process.env["KINOS_SNAPSHOT_DIR"] ?? "data/snapshots", key: snapshotKey });
 
 // Runtime-governance executor deps (RFC-007/ADR-007). Writes each agent's
 // runtime profile under the Hermes home and provisions its Sphere-MCP token.
@@ -79,17 +99,23 @@ const govDeps: RuntimeGovernanceDeps = {
   fs: nodeFs,
   gatewayEndpoint: (sphereId) => `${mcpPublicUrl}/spheres/${encodeURIComponent(sphereId)}/mcp`,
   auditSink: audit,
+  snapshots,
+  blobs,
+  newSnapshotId: () => `snap_${randomUUID()}`,
 };
 
 // Local executor for the governed write path (mirrors the CLI's handler set),
-// plus the runtime-governance tools (RFC-007): runtime.config.project writes the
-// agent's profile + provisions its token. backup/restore are not yet wired.
+// plus the runtime-governance tools (RFC-007): config.project writes the agent's
+// profile + provisions its token; session.backup/restore capture/restore the
+// agent's runtime state as an opaque encrypted blob.
 const executor = new LocalCapabilityExecutor(
   new Map<string, CapabilityHandler>([
     ["local.calendar", async (input) => ({ created: true, input })],
     ["local.pay", async (input) => ({ paid: true, input })],
     ["local.echo", async (input) => ({ echoed: input })],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.config.project"], async (input) => projectAgentConfig(govDeps, input as RuntimeProjectInput)],
+    [RUNTIME_GOVERNANCE_TOOLS["runtime.session.backup"], async (input) => backupAgentState(govDeps, input as RuntimeBackupInput)],
+    [RUNTIME_GOVERNANCE_TOOLS["runtime.session.restore"], async (input) => restoreAgentState(govDeps, input as RuntimeRestoreInput)],
   ]),
 );
 

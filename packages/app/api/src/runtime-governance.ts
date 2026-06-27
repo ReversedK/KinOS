@@ -17,6 +17,8 @@
 
 import {
   ageProfileForRole,
+  assertSnapshotRestorable,
+  createRuntimeStateSnapshot,
   defaultCapabilityCatalog,
   importSphere,
   projectAgentRuntimeConfig,
@@ -24,6 +26,8 @@ import {
   type AuditSink,
   type PolicyRequest,
   type Role,
+  type RuntimeStateBlobStore,
+  type SnapshotStore,
   type SphereStore,
 } from "@kinos/core";
 import { writeHermesProfile, type HermesFsPort } from "@kinos/runtime-hermes";
@@ -44,6 +48,24 @@ export interface RuntimeGovernanceDeps {
   readonly gatewayEndpoint: (sphereId: string, agentId: string) => string;
   readonly auditSink?: AuditSink;
   readonly now?: () => string;
+  /** Session backup/restore (RFC-007). Absent → backup/restore unavailable. */
+  readonly snapshots?: SnapshotStore;
+  readonly blobs?: RuntimeStateBlobStore;
+  readonly newSnapshotId?: () => string;
+}
+
+function profileDir(home: string, agentId: string): string {
+  return `${home.replace(/\/+$/, "")}/${agentId}`;
+}
+
+async function loadAgent(deps: RuntimeGovernanceDeps, sphereId: unknown, agentId: unknown): Promise<{ sphereId: string; agentId: string }> {
+  if (typeof sphereId !== "string" || typeof agentId !== "string") {
+    throw new Error("input.sphereId and input.agentId are required");
+  }
+  const snap = await deps.store.load(sphereId);
+  if (snap === undefined) throw new Error(`Sphere ${sphereId} not found`);
+  if (snap.agents.find((a) => a.id === agentId) === undefined) throw new Error(`Agent ${agentId} not found`);
+  return { sphereId, agentId };
 }
 
 export interface RuntimeProjectResult {
@@ -118,4 +140,85 @@ export async function projectAgentConfig(
   });
 
   return { agentId, version: projection.version, allowedTools: projection.gateway.allowedTools, configPath };
+}
+
+export interface RuntimeBackupInput {
+  readonly sphereId?: string;
+  readonly agentId?: string;
+  readonly correlationId?: string;
+}
+
+export interface RuntimeBackupResult {
+  readonly snapshotId: string;
+  readonly ref: string;
+  readonly createdAt: string;
+}
+
+/**
+ * `runtime.session.backup` side effect: capture the agent's runtime profile dir
+ * as an opaque encrypted blob and record a RuntimeStateSnapshot. Records the fact
+ * only (never content). Non-destructive — no approval floor (catalog).
+ */
+export async function backupAgentState(deps: RuntimeGovernanceDeps, input: RuntimeBackupInput): Promise<RuntimeBackupResult> {
+  if (deps.snapshots === undefined || deps.blobs === undefined || deps.newSnapshotId === undefined) {
+    throw new Error("Runtime session backup is not enabled");
+  }
+  const { sphereId, agentId } = await loadAgent(deps, input.sphereId, input.agentId);
+  const stamp = (deps.now ?? (() => new Date().toISOString()))();
+  const id = deps.newSnapshotId();
+  const ref = await deps.blobs.capture(id, profileDir(deps.home, agentId));
+  const snapshot = createRuntimeStateSnapshot({ id, agentId, sphereId, ref, createdAt: stamp });
+  await deps.snapshots.save(snapshot);
+  deps.auditSink?.record({
+    type: "runtime.session.backed_up",
+    sphereId,
+    agentId,
+    resourceType: "agent",
+    resourceId: agentId,
+    decision: "executed",
+    reason: `snapshotRef=${ref}`,
+    correlationId: input.correlationId ?? `bk-${stamp}`,
+    createdAt: stamp,
+  });
+  return { snapshotId: id, ref, createdAt: stamp };
+}
+
+export interface RuntimeRestoreInput {
+  readonly sphereId?: string;
+  readonly agentId?: string;
+  readonly snapshotId?: string;
+  readonly correlationId?: string;
+}
+
+/**
+ * `runtime.session.restore` side effect: restore the agent's runtime state from a
+ * snapshot, overwriting current state. Deny-by-default guard: the snapshot must be
+ * available and belong to the same agent + Sphere. Approval-gated (catalog).
+ */
+export async function restoreAgentState(
+  deps: RuntimeGovernanceDeps,
+  input: RuntimeRestoreInput,
+): Promise<{ readonly restored: true; readonly snapshotId: string }> {
+  if (deps.snapshots === undefined || deps.blobs === undefined) {
+    throw new Error("Runtime session restore is not enabled");
+  }
+  const { sphereId, agentId } = await loadAgent(deps, input.sphereId, input.agentId);
+  if (typeof input.snapshotId !== "string") throw new Error("input.snapshotId is required");
+  const snapshot = await deps.snapshots.load(input.snapshotId);
+  if (snapshot === undefined) throw new Error(`Snapshot ${input.snapshotId} not found`);
+  assertSnapshotRestorable(snapshot, { agentId, sphereId }); // deny by default
+  await deps.blobs.restore(snapshot.ref, profileDir(deps.home, agentId));
+  const stamp = (deps.now ?? (() => new Date().toISOString()))();
+  deps.auditSink?.record({
+    type: "runtime.session.restored",
+    sphereId,
+    agentId,
+    resourceType: "agent",
+    resourceId: agentId,
+    decision: "executed",
+    reason: `snapshotRef=${snapshot.ref}`,
+    correlationId: input.correlationId ?? `rs-${stamp}`,
+    createdAt: stamp,
+  });
+  return { restored: true, snapshotId: input.snapshotId };
 }

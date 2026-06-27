@@ -284,6 +284,45 @@ describe("API router — capability execution (write path)", () => {
     expect(calls()).toBe(1); // the runtime.project executor tool ran on grant
   });
 
+  it("runtime.session.backup executes directly (no approval floor) and surfaces its output", async () => {
+    const allowBackup: Policy = {
+      ...allowAdultCalendar,
+      id: "pol_bk",
+      resourceSelector: { capabilityNames: ["runtime.session.backup"] },
+    };
+    const { deps, calls } = await execDeps([allowBackup], []);
+    const res = await handleApiRequest(
+      { method: "POST", path: execPath("runtime.session.backup"), body: { subject: adult, input: { sphereId: "sph_1", agentId: "agt_0" } } },
+      deps,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "executed" });
+    expect((res.body as { output?: unknown }).output).toBeDefined();
+    expect(calls()).toBe(1);
+  });
+
+  it("runtime.session.restore is approval-gated (202) then grant executes", async () => {
+    const allowRestore: Policy = {
+      ...allowAdultCalendar,
+      id: "pol_rs",
+      resourceSelector: { capabilityNames: ["runtime.session.restore"] },
+    };
+    const { deps, calls } = await execDeps([allowRestore], []);
+    const begin = await handleApiRequest(
+      { method: "POST", path: execPath("runtime.session.restore"), body: { subject: adult, input: { sphereId: "sph_1", agentId: "agt_0", snapshotId: "snap_1" } } },
+      deps,
+    );
+    expect(begin.status).toBe(202);
+    expect(calls()).toBe(0);
+    const grant = await handleApiRequest(
+      { method: "POST", path: "/approvals/apr_1/grant", body: { approver: { memberId: "mbr_p2", role: "parent" } } },
+      deps,
+    );
+    expect(grant.status).toBe(200);
+    expect(grant.body).toMatchObject({ capability: "runtime.session.restore", status: "executed" });
+    expect(calls()).toBe(1);
+  });
+
   it("404s execution against a missing sphere", async () => {
     const { deps } = await execDeps([], []);
     const res = await handleApiRequest(

@@ -81,3 +81,35 @@ export interface SnapshotStore {
   /** Newest-first snapshots for an agent. */
   listForAgent(sphereId: string, agentId: string): Promise<readonly RuntimeStateSnapshot[]>;
 }
+
+/**
+ * Port that captures/restores an agent's runtime working state as an opaque,
+ * encrypted blob held by reference (ADR-007). KinOS never reads the content;
+ * adapters implement the encryption + storage outside the core (coding
+ * principle 1). `capture` returns the blob reference stored on the snapshot.
+ */
+export interface RuntimeStateBlobStore {
+  /** Capture `sourceDir` as an opaque encrypted blob for `id`; returns its ref. */
+  capture(id: string, sourceDir: string): Promise<string>;
+  /** Restore the blob at `ref` into `destDir`, overwriting current state. */
+  restore(ref: string, destDir: string): Promise<void>;
+}
+
+/** In-memory SnapshotStore for tests/ephemeral runs (record metadata only). */
+export class InMemorySnapshotStore implements SnapshotStore {
+  private readonly byId = new Map<string, RuntimeStateSnapshot>();
+
+  async save(snapshot: RuntimeStateSnapshot): Promise<void> {
+    this.byId.set(snapshot.id, snapshot);
+  }
+
+  async load(id: string): Promise<RuntimeStateSnapshot | undefined> {
+    return this.byId.get(id);
+  }
+
+  async listForAgent(sphereId: string, agentId: string): Promise<readonly RuntimeStateSnapshot[]> {
+    return [...this.byId.values()]
+      .filter((s) => s.sphereId === sphereId && s.agentId === agentId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+}
