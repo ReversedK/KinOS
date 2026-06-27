@@ -4,6 +4,7 @@
 #   docker compose run --rm dev npm install
 #   docker compose run --rm dev npm test
 #   docker compose run --rm dev npm run typecheck
+#   docker compose up api                     # run the local API (+ Sphere MCP)
 #
 # The repo is bind-mounted; node_modules lives in a named volume so installs
 # stay inside the container and never pollute (or depend on) the host.
@@ -24,5 +25,60 @@ services:
       # Docker Desktop), so the container can reach the host's Ollama.
       - "host.docker.internal:host-gateway"
 
+  # The KinOS API server (read API + governed write path + the Sphere MCP
+  # gateway at POST /spheres/:id/mcp, RFC-007/ADR-007). The UI consumes it.
+  api:
+    build: .
+    working_dir: /app
+    command: sh -c "npm install >/dev/null 2>&1 && npm run -w @kinos/api serve"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - kinos_data:/app/data
+    ports:
+      - "8787:8787"
+    environment:
+      - KINOS_API_PORT=8787
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Boring runtime swap (coding principle 9). Default local-first Ollama;
+      # set to "hermes" once the hermes service below is enabled.
+      - KINOS_RUNTIME=${KINOS_RUNTIME:-ollama}
+      - HERMES_BASE_URL=http://hermes:9001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # ADR-007 hardening note: the Sphere MCP is currently path-mounted on this
+    # published API port and is token-authenticated (the token, not the
+    # transport, is the boundary). For production it should move to a private-only
+    # listener (Unix socket co-located, else a non-published port on the internal
+    # network) so it is never reachable from the host. The token model is
+    # unchanged either way.
+
+  # --- Hermes runtime (RFC-007) — TEMPLATE, intentionally not started ----------
+  # RFC-007 runs Hermes in its own container: one install, many agents via
+  # profiles, behind a single multiplexing gateway. KinOS governs at the
+  # profile/MCP layer, never the process layer.
+  #
+  # This is a template rather than an active service because there is no
+  # KinOS-verified public Hermes image to pin here yet. To enable Hermes-backed
+  # chat end-to-end:
+  #   1. set `image:` (or `build:`) to your Hermes deployment;
+  #   2. confirm its HTTP wire shape matches the adapter
+  #      (packages/adapters/runtime-hermes/src/hermes-runtime.ts) — GET /models,
+  #      POST /agents/{profile}/messages — or override the paths via its options;
+  #   3. uncomment, then run: KINOS_RUNTIME=hermes docker compose up api hermes
+  #
+  # hermes:
+  #   image: REPLACE_ME/hermes:latest
+  #   environment:
+  #     # Hermes reaches the Sphere MCP back on the KinOS API, private network only.
+  #     - KINOS_API_URL=http://api:8787
+  #   volumes:
+  #     - hermes_home:/root/.hermes      # per-profile config/sessions/state
+  #   expose:
+  #     - "9001"                          # private to the compose network; NOT published
+  #   # No `ports:` mapping — the gateway must not be reachable from the host.
+
 volumes:
   node_modules:
+  kinos_data:
+  # hermes_home:
