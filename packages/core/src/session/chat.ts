@@ -79,7 +79,11 @@ export async function runChatTurn(deps: ChatTurnDeps, input: ChatTurnInput): Pro
   }
   messages.push({ role: "user", content: input.userText });
 
-  const response = await deps.runtime.generate({ model: input.model, messages });
+  const response = await deps.runtime.generate({
+    model: input.model,
+    messages,
+    agentId: input.session.agentId,
+  });
 
   let session = appendMessage(input.session, {
     id: input.userMessageId,

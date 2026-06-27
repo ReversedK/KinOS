@@ -9,6 +9,7 @@
       "@kinos/core": ["../../core/src/index.ts"],
       "@kinos/executor-local": ["../../adapters/executor-local/src/index.ts"],
       "@kinos/persistence-sqlite": ["../../adapters/persistence-sqlite/src/index.ts"],
+      "@kinos/runtime-hermes": ["../../adapters/runtime-hermes/src/index.ts"],
       "@kinos/runtime-ollama": ["../../adapters/runtime-ollama/src/index.ts"]
     }
   },
@@ -16,6 +17,7 @@
     { "path": "../../core" },
     { "path": "../../adapters/executor-local" },
     { "path": "../../adapters/persistence-sqlite" },
+    { "path": "../../adapters/runtime-hermes" },
     { "path": "../../adapters/runtime-ollama" }
   ],
   "include": ["src/**/*.ts"],

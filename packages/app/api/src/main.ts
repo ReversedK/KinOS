@@ -10,11 +10,25 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
+import type { AgentRuntime } from "@kinos/core";
 import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
 import { SqliteApprovalStore, SqliteAuditSink, SqliteSessionStore, SqliteSphereStore } from "@kinos/persistence-sqlite";
+import { HermesRuntime } from "@kinos/runtime-hermes";
 import { OllamaRuntime } from "@kinos/runtime-ollama";
 
 import { createApiServer } from "./server.js";
+
+/**
+ * Select the agent runtime. A "boring" swap (coding principle 9): changing the
+ * runtime needs no policy, memory or capability migration. RFC-007's Hermes is
+ * opt-in via KINOS_RUNTIME=hermes; the default stays local-first Ollama so dev
+ * without a Hermes container keeps working.
+ */
+function selectRuntime(): AgentRuntime {
+  return (process.env["KINOS_RUNTIME"] ?? "ollama").toLowerCase() === "hermes"
+    ? new HermesRuntime()
+    : new OllamaRuntime();
+}
 
 function ensureDir(path: string): string {
   mkdirSync(dirname(path), { recursive: true });
@@ -43,7 +57,7 @@ const server = createApiServer({
   auditSink: audit,
   executor,
   sessions,
-  runtime: new OllamaRuntime(),
+  runtime: selectRuntime(),
   newCorrelationId: () => randomUUID(),
   newApprovalId: () => `apr_${randomUUID()}`,
   newSessionId: () => `ses_${randomUUID()}`,

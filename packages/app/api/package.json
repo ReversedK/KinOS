@@ -13,6 +13,7 @@
     "@kinos/core": "*",
     "@kinos/executor-local": "*",
     "@kinos/persistence-sqlite": "*",
+    "@kinos/runtime-hermes": "*",
     "@kinos/runtime-ollama": "*"
   },
   "scripts": {
