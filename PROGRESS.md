@@ -1406,3 +1406,54 @@ Runtime adapter → integrations/Packages → UI.
   (sphere.created/agent.created/memory.*) from the command + scenario paths so a
   full run leaves a readable, correlation-linked audit history. Doc-check
   privacy-model (audit minimality) before persisting audit.
+
+> Note: per-iteration entries 17–69 were not recorded here; see git history
+> (`feat/mvp-implementation`) for that span. Recording resumes below at RFC-007.
+
+### Iterations 70–75 — 2026-06-27 (RFC-007; Hermes as a governed runtime)
+- **Done (TDD, one commit per slice):**
+  - **70 — capabilities:** added `runtime.config.project`,
+    `runtime.session.backup`, `runtime.session.restore` to the catalog
+    (high-risk, adult/admin-only; project + restore carry an approval floor;
+    backup does not). `catalog.test.ts`.
+  - **71 — authorized surface:** `resolveAuthorizedCapabilities` (core) — the
+    deny-by-default set the Policy Engine authorizes for an agent identity. The
+    *first filter* only; the per-call double-check still enforces. Honors the
+    catalog profile floor and (optionally) bindings; flags require_approval.
+  - **72 — RuntimeConfigProjection:** `projectAgentRuntimeConfig` (core) builds
+    the provider-agnostic per-agent runtime config from Sphere config + the
+    agent's policy scope: one Sphere gateway, `allowedTools` = authorized
+    surface, deny-by-default native tools, autonomous install disabled,
+    credential by reference only. No concrete runtime name leaks into core.
+  - **73 — Sphere MCP dispatch:** `handleSphereMcpCall` (core) — one governed
+    gateway per Sphere, permissioned per calling agent. Subject anchored to the
+    credential (never a caller-asserted identity); unknown credentials refused
+    before any policy check; composes the existing sensitive-action flow.
+  - **74 — RuntimeStateSnapshot:** opaque, by-reference (no content field),
+    restorable runtime state; deny-by-default restore guard (available + same
+    agent/Sphere). Non-canonical; `SnapshotStore` port.
+  - **75 — Hermes adapter:** `@kinos/runtime-hermes` implements `AgentRuntime`,
+    routing each turn to the calling agent's Hermes profile
+    (`RuntimeRequest.agentId`, additive optional field; Ollama/OpenAI ignore it).
+    `writeHermesProfile` realizes the projection as one `config.yaml` per profile
+    (single Sphere MCP, allowed-tools surface, native-tool allow-list,
+    autonomous install off, secrets by reference). `main.ts` selects the runtime
+    via `KINOS_RUNTIME` (default Ollama) — a boring swap, no policy/memory
+    migration. **Chat is now Hermes-backable end-to-end.**
+- **Verified (in container):** full suite `npx vitest run` → 317 passed
+  (the 59s live-Ollama test ran and passed); `tsc --build` exit 0.
+- **Decisions:** core stays provider-agnostic (no "Hermes"/`~/.hermes` names);
+  the Hermes realization lives entirely in the adapter. The Hermes HTTP wire
+  shape is the integration seam — configurable + fake-fetch tested — to confirm
+  against a deployed Hermes (no live Hermes available here).
+- **Blocked on RFC-007 open questions (spec-first):** the *mutating* governed
+  endpoints (`runtime.config.project`/`session.backup`/`session.restore`) and
+  the Sphere MCP **server transport** both depend on **per-agent token
+  provisioning/rotation** and the **MCP transport detail** — both listed as
+  open questions in RFC-007 §"Open questions". Per the governing rule, these
+  need a decision (ADR or RFC amendment) before implementation. The governed
+  *dispatch* they sit behind is already built and tested (slice 73).
+- **Next step:** resolve the RFC-007 open questions (token provisioning/rotation
+  + transport: local socket vs loopback HTTP), then add the Sphere MCP server
+  transport (task #8) and the mutating runtime-governance API endpoints + admin
+  UI (task #7) on top of the existing core dispatch.
