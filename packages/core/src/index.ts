@@ -27,6 +27,7 @@ export * from "./runtime/runtime.js";
 export * from "./runtime/profile.js";
 export * from "./runtime/projection.js";
 export * from "./runtime/sphere-mcp.js";
+export * from "./runtime/snapshot.js";
 export * from "./export/export.js";
 export * from "./persistence/store.js";
 export * from "./integration/integration.js";
