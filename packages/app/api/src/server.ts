@@ -9,6 +9,24 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { handleApiRequest, type ApiDeps, type ApiRequest } from "./router.js";
+import { handleSphereMcpRpc, type JsonRpcRequest, type SphereMcpServerDeps } from "./sphere-mcp-server.js";
+
+/** Bearer token from an Authorization header, or "" when absent (fail closed). */
+function bearer(req: IncomingMessage): string {
+  const h = req.headers["authorization"];
+  const value = Array.isArray(h) ? h[0] : h;
+  if (value === undefined) return "";
+  const m = /^Bearer\s+(.+)$/i.exec(value.trim());
+  return m?.[1]?.trim() ?? "";
+}
+
+/** Match POST /spheres/:id/mcp — the per-Sphere MCP gateway (ADR-007). */
+function matchMcp(method: string | undefined, path: string): string | undefined {
+  if (method !== "POST") return undefined;
+  const segs = path.split("/").filter((s) => s.length > 0);
+  if (segs.length === 3 && segs[0] === "spheres" && segs[2] === "mcp") return segs[1];
+  return undefined;
+}
 
 export function toApiRequest(method: string | undefined, url: string | undefined): ApiRequest {
   const parsed = new URL(url ?? "/", "http://localhost");
@@ -35,10 +53,22 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
-export function createApiServer(deps: ApiDeps): Server {
+export function createApiServer(deps: ApiDeps, mcp?: SphereMcpServerDeps): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       const apiRequest = toApiRequest(req.method, req.url);
+
+      // Sphere MCP gateway (RFC-007, ADR-007): bearer-authenticated JSON-RPC,
+      // served only when MCP deps are wired. The token is the boundary.
+      const sphereId = matchMcp(req.method, apiRequest.path);
+      if (sphereId !== undefined && mcp !== undefined) {
+        const rpc = ((await readJsonBody(req)) ?? {}) as JsonRpcRequest;
+        const rpcRes = await handleSphereMcpRpc({ sphereId, token: bearer(req), request: rpc }, mcp);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(rpcRes));
+        return;
+      }
+
       const hasBody = req.method !== undefined && req.method !== "GET" && req.method !== "HEAD";
       const body = hasBody ? await readJsonBody(req) : undefined;
       const response = await handleApiRequest(body !== undefined ? { ...apiRequest, body } : apiRequest, deps);

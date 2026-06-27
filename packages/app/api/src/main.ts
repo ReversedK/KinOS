@@ -12,7 +12,13 @@ import { dirname } from "node:path";
 
 import type { AgentRuntime } from "@kinos/core";
 import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
-import { SqliteApprovalStore, SqliteAuditSink, SqliteSessionStore, SqliteSphereStore } from "@kinos/persistence-sqlite";
+import {
+  SqliteAgentTokenStore,
+  SqliteApprovalStore,
+  SqliteAuditSink,
+  SqliteSessionStore,
+  SqliteSphereStore,
+} from "@kinos/persistence-sqlite";
 import { HermesRuntime } from "@kinos/runtime-hermes";
 import { OllamaRuntime } from "@kinos/runtime-ollama";
 
@@ -39,6 +45,7 @@ const store = new SqliteSphereStore(ensureDir(process.env["KINOS_DB"] ?? "data/k
 const approvals = new SqliteApprovalStore(ensureDir(process.env["KINOS_APPROVALS_DB"] ?? "data/approvals.sqlite"));
 const audit = new SqliteAuditSink(ensureDir(process.env["KINOS_AUDIT_DB"] ?? "data/audit.sqlite"));
 const sessions = new SqliteSessionStore(ensureDir(process.env["KINOS_SESSIONS_DB"] ?? "data/sessions.sqlite"));
+const tokens = new SqliteAgentTokenStore(ensureDir(process.env["KINOS_TOKENS_DB"] ?? "data/tokens.sqlite"));
 
 // Local executor for the governed write path (mirrors the CLI's handler set).
 const executor = new LocalCapabilityExecutor(
@@ -50,16 +57,28 @@ const executor = new LocalCapabilityExecutor(
 );
 
 const port = Number(process.env["KINOS_API_PORT"] ?? "8787");
-const server = createApiServer({
-  store,
-  approvals,
-  audit,
-  auditSink: audit,
-  executor,
-  sessions,
-  runtime: selectRuntime(),
-  newCorrelationId: () => randomUUID(),
-  newApprovalId: () => `apr_${randomUUID()}`,
-  newSessionId: () => `ses_${randomUUID()}`,
-});
+const server = createApiServer(
+  {
+    store,
+    approvals,
+    audit,
+    auditSink: audit,
+    executor,
+    sessions,
+    runtime: selectRuntime(),
+    newCorrelationId: () => randomUUID(),
+    newApprovalId: () => `apr_${randomUUID()}`,
+    newSessionId: () => `ses_${randomUUID()}`,
+  },
+  // Sphere MCP gateway (RFC-007, ADR-007): the governed tool surface Hermes calls.
+  {
+    store,
+    tokens,
+    executor,
+    auditSink: audit,
+    approvals,
+    newApprovalId: () => `apr_${randomUUID()}`,
+    newCorrelationId: () => randomUUID(),
+  },
+);
 server.listen(port, () => console.log(`KinOS API listening on :${port}`));
