@@ -73,6 +73,9 @@ All carry the same `correlationId`; each carries the deciding policy id/version 
 - external_transfer.allowed
 - external_transfer.denied
 - identity.impersonated *(dev-only; records the impersonated member and the developer — RFC-006)*
+- runtime.token.provisioned *(ADR-007; records sphere/agent + secretRef id, never the token value)*
+- runtime.token.rotated *(ADR-007; secretRef id stable across rotation, never the value)*
+- runtime.token.revoked *(ADR-007; future resolution denied; past usage remains as facts)*
 
 ## What an event may and may not carry
 

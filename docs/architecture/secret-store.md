@@ -19,14 +19,28 @@ This document defines how secrets are stored, referenced, resolved and retired. 
 ## Reference model
 
 ```ts
+// A secret is owned by an integration, or (ADR-007) by an agent runtime — the
+// per-agent Sphere-MCP access token. The owner kind scopes resolution.
+type SecretOwner =
+  | { kind: 'integration'; integrationId: string }
+  | { kind: 'agent-runtime'; agentId: string };
+
 type SecretRef = {
   id: string;            // opaque, stable; what the domain stores and passes
   sphereId: string;      // owning Sphere; resolution is denied outside it
-  integrationId: string; // owning integration
+  owner: SecretOwner;    // owning integration, or owning agent runtime (ADR-007)
   scopes: string[];      // human-readable scopes, e.g. ['calendar.read']; visible to admins
   status: 'active' | 'rotating' | 'revoked';
 };
 ```
+
+> ADR-007 (accepted) adds the `agent-runtime` owner kind for the per-agent Sphere
+> MCP token. Such a token *authenticates* an agent to the Sphere MCP but carries
+> no authority of its own — authorization remains the Policy Engine's per-call
+> decision. Its value lands only in the secret store and the agent's KinOS-owned
+> runtime profile; the domain holds only the `secretRef`. All other rules in this
+> document (per-Sphere isolation, least exposure, encrypted at rest, lifecycle,
+> rotation keeping `id` stable, fail-closed resolution) apply unchanged.
 
 The domain stores and moves `SecretRef.id`. Resolution to a value happens only inside the secret store, invoked by the integration adapter at call time:
 
