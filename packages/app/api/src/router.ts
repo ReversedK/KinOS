@@ -27,6 +27,7 @@ import {
   exportSphere,
   importSphere,
   installPackage,
+  projectAgentRuntimeConfig,
   resolveInstallPlan,
   authorizeSessionRead,
   resolveApproval,
@@ -622,6 +623,86 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
 
     await deps.sessions.save(result.session);
     return ok({ sessionId, reply: result.reply, messageCount: result.session.messages.length });
+  }
+
+  // --- RFC-007/ADR-007: preview an agent's governed runtime config projection ---
+  // POST /spheres/:id/agents/:aid/runtime/projection  { subject }
+  // Read/compute only (no mutation, no token minted) — the exact governed config
+  // that would be written to the agent's runtime profile. Admin-gated.
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 6 &&
+    segments[2] === "agents" &&
+    segments[4] === "runtime" &&
+    segments[5] === "projection"
+  ) {
+    const sphereId = segments[1] as string;
+    const agentId = segments[3] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const agent = snap.agents.find((a) => a.id === agentId);
+    if (agent === undefined) return err(404, "not_found", "Agent not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    // Admin floor + policy: previewing a projection is gated like runtime.config.project.
+    const cap = defaultCapabilityCatalog().get("runtime.config.project");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "runtime.config.project is not allowed for this profile");
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "capability", capabilityName: "runtime.config.project", riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      importSphere(snap).policies,
+    );
+    if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
+
+    const imported = importSphere(snap);
+    // The projection is computed for the AGENT's own identity (owner-derived),
+    // not the admin caller — two agents project different authorized surfaces.
+    const owner = snap.sphere.members.find((m) => m.id === agent.ownerId);
+    if (owner === undefined) return err(409, "invalid_request", "Agent has no resolvable owner");
+    const agentSubject: PolicyRequest["subject"] = {
+      agentId: agent.id,
+      memberId: owner.id,
+      role: owner.role,
+      ageProfile: ageProfileForRole(owner.role as Role),
+    };
+    const projection = projectAgentRuntimeConfig({
+      agentId: agent.id,
+      subject: agentSubject,
+      runtimeConfig: imported.runtimeConfig,
+      catalog: defaultCapabilityCatalog(),
+      policies: imported.policies,
+      bindings: imported.bindings,
+      context: { sphereId, time: stamp, execution: "local", correlationId },
+      gatewayEndpoint: `mcp+http://spheres/${sphereId}/mcp`,
+      authSecretRef: `secret://sphere-mcp/${sphereId}/${agent.id}`,
+      version: 1,
+    });
+    return ok({
+      agentId: projection.agentId,
+      provider: projection.profile.providerId,
+      model: projection.profile.model,
+      execution: projection.profile.execution,
+      gatewayEndpoint: projection.gateway.endpoint,
+      authSecretRef: projection.gateway.authSecretRef,
+      allowedTools: projection.gateway.allowedTools,
+      nativeToolsAllow: projection.nativeToolsAllow,
+      autonomousInstallDisabled: projection.autonomousInstallDisabled,
+    });
   }
 
   if (req.method !== "GET") {

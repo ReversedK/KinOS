@@ -4,6 +4,7 @@ import {
   InMemoryAuditSink,
   InMemorySessionStore,
   InMemorySphereStore,
+  createAgent,
   createApprovalFromDecision,
   createIntegration,
   createSphere,
@@ -846,5 +847,96 @@ describe("API router — package store", () => {
   it("501 when package management is not enabled (read-only deps)", async () => {
     const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, await deps());
     expect(res.status).toBe(501);
+  });
+});
+
+describe("API router — runtime config projection preview (RFC-007/ADR-007)", () => {
+  const searchBinding: CapabilityBinding = {
+    capability: "memory.search",
+    runtime: "hermes",
+    runtimeToolName: "mem.search",
+    execution: "local",
+    risk: "low",
+    requiresApproval: false,
+    status: "enabled",
+  };
+  const allowSearchForParents: Policy = {
+    id: "pol_search",
+    sphereId: "sph_1",
+    description: "Parents may search memory.",
+    subjectSelector: { roles: ["parent"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["memory.search"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+  const allowProjectForParents: Policy = {
+    id: "pol_project",
+    sphereId: "sph_1",
+    description: "Parents may project agent runtime config.",
+    subjectSelector: { roles: ["parent"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["runtime.config.project"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+
+  async function projDeps(): Promise<ApiDeps> {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A" });
+    await store.save(
+      exportSphere({
+        sphere,
+        identities: [],
+        agents: [agent],
+        memory: [],
+        policies: [allowSearchForParents, allowProjectForParents],
+        bindings: [searchBinding],
+        exportedAt: NOW,
+      }),
+    );
+    let n = 0;
+    return { store, approvals: new InMemoryApprovalStore(), audit: new InMemoryAuditSink(), newCorrelationId: () => `req_${++n}` };
+  }
+
+  const adult = { subject: { memberId: "mbr_p1", role: "parent", ageProfile: "adult" } };
+
+  it("returns the agent's governed projection: one Sphere MCP + authorized tool surface", async () => {
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/agents/agt_0/runtime/projection", body: adult },
+      await projDeps(),
+    );
+    expect(res.status).toBe(200);
+    const b = res.body as { allowedTools: string[]; gatewayEndpoint: string; authSecretRef: string; autonomousInstallDisabled: boolean };
+    expect(b.allowedTools).toEqual(["memory.search"]);
+    expect(b.gatewayEndpoint).toBe("mcp+http://spheres/sph_1/mcp");
+    expect(b.authSecretRef).toBe("secret://sphere-mcp/sph_1/agt_0");
+    expect(b.autonomousInstallDisabled).toBe(true);
+  });
+
+  it("denies a minor caller (deny by default)", async () => {
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/agents/agt_0/runtime/projection", body: { subject: { role: "child", ageProfile: "child" } } },
+      await projDeps(),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("404s for an unknown agent", async () => {
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/agents/ghost/runtime/projection", body: adult },
+      await projDeps(),
+    );
+    expect(res.status).toBe(404);
   });
 });

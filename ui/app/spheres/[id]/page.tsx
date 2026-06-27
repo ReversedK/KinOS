@@ -1,6 +1,7 @@
 import { apiBaseUrl, getAgents, getIntegrations, getMembers, getRuntime, getSphere } from "../../../lib/api";
 import { Connectors } from "./Connectors";
 import { RunCapability } from "./RunCapability";
+import { RuntimeProjection } from "./RuntimeProjection";
 import { SetRuntime } from "./SetRuntime";
 
 // Read-only Sphere detail: members and agents (security facts only — role,
@@ -55,6 +56,12 @@ export default async function SpherePage({ params }: { params: { id: string } })
                 <li key={a.id} style={{ border: "1px solid #2a2d34", borderRadius: 6, padding: "0.5rem 0.75rem" }}>
                   <strong>{a.name}</strong> · {a.state}{" "}
                   <span style={{ color: "#9aa0a6" }}>· {a.enabledCapabilities.length} capabilities</span>
+                  <RuntimeProjection
+                    baseUrl={base}
+                    sphereId={params.id}
+                    agentId={a.id}
+                    members={members.map((m) => ({ id: m.id, role: m.role }))}
+                  />
                 </li>
               ))}
             </ul>

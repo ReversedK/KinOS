@@ -176,6 +176,45 @@ export async function executeCapability(
   throw new Error(`execute ${capability} failed: ${status}`);
 }
 
+// --- Runtime config projection preview (RFC-007/ADR-007) ---
+
+export interface RuntimeProjection {
+  readonly agentId: string;
+  readonly provider: string;
+  readonly model: string;
+  readonly execution: string;
+  readonly gatewayEndpoint: string;
+  readonly authSecretRef: string;
+  readonly allowedTools: readonly string[];
+  readonly nativeToolsAllow: readonly string[];
+  readonly autonomousInstallDisabled: boolean;
+  /** Set on a denial (HTTP 403). */
+  readonly code?: string;
+  readonly reason?: string;
+}
+
+/**
+ * Preview the governed runtime config that would be projected to an agent's
+ * runtime profile (the single Sphere MCP, the authorized tool surface, native
+ * tools, install disabled). Admin-gated; a 403 is a governed outcome (returned).
+ */
+export async function getAgentRuntimeProjection(
+  baseUrl: string,
+  sphereId: string,
+  agentId: string,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RuntimeProjection> {
+  const { status, body } = await postJson<RuntimeProjection>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/agents/${encodeURIComponent(agentId)}/runtime/projection`,
+    { subject },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403) return body;
+  throw new Error(`projection for ${agentId} failed: ${status}`);
+}
+
 // --- Package store (RFC-002) ---
 
 export interface StorePackage {
