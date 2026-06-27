@@ -114,6 +114,36 @@ const CAPABILITIES: readonly Capability[] = [
     approvalFloor: false,
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
+  {
+    // RFC-007: (re)project an agent's runtime governance config from Sphere config.
+    // The runtime never edits its own config; this rewrites it. Approval-gated.
+    name: "runtime.config.project",
+    description: "Project an agent's runtime configuration from Sphere config (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: true,
+    auditFacts: ["actor", "capability", "projectionVersion", "decision", "correlationId"],
+  },
+  {
+    // RFC-007: back up an agent's opaque runtime working state. Non-destructive,
+    // governed/audited — records the fact only, never session content.
+    name: "runtime.session.backup",
+    description: "Back up an agent's runtime working state as an opaque snapshot (admin/owner).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "snapshotRef", "decision", "correlationId"],
+  },
+  {
+    // RFC-007: restore runtime working state from a snapshot, overwriting current
+    // state. Destructive → approval floor.
+    name: "runtime.session.restore",
+    description: "Restore an agent's runtime working state from a snapshot (admin/owner).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: true,
+    auditFacts: ["actor", "capability", "snapshotRef", "decision", "correlationId"],
+  },
 ];
 
 /** A fresh catalog map keyed by capability name. */
