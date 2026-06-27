@@ -33,6 +33,7 @@ export * from "./package/store-catalog.js";
 export * from "./package/install-plan.js";
 export * from "./capability/types.js";
 export * from "./capability/catalog.js";
+export * from "./capability/surface.js";
 export * from "./capability/resolver.js";
 export * from "./audit/events.js";
 export * from "./flow/sensitive-action.js";
