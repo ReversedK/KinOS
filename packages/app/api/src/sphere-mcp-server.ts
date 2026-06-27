@@ -121,6 +121,10 @@ export async function handleSphereMcpRpc(
       tools: surface.map((c) => ({
         name: c.name,
         description: catalog.get(c.name)?.description ?? c.name,
+        // MCP requires every tool to declare an inputSchema (JSON Schema). The
+        // Sphere MCP passes opaque capability input through to the binding, so
+        // we advertise a permissive object schema.
+        inputSchema: { type: "object", additionalProperties: true },
         annotations: { requiresApproval: c.requiresApproval },
       })),
     });

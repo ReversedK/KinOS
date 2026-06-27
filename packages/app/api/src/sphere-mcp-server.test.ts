@@ -139,8 +139,10 @@ describe("Sphere MCP server (RFC-007, ADR-007)", () => {
   it("tools/list returns only the calling agent's authorized surface", async () => {
     const deps = await seed();
     const res = await handleSphereMcpRpc({ sphereId: "sph_1", token: "good-token", request: { id: 1, method: "tools/list" } }, deps);
-    const tools = (res.result as { tools: Array<{ name: string }> }).tools;
+    const tools = (res.result as { tools: Array<{ name: string; inputSchema: { type: string } }> }).tools;
     expect(tools.map((t) => t.name)).toEqual(["memory.search"]);
+    // MCP requires an inputSchema on every tool (real Hermes client validates it).
+    expect(tools[0]?.inputSchema?.type).toBe("object");
   });
 
   it("tools/call executes an authorized capability and returns its output", async () => {
