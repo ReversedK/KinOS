@@ -64,6 +64,11 @@ export function createApiServer(deps: ApiDeps, mcp?: SphereMcpServerDeps): Serve
       if (sphereId !== undefined && mcp !== undefined) {
         const rpc = ((await readJsonBody(req)) ?? {}) as JsonRpcRequest;
         const rpcRes = await handleSphereMcpRpc({ sphereId, token: bearer(req), request: rpc }, mcp);
+        // JSON-RPC notifications (no id) get no response body, per MCP/JSON-RPC.
+        if (rpc.id === undefined && rpc.method?.startsWith("notifications/")) {
+          res.writeHead(202).end();
+          return;
+        }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(rpcRes));
         return;

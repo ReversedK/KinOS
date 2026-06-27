@@ -74,6 +74,25 @@ export async function handleSphereMcpRpc(
     return fail(AUTH_ERROR, "Unauthenticated credential at the Sphere MCP gateway.");
   }
 
+  // MCP lifecycle (Streamable HTTP): the client opens with `initialize`, then
+  // sends the `notifications/initialized` notification, before any tools/* call.
+  // These are token-authenticated (the bearer is on every request) but need no
+  // Sphere resolution. `ping` is a liveness no-op.
+  if (input.request.method === "initialize") {
+    const params = (typeof input.request.params === "object" && input.request.params !== null
+      ? input.request.params
+      : {}) as { protocolVersion?: string };
+    return ok({
+      // Echo the client's protocol version when given (version negotiation).
+      protocolVersion: typeof params.protocolVersion === "string" ? params.protocolVersion : "2025-06-18",
+      capabilities: { tools: { listChanged: false } },
+      serverInfo: { name: "kinos-sphere-mcp", version: "0.1.0" },
+    });
+  }
+  if (input.request.method === "notifications/initialized" || input.request.method === "ping") {
+    return ok({});
+  }
+
   const snap = await deps.store.load(input.sphereId);
   if (snap === undefined) return fail(AUTH_ERROR, "Sphere not found.");
   const agent = snap.agents.find((a) => a.id === tok.agentId);

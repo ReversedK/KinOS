@@ -110,6 +110,32 @@ describe("Sphere MCP server (RFC-007, ADR-007)", () => {
     expect(res.error?.code).toBe(-32000);
   });
 
+  it("completes the MCP lifecycle handshake (initialize + initialized + ping)", async () => {
+    const deps = await seed();
+    const init = await handleSphereMcpRpc(
+      {
+        sphereId: "sph_1",
+        token: "good-token",
+        request: { id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } },
+      },
+      deps,
+    );
+    const r = init.result as { protocolVersion: string; capabilities: unknown; serverInfo: { name: string } };
+    expect(r.protocolVersion).toBe("2025-06-18");
+    expect(r.serverInfo.name).toBe("kinos-sphere-mcp");
+    // The notification + ping are token-authenticated no-ops.
+    const note = await handleSphereMcpRpc({ sphereId: "sph_1", token: "good-token", request: { method: "notifications/initialized" } }, deps);
+    expect(note.error).toBeUndefined();
+    const ping = await handleSphereMcpRpc({ sphereId: "sph_1", token: "good-token", request: { id: 2, method: "ping" } }, deps);
+    expect(ping.result).toEqual({});
+  });
+
+  it("rejects initialize without a valid token (handshake is authenticated)", async () => {
+    const deps = await seed();
+    const res = await handleSphereMcpRpc({ sphereId: "sph_1", token: "nope", request: { id: 1, method: "initialize" } }, deps);
+    expect(res.error?.code).toBe(-32000);
+  });
+
   it("tools/list returns only the calling agent's authorized surface", async () => {
     const deps = await seed();
     const res = await handleSphereMcpRpc({ sphereId: "sph_1", token: "good-token", request: { id: 1, method: "tools/list" } }, deps);
