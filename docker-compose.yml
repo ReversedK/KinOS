@@ -58,25 +58,40 @@ services:
   # profiles, behind a single multiplexing gateway. KinOS governs at the
   # profile/MCP layer, never the process layer.
   #
-  # This is a template rather than an active service because there is no
-  # KinOS-verified public Hermes image to pin here yet. To enable Hermes-backed
-  # chat end-to-end:
-  #   1. set `image:` (or `build:`) to your Hermes deployment;
-  #   2. confirm its HTTP wire shape matches the adapter
-  #      (packages/adapters/runtime-hermes/src/hermes-runtime.ts) — GET /models,
-  #      POST /agents/{profile}/messages — or override the paths via its options;
-  #   3. uncomment, then run: KINOS_RUNTIME=hermes docker compose up api hermes
+  # Template (build the image first, then uncomment). The RFC-007/ADR-007
+  # integration has been verified against this real image: a Hermes MCP client
+  # completes the MCP handshake against the KinOS Sphere MCP, authenticates with
+  # the per-agent token (resolved from ${SPHERE_MCP_TOKEN}), discovers only the
+  # policy-authorized tool surface, and a forged token fails closed.
+  #
+  # Build the real image (NousResearch/hermes-agent), then enable Hermes:
+  #   git clone https://github.com/NousResearch/hermes-agent && \
+  #     cd hermes-agent && docker build -t hermes-agent:local .
+  #
+  # Hermes reaches KinOS over the MCP, configured in its profile config.yaml
+  # (~/.hermes/config.yaml) — the schema KinOS projects (see
+  # packages/adapters/runtime-hermes/src/hermes-config.ts):
+  #   mcp_servers:
+  #     sphere:
+  #       url: http://localhost:8787/spheres/<sphereId>/mcp   # host-net: localhost
+  #       headers: { Authorization: "Bearer ${SPHERE_MCP_TOKEN}" }
+  #       tools: { include: [<authorized capabilities>] }
+  # The token VALUE goes in the profile .env (SPHERE_MCP_TOKEN=...), never in
+  # config.yaml (ADR-007). Hermes interpolates ${VAR} from the environment.
+  #
+  # Note: the `hermes mcp test` CLI needs the mcp[cli]/typer extra (not baked into
+  # the published image); the agent runtime's MCP client itself works without it.
   #
   # hermes:
-  #   image: REPLACE_ME/hermes:latest
+  #   image: hermes-agent:local
+  #   network_mode: host                  # so it can reach KinOS api on :8787
   #   environment:
-  #     # Hermes reaches the Sphere MCP back on the KinOS API, private network only.
-  #     - KINOS_API_URL=http://api:8787
+  #     - HERMES_UID=${HERMES_UID:-10000}
+  #     - HERMES_GID=${HERMES_GID:-10000}
+  #     - SPHERE_MCP_TOKEN=${SPHERE_MCP_TOKEN}   # the agent's provisioned token
   #   volumes:
-  #     - hermes_home:/root/.hermes      # per-profile config/sessions/state
-  #   expose:
-  #     - "9001"                          # private to the compose network; NOT published
-  #   # No `ports:` mapping — the gateway must not be reachable from the host.
+  #     - hermes_home:/opt/data           # per-profile config/sessions/state
+  #   command: ["gateway", "run"]
 
 volumes:
   node_modules:

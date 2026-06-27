@@ -1494,3 +1494,37 @@ Runtime adapter → integrations/Packages → UI.
   — they need execution routed through bindings + a runtime-governance executor so
   the approval floor + grant re-run compose, and a live Hermes profile dir to
   write/back up. Best built against a running Hermes.
+
+### Iterations 80–82 — 2026-06-27 (verified against the REAL Hermes container)
+- **Researched the real NousResearch/hermes-agent** (docs + cloned source) and
+  corrected two speculative assumptions from earlier slices:
+  - The Hermes config schema: `mcp_servers` is a **map** keyed by name with
+    `{url, headers, tools.include, enabled}`, and provider config lives under a
+    `model:` section. Rewrote the projection writer (iter 80) + tests to the real
+    schema; auth via `headers.Authorization: "Bearer ${SPHERE_MCP_TOKEN}"`, the
+    token value written only to the profile `.env` (ADR-007). Confirmed from the
+    Hermes source that it interpolates `${VAR}` in headers via `os.getenv` — so
+    the ADR-007 secret design is correct.
+  - Hermes is **not** driven by a bespoke HTTP message API. Real programmatic
+    seams are an OpenAI-compatible API server + an outbound MCP client. The
+    `HermesRuntime` HTTP adapter (invented `/agents/{profile}/messages`) is kept
+    for now per the user's call, but flagged: Hermes-as-inference should reuse the
+    OpenAI adapter against Hermes' API server.
+- **MCP handshake (iter 81):** added `initialize`/`notifications/initialized`/
+  `ping` to the Sphere MCP server (real clients open a session before tools/*).
+- **inputSchema (iter 82):** real Hermes' MCP client (pydantic) rejects a tool
+  without `inputSchema`; added a permissive object schema to tools/list.
+- **Built the real Hermes image** (`docker build` of NousResearch/hermes-agent,
+  3.78 GB) and **verified the RFC-007/ADR-007 loop end-to-end against it**
+  (KinOS api on :8787, real SQLite, a seeded Sphere/agent/policy/binding/token):
+  - real Hermes MCP client → `initialize` + `tools/list` → discovers exactly the
+    policy-authorized `['memory.search']`;
+  - real MCP client `tools/call memory.search` → governed execution →
+    `{"echoed":{"q":"hello"}}` (allow + binding);
+  - `tools/call payment.execute` → `isError, No enabled binding` (deny by default);
+  - a **forged token** → `McpError: Unauthenticated credential` (fail closed).
+- **docker-compose.yml** Hermes template updated to the verified build/run recipe
+  (real image, host networking, projected `mcp_servers.sphere` config, token via
+  env/`.env`; note that `hermes mcp test` CLI needs the mcp[cli]/typer extra).
+- **Verified (in container):** full suite `npx vitest run` (excl. live-ollama)
+  → 328 passed; `tsc` clean. Live Hermes integration verified as above.
