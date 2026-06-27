@@ -256,6 +256,34 @@ describe("API router — capability execution (write path)", () => {
     expect(await approvals.listPending("sph_1")).toHaveLength(1);
   });
 
+  it("runs runtime.config.project through the pipeline: approval floor (202) then grant executes (RFC-007)", async () => {
+    // No sphere binding for runtime.config.project — the router injects the
+    // runtime-governance binding, so the pipeline resolves + executes it.
+    const allowProject: Policy = {
+      ...allowAdultCalendar,
+      id: "pol_project",
+      description: "Adults may project agent runtime config.",
+      resourceSelector: { capabilityNames: ["runtime.config.project"] },
+    };
+    const { deps, approvals, calls } = await execDeps([allowProject], []);
+    const begin = await handleApiRequest(
+      { method: "POST", path: execPath("runtime.config.project"), body: { subject: adult, input: { sphereId: "sph_1", agentId: "agt_0" } } },
+      deps,
+    );
+    expect(begin.status).toBe(202); // catalog approval floor for runtime.config.project
+    expect(calls()).toBe(0);
+    expect(await approvals.listPending("sph_1")).toHaveLength(1);
+
+    const grant = await handleApiRequest(
+      // A different parent approves (self-approval is forbidden).
+      { method: "POST", path: "/approvals/apr_1/grant", body: { approver: { memberId: "mbr_p2", role: "parent" } } },
+      deps,
+    );
+    expect(grant.status).toBe(200);
+    expect(grant.body).toMatchObject({ capability: "runtime.config.project", status: "executed" });
+    expect(calls()).toBe(1); // the runtime.project executor tool ran on grant
+  });
+
   it("404s execution against a missing sphere", async () => {
     const { deps } = await execDeps([], []);
     const res = await handleApiRequest(

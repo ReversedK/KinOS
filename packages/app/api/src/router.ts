@@ -29,6 +29,7 @@ import {
   installPackage,
   projectAgentRuntimeConfig,
   resolveInstallPlan,
+  runtimeGovernanceBindings,
   authorizeSessionRead,
   resolveApproval,
   resolveEffectiveProfile,
@@ -135,7 +136,9 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
 
     const result = await beginSensitiveAction(request, {
       catalog: defaultCapabilityCatalog(),
-      bindings: imported.bindings,
+      // Runtime-governance capabilities (RFC-007) bind to the local executor's
+      // runtime.* tools; add their bindings so they run through this pipeline.
+      bindings: [...imported.bindings, ...runtimeGovernanceBindings()],
       policies: imported.policies,
       executor: deps.executor,
       audit: deps.auditSink,
@@ -208,7 +211,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       pending.request,
       {
         catalog: defaultCapabilityCatalog(),
-        bindings: imported.bindings,
+        bindings: [...imported.bindings, ...runtimeGovernanceBindings()],
         policies: imported.policies,
         executor: deps.executor,
         audit: deps.auditSink,
