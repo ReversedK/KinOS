@@ -38,6 +38,9 @@ export type KinEventType =
   | "package.enabled"
   | "package.disabled"
   | "package.uninstalled"
+  | "runtime.token.provisioned"
+  | "runtime.token.rotated"
+  | "runtime.token.revoked"
   | "external_transfer.requested"
   | "external_transfer.allowed"
   | "external_transfer.denied";
