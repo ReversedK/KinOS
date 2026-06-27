@@ -1551,3 +1551,29 @@ Runtime adapter → integrations/Packages → UI.
   `/v1/chat/completions` generation needs Hermes configured with an LLM provider —
   operator setup; the wire/auth path is identical to the proven `listModels`.)
 - **Verified (in container):** 250 targeted tests green; `tsc` clean.
+
+### Iteration 85 — 2026-06-27 (task #9a: runtime.config.project, governed + live)
+- **Implemented the mutating `runtime.config.project`** through the existing
+  governed pipeline (no new approval machinery): core `runtimeGovernanceBindings()`
+  maps the runtime-governance capabilities to the local executor's `runtime.*`
+  tools; the execute + grant endpoints inject those bindings so the capability
+  flows through the policy double-check + the catalog approval floor. The executor
+  side effect (`projectAgentConfig`, app/api) computes the agent's projection for
+  its **own** policy scope, **provisions/rotates** the per-agent Sphere-MCP token,
+  and **writes the Hermes profile** (`config.yaml` + `.env`) — token value only in
+  `.env` (ADR-007), audited as `runtime.token.provisioned`. `main.ts` wires the
+  `runtime.project` handler over node fs (HERMES_HOME, KINOS_PUBLIC_URL).
+- **Verified end-to-end against the real Hermes image** (api on :8787, real
+  SQLite): `POST …/capabilities/runtime.config.project/execute` → **202** (approval
+  floor) → `POST /approvals/:id/grant` (a *different* parent; self-approval refused)
+  → **executed**. KinOS wrote `run/hermes/agt_0/config.yaml` (real schema:
+  `mcp_servers.sphere` url + `tools.include:[memory.search]` + `Authorization:
+  Bearer ${SPHERE_MCP_TOKEN}` + `autonomous_mcp_install:false`) and `.env`
+  (`SPHERE_MCP_TOKEN=…`). The **real Hermes MCP client** then loaded exactly those
+  KinOS-written artifacts and connected: `tools= ['memory.search']`.
+- **Verified (in container):** full suite (excl. live-ollama) → **329 passed**;
+  `tsc` clean. New tests: governance bindings, `projectAgentConfig`
+  (write + rotate + fail-closed), and the execute→202→grant→executed pipeline.
+- **Remaining (task #9b):** `runtime.session.backup` / `restore` — need an
+  encrypted-blob adapter (tar+encrypt a profile dir) + a SQLite SnapshotStore.
+  Deferred; the snapshot entity/guard + capabilities already exist.
