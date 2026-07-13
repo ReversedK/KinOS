@@ -1604,3 +1604,32 @@ Runtime adapter → integrations/Packages → UI.
 - **RFC-007 / ADR-007 are now fully implemented and live-verified** — governance
   (Sphere MCP), inference (OpenAI adapter → Hermes /v1), and all three mutating
   runtime-governance capabilities (config.project, session.backup, session.restore).
+
+### Iteration 87 — 2026-07-13 (RFC-008: governed provisioning + bootstrap — doc)
+- **New work stream: a complete, ergonomic admin/operator UX** (create & administer
+  Spheres, deploy permissioned agents, store/install, test agents in real
+  conditions). Target aesthetic: a *calm operator console*; real-condition testing
+  routes through the RFC-007/ADR-007 Hermes governed loop with **local Ollama** as
+  Hermes' inference provider (host Ollama live: `qwen3-128k`).
+- **Gap found:** creating a Sphere, adding members and deploying agents exist today
+  only as out-of-band CLI/core factory calls (`initSphere`, `createSphere`,
+  `createAgent`) that write the store directly — no governed path, so the UI cannot
+  do them without bypassing the Policy Engine. RFC-003 already made the UI the
+  intended admin surface but left "manage members/agents" as a pointer to the
+  api-contract, and **`sphere.create` cannot be gated like other capabilities**
+  (no Sphere/policy/administrator exists yet).
+- **RFC-008 (Accepted)** pins RFC-003's admin table into concrete catalog
+  capabilities (`sphere.create`, `member.invite`, `agent.create`,
+  `agent.update_config`; admin-only/high-risk/adult-only) and defines the
+  **bootstrap** rule: (1) `sphere.create` is *instance-scoped*, authorized by a
+  fixed **bootstrap policy set** (local operator = root of trust) — same
+  `evaluate()`, different explicit policy set, deny-by-default preserved; (2)
+  creating a Sphere seeds a **default admin policy set** so administrators can
+  provision within it (avoids a second chicken-and-egg). Execution reuses the
+  RFC-007 pattern: capability → local-executor tool whose side effect mutates the
+  store. Deploying an agent with a capability in scope is **not** an
+  authorization — every call is still policy-checked per call.
+- README RFC index brought up to date (003–008 were missing).
+- **Next:** core catalog entries + `defaultAdminPolicies` + provisioning
+  bindings/executor tools (TDD), then the instance `POST /spheres` + in-Sphere
+  execute endpoints, then the calm-operator-console UI.

@@ -56,6 +56,12 @@ Data sovereignty, privacy, consent, portability, memory ownership and safety mus
 - [RFC Template](docs/rfcs/000-template.md)
 - [RFC-001 — Sphere-first Architecture](docs/rfcs/001-sphere-first-architecture.md)
 - [RFC-002 — Package Store and Skills](docs/rfcs/002-package-store-and-skills.md)
+- [RFC-003 — Sphere Configuration and Admin UI](docs/rfcs/003-sphere-configuration-and-admin-ui.md)
+- [RFC-004 — Inference Provider and Model Configuration](docs/rfcs/004-inference-provider-and-model-configuration.md)
+- [RFC-005 — Agent Chat Sessions and Conversation History](docs/rfcs/005-agent-chat-sessions-and-conversation-history.md)
+- [RFC-006 — Developer Impersonation](docs/rfcs/006-developer-impersonation.md)
+- [RFC-007 — Hermes Governed Runtime](docs/rfcs/007-hermes-governed-runtime.md)
+- [RFC-008 — Governed Provisioning and Bootstrap](docs/rfcs/008-provisioning-and-bootstrap.md)
 
 ## Running the MVP
 
