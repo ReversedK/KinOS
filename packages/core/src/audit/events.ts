@@ -17,6 +17,7 @@ export type KinEventType =
   | "member.joined"
   | "member.removed"
   | "agent.created"
+  | "agent.updated"
   | "agent.disabled"
   | "memory.created"
   | "memory.shared"

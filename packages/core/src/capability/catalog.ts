@@ -144,6 +144,47 @@ const CAPABILITIES: readonly Capability[] = [
     approvalFloor: true,
     auditFacts: ["actor", "capability", "snapshotRef", "decision", "correlationId"],
   },
+  {
+    // RFC-008: create a Sphere. Instance-scoped (bootstrap) — evaluated against
+    // the bootstrap policy set, not a Sphere's policies. The founder becomes the
+    // first administrator; a default admin policy set is seeded on creation.
+    name: "sphere.create",
+    description: "Create a Sphere; the founder becomes its first administrator (admin/bootstrap).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
+    // RFC-008: add a member (role + identity) to a Sphere. In-Sphere admin.
+    name: "member.invite",
+    description: "Add a member (role + identity) to the Sphere (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
+    // RFC-008: deploy an agent with a capability scope. The scope is a request
+    // surface only — every capability the agent later requests is still
+    // policy-checked per call (deploying is never authorizing).
+    name: "agent.create",
+    description: "Deploy an agent for a member with a capability scope (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
+    // RFC-008: change an agent's capability scope / model tag / lifecycle state.
+    // Model swaps are "boring" (no identity/memory change — coding principle 9).
+    name: "agent.update_config",
+    description: "Update an agent's capability scope, model tag or state (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
 ];
 
 /** A fresh catalog map keyed by capability name. */

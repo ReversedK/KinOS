@@ -30,6 +30,7 @@ export * from "./runtime/sphere-mcp.js";
 export * from "./runtime/snapshot.js";
 export * from "./runtime/agent-token.js";
 export * from "./runtime/governance.js";
+export * from "./provisioning/provisioning.js";
 export * from "./export/export.js";
 export * from "./persistence/store.js";
 export * from "./integration/integration.js";
