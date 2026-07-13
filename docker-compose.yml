@@ -63,15 +63,22 @@ services:
   ui:
     build: .
     working_dir: /app
-    command: sh -c "npm install >/dev/null 2>&1 && npm run build -w @kinos/ui && npm run start -w @kinos/ui"
+    # `next dev` compiles on demand and recovers gracefully across restarts. It
+    # avoids the production-build pitfall of this bind-mounted setup: `next build`
+    # rewrites .next on every `up` (new BUILD_ID → open tabs 404 on old chunks),
+    # and ad-hoc host builds writing the same .next corrupt it. `.next` lives in
+    # an isolated named volume (below) so nothing outside this service touches it.
+    command: sh -c "npm install >/dev/null 2>&1 && npm run dev -w @kinos/ui"
     depends_on:
       - api
     volumes:
       - .:/app
       - node_modules:/app/node_modules
+      - ui_next:/app/ui/.next
     ports:
-      # Override the host port if 3000 is taken: KINOS_UI_PORT=3005 docker compose up ui
-      - "${KINOS_UI_PORT:-3000}:3000"
+      # Console on host :3100 (3000/3005 are commonly taken by other dev servers).
+      # Override with KINOS_UI_PORT=<port> docker compose up ui if 3100 is taken too.
+      - "${KINOS_UI_PORT:-3100}:3000"
     environment:
       - KINOS_API_URL=http://api:8787
       - PORT=3000
@@ -119,4 +126,5 @@ services:
 volumes:
   node_modules:
   kinos_data:
+  ui_next:
   # hermes_home:

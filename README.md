@@ -167,10 +167,12 @@ stays the boundary. Configure the API location with `KINOS_API_URL` (default
 Bring up the API **and** console together:
 
 ```bash
-docker compose up api ui         # API on :8787, console on :3000
+docker compose up api ui         # API on :8787, console on :3100
 ```
 
-Then open <http://localhost:3000>. From the console you can:
+Then open <http://localhost:3100> (override the host port with
+`KINOS_UI_PORT=<port> docker compose up ui` if 3100 is taken). From the console
+you can:
 
 - **Create & administer Spheres** — the founder becomes the first administrator
   (a default admin policy is seeded so you can provision immediately, RFC-008);
@@ -191,7 +193,9 @@ reason and never displays secrets, embeddings, raw tool ids or runtime internals
 (results-contract §18). Prefer to seed the §19 demo Sphere first? Run
 `seed-demo` (above) against the same `KINOS_DB` the `api` service uses.
 
-For iterative UI work: `docker compose run --rm -p 3000:3000 -e KINOS_API_URL=http://localhost:8787 dev npm run dev -w @kinos/ui`.
+The `ui` service runs `next dev` (fast start, hot reload, and it recovers across
+restarts instead of serving stale chunks). Its `.next` lives in an isolated
+volume so ad-hoc host builds can't corrupt it.
 
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 
