@@ -154,34 +154,44 @@ docker compose run --rm -p 8787:8787 dev npm run serve -w @kinos/api
 Every response includes an `x-correlation-id` header; errors use the
 api-contract codes (`not_found`, `invalid_request`) and never leak content.
 
-### UI (Next.js)
+### Operator console (Next.js UI)
 
-A read-only Next.js UI (`ui/`) lists Spheres and (soon) members/agents/approvals
-from the read API, hiding all technical internals (results-contract §18). It
-reads `KINOS_API_URL` (default `http://localhost:8787`).
+The `ui/` app is the **KinOS operator console** (RFC-003/008): a calm,
+information-first admin surface that server-renders already-governed state and
+*triggers* governed writes — it decides no authorization itself (coding
+principle 1). The browser only talks to Next; a same-origin proxy
+(`/api/kinos/*`) forwards to the API server-side, so there is no CORS and the API
+stays the boundary. Configure the API location with `KINOS_API_URL` (default
+`http://localhost:8787`).
 
-Seed a demo Sphere (2 adults + 1 child, an agent per member) and run the API +
-UI together in one container (the UI server-renders by calling the API, so they
-share a container; absolute DB paths keep every process on the same database):
+Bring up the API **and** console together:
 
 ```bash
-# 1. seed the §19 demo Sphere
-docker compose run --rm -e KINOS_DB=/app/data/kinos.sqlite dev \
-  npm run cli -w @kinos/cli -- seed-demo sph_demo "Demo Family"
-
-# 2. build, then serve API (:8787) + UI (:3000)
-docker compose run --rm dev npm run build -w @kinos/ui
-docker compose run --rm -p 3000:3000 -p 8787:8787 \
-  -e KINOS_DB=/app/data/kinos.sqlite \
-  -e KINOS_AUDIT_DB=/app/data/audit.sqlite \
-  -e KINOS_APPROVALS_DB=/app/data/approvals.sqlite \
-  -e KINOS_API_URL=http://localhost:8787 \
-  dev sh -lc '(cd packages/app/api && npx tsx src/main.ts &) ; cd ui && npx next start -p 3000'
+docker compose up api ui         # API on :8787, console on :3000
 ```
 
-Then open <http://localhost:3000>: the Spheres list → a Sphere's members and
-agents → pending approvals. For iterative work, replace `next start` with
-`npm run dev -w @kinos/ui`.
+Then open <http://localhost:3000>. From the console you can:
+
+- **Create & administer Spheres** — the founder becomes the first administrator
+  (a default admin policy is seeded so you can provision immediately, RFC-008);
+- **Invite members** (adults, teenagers, children — minors restricted by default);
+- **Deploy permissioned agents** — pick a capability scope from the catalog
+  (`GET /capabilities`); deploying is *not* authorizing (every call is still
+  policy-checked), and each agent shows its governed runtime **projection**;
+- **Browse the store & install packages** (RFC-002), manage **connectors** and
+  the **inference runtime** (RFC-004);
+- **Resolve approvals** in the inbox (quorum, minor-safety and no-self-approval
+  enforced by the core);
+- **Test agents in real conditions** — chat runs through the governed runtime;
+  with `KINOS_RUNTIME=hermes` the agent reaches back into the Sphere MCP for
+  exactly its policy-authorized capabilities (`docs/rfcs/007`, `docs/adr/007`).
+
+Every governed action surfaces its outcome (allow / approval / deny) with a safe
+reason and never displays secrets, embeddings, raw tool ids or runtime internals
+(results-contract §18). Prefer to seed the §19 demo Sphere first? Run
+`seed-demo` (above) against the same `KINOS_DB` the `api` service uses.
+
+For iterative UI work: `docker compose run --rm -p 3000:3000 -e KINOS_API_URL=http://localhost:8787 dev npm run dev -w @kinos/ui`.
 
 Implementation progress is tracked in [`PROGRESS.md`](PROGRESS.md).
 

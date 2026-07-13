@@ -56,6 +56,26 @@ services:
     # network) so it is never reachable from the host. The token model is
     # unchanged either way.
 
+  # The KinOS operator console (RFC-003/008). A Next.js app that server-renders
+  # already-governed state and triggers governed writes through a same-origin
+  # proxy to the API (no CORS; the API stays the authorization boundary). Reaches
+  # the API over the compose network at http://api:8787.
+  ui:
+    build: .
+    working_dir: /app
+    command: sh -c "npm install >/dev/null 2>&1 && npm run build -w @kinos/ui && npm run start -w @kinos/ui"
+    depends_on:
+      - api
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    ports:
+      # Override the host port if 3000 is taken: KINOS_UI_PORT=3005 docker compose up ui
+      - "${KINOS_UI_PORT:-3000}:3000"
+    environment:
+      - KINOS_API_URL=http://api:8787
+      - PORT=3000
+
   # --- Hermes runtime (RFC-007) — TEMPLATE, intentionally not started ----------
   # RFC-007 runs Hermes in its own container: one install, many agents via
   # profiles, behind a single multiplexing gateway. KinOS governs at the

@@ -1708,3 +1708,22 @@ Runtime adapter → integrations/Packages → UI.
 - **Now usable end-to-end from the UI:** create & administer Spheres, deploy
   permissioned agents, browse/install store packages, manage connectors/runtime,
   resolve approvals, and test agents in real conditions (Hermes→local Ollama).
+
+### Iteration 92 — 2026-07-13 (compose `ui` service + docs; live compose verify)
+- **`docker compose up api ui`** now brings up the API (:8787) and the operator
+  console (:3000, host port overridable via `KINOS_UI_PORT`) together; the
+  console reaches the API over the compose network at `http://api:8787`.
+- README "Operator console" section rewritten (read-only → governed admin
+  surface): what you can do (create/administer Spheres, invite members, deploy
+  permissioned agents with a catalog-picked scope + projection preview, store,
+  connectors, runtime, approvals, real-condition testing) and the same-origin-
+  proxy / no-CORS / not-the-boundary design. UI package description updated.
+- **Verified live via compose** (`KINOS_UI_PORT=3005 docker compose up api ui`):
+  console home renders (200); the browser-facing proxy `/api/kinos/health`
+  reaches the `api` service over the compose network (`{"ok":true}`); creating a
+  Sphere through the console proxy returns a new id (executed). Stack torn down
+  clean.
+- **RFC-008 is fully implemented and verified** across core → API → UI, and the
+  MVP §19 admin flow (create Sphere → add adults + a child → an agent per member,
+  role-gated capabilities, approvals, local runtime) is now doable entirely from
+  the console.
