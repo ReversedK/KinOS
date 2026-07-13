@@ -35,6 +35,7 @@ export interface AgentSummary {
   readonly ownerId: string;
   readonly state: string;
   readonly enabledCapabilities: readonly string[];
+  readonly modelPreference?: string;
 }
 
 export interface RuntimeInfo {
@@ -63,6 +64,29 @@ export function apiBaseUrl(): string {
  * wrappers below in place of a real API origin.
  */
 export const CLIENT_API_BASE = "/api/kinos";
+
+/** Map a Sphere role to its age profile (mirrors the core's ageProfileForRole). */
+export function ageProfileForRole(role: string): "adult" | "teen" | "child" {
+  if (role === "child") return "child";
+  if (role === "teenager") return "teen";
+  return "adult";
+}
+
+export interface CatalogCapability {
+  readonly name: string;
+  readonly description: string;
+  readonly risk: string;
+  readonly allowedProfiles: readonly string[];
+  readonly approvalFloor: boolean;
+}
+
+export async function getCapabilities(
+  baseUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly CatalogCapability[]> {
+  const body = await getJson<{ capabilities: readonly CatalogCapability[] }>(baseUrl, "/capabilities", fetchImpl);
+  return body.capabilities;
+}
 
 async function getJson<T>(baseUrl: string, path: string, fetchImpl: typeof fetch): Promise<T> {
   // Live read: never serve a cached response (Next caches fetch by default).
@@ -147,8 +171,11 @@ export interface ExecutionOutcome {
   readonly reason?: string;
   readonly approvalId?: string;
   readonly approverRoles?: readonly string[];
-  /** Set on a denial (HTTP 403): "forbidden". */
+  /** Executor side-effect result on success (e.g. a new sphere/member/agent id). */
+  readonly output?: unknown;
+  /** Set on a denial (403: "forbidden") or execution failure (422). */
   readonly code?: string;
+  readonly message?: string;
 }
 
 async function postJson<T>(
@@ -176,16 +203,67 @@ export async function executeCapability(
   sphereId: string,
   capability: string,
   subject: ActingSubject,
+  input?: unknown,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ExecutionOutcome> {
   const { status, body } = await postJson<ExecutionOutcome>(
     baseUrl,
     `/spheres/${encodeURIComponent(sphereId)}/capabilities/${encodeURIComponent(capability)}/execute`,
-    { subject },
+    input === undefined ? { subject } : { subject, input },
     fetchImpl,
   );
-  if (status === 200 || status === 202 || status === 403) return body;
+  // Governed outcomes (allow/approval/deny) and an authorized-but-failed side
+  // effect (422) are all returned; only transport/unknown statuses throw.
+  if (status === 200 || status === 202 || status === 403 || status === 422) return body;
   throw new Error(`execute ${capability} failed: ${status}`);
+}
+
+// --- Governed provisioning (RFC-008) ---
+
+/**
+ * Create a Sphere (bootstrap). Instance-scoped: the founder becomes the first
+ * administrator and a default admin policy set is seeded. A denial (403) or an
+ * execution failure (422) is a governed outcome and is returned.
+ */
+export async function createSphereRequest(
+  baseUrl: string,
+  subject: ActingSubject,
+  input: { readonly name: string; readonly type?: string; readonly founderName?: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  const { status, body } = await postJson<ExecutionOutcome>(baseUrl, "/spheres", { subject, input }, fetchImpl);
+  if (status === 200 || status === 202 || status === 403 || status === 422) return body;
+  throw new Error(`create sphere failed: ${status}`);
+}
+
+export function inviteMember(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  input: { readonly role: string; readonly displayName: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "member.invite", subject, input, fetchImpl);
+}
+
+export function deployAgent(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  input: { readonly ownerId: string; readonly name: string; readonly capabilities?: readonly string[]; readonly model?: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "agent.create", subject, input, fetchImpl);
+}
+
+export function updateAgentConfig(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  input: { readonly agentId: string; readonly capabilities?: readonly string[]; readonly model?: string; readonly state?: "active" | "paused" | "disabled" },
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "agent.update_config", subject, input, fetchImpl);
 }
 
 // --- Runtime config projection preview (RFC-007/ADR-007) ---

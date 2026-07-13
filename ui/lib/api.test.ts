@@ -106,6 +106,7 @@ describe("UI API client", () => {
       "sph_1",
       "calendar.create_event",
       { memberId: "mbr_p1", role: "parent", ageProfile: "adult" },
+      undefined,
       impl,
     );
     expect(out).toMatchObject({ status: "executed" });
@@ -122,6 +123,7 @@ describe("UI API client", () => {
       "sph_1",
       "calendar.create_event",
       { role: "child", ageProfile: "child" },
+      undefined,
       fakeFetch({ code: "forbidden", message: "denied" }, 403),
     );
     expect(out).toMatchObject({ code: "forbidden" });
@@ -129,7 +131,7 @@ describe("UI API client", () => {
 
   it("executeCapability throws when execution is disabled (501)", async () => {
     await expect(
-      executeCapability("http://x", "sph_1", "calendar.create_event", { role: "parent", ageProfile: "adult" }, fakeFetch({}, 501)),
+      executeCapability("http://x", "sph_1", "calendar.create_event", { role: "parent", ageProfile: "adult" }, undefined, fakeFetch({}, 501)),
     ).rejects.toThrow(/failed: 501/);
   });
 

@@ -1667,3 +1667,44 @@ Runtime adapter → integrations/Packages → UI.
   non-member deploy **422, server stays up**.
 - **Next:** the calm-operator-console UI — design system + shell, then wire the
   admin + agent-testing flows on these endpoints.
+
+### Iteration 90 — 2026-07-13 (UI: operator-console design system + shell + proxy)
+- **`globals.css`** — a calm, information-first design system for the trust
+  console: a monospace-for-machine-facts voice (ids, capabilities, states,
+  correlation ids), hairline borders, deliberate spacing, semantic allow/deny/
+  approval color, light **and** dark via `prefers-color-scheme`. Local-first: no
+  network fonts.
+- **App shell** — `layout.tsx` + a client `TopNav` (brand, primary nav, a live
+  API-health dot).
+- **Same-origin API proxy** (`/api/kinos/[...path]`): the browser only talks to
+  Next; the handler forwards to the KinOS API server-side. No CORS, the API URL
+  stays server-side, and the UI still decides no authorization (it only relays
+  the governed request/response). Fixes the latent cross-origin gap where the old
+  client components fetched the API origin directly.
+
+### Iteration 91 — 2026-07-13 (UI: admin + agent-testing flows, end-to-end)
+- **`GET /capabilities`** (API): read-only capability-catalog metadata
+  (name/risk/profiles/approval-floor) so the admin can choose an agent's scope
+  from the real catalog. No raw tool ids leak. Agents endpoint now also returns
+  `modelPreference`. Router test added.
+- **Provisioning UI flows** (RFC-008), all through the governed pipeline:
+  `CreateSphere` (bootstrap), `InviteMember`, `DeployAgent` (with a
+  `CapabilityPicker` — scope is a request surface, shown as such), and
+  `AgentConfig` (edit scope / model / lifecycle + fold-in of the RFC-007 Hermes
+  **projection preview**). Client wrappers + a shared `describeOutcome` render
+  allow / approval / deny / 422 as user-safe notes.
+- **Rebuilt every page/component** on the design system and the same-origin
+  proxy: Spheres index (+ create), the **Sphere console** (overview stats,
+  members + invite, agents + deploy + per-agent configure, runtime, connectors,
+  capability test bench), the **agent test console** (chat showing the agent's
+  governed scope + optimistic turns), the **store**, and the **approvals inbox**.
+  Retired `RuntimeProjection.tsx` (folded into `AgentConfig`).
+- **Verified:** `tsc` clean; full non-live suite **365 passed**; `next build`
+  clean. **Full-stack E2E** (real API + `next start` together): SSR renders
+  against the API; the browser-facing proxy create → invite → deploy works;
+  `/capabilities` loads; the Sphere console SSR shows the deployed agent; the
+  test-agents page renders; and a governed denial (child invite) still surfaces
+  as 403 — 8/8 checks passed, no crashes.
+- **Now usable end-to-end from the UI:** create & administer Spheres, deploy
+  permissioned agents, browse/install store packages, manage connectors/runtime,
+  resolve approvals, and test agents in real conditions (Hermes→local Ollama).

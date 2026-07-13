@@ -1,16 +1,15 @@
+import { CreateSphere } from "../components/CreateSphere";
 import { apiBaseUrl, getSphere, getSpheres, type SphereSummary } from "../lib/api";
 
 // Renders against the live read API on every request (never prerendered stale).
 export const dynamic = "force-dynamic";
 
-// Read-only view: lists Spheres and their summaries from the API. The UI shows
-// Spheres/members, never embeddings, vector stores, MCP internals or runtime
-// details (results-contract §18).
+const TYPE_GLYPH: Record<string, string> = { family: "⌂", person: "○", team: "◇", organization: "▤" };
+
 export default async function Home() {
   const base = apiBaseUrl();
   let summaries: SphereSummary[] = [];
   let error: string | undefined;
-
   try {
     const ids = await getSpheres(base);
     summaries = await Promise.all(ids.map((id) => getSphere(base, id)));
@@ -18,46 +17,68 @@ export default async function Home() {
     error = (e as Error).message;
   }
 
-  if (error !== undefined) {
-    return (
-      <main>
-        <p style={{ color: "#f28b82" }}>
-          Could not reach the KinOS API at <code>{base}</code>: {error}
-        </p>
-        <p style={{ color: "#9aa0a6" }}>Start it with <code>npm run serve -w @kinos/api</code>.</p>
-      </main>
-    );
-  }
-
-  if (summaries.length === 0) {
-    return (
-      <main>
-        <p style={{ color: "#9aa0a6" }}>No Spheres yet. Create one with the CLI:</p>
-        <pre>kinos init sph_1 &quot;Doe Family&quot;</pre>
-      </main>
-    );
-  }
-
   return (
-    <main>
-      <p style={{ marginTop: 0 }}>
-        <a href="/approvals" style={{ color: "#8ab4f8" }}>Pending approvals →</a>
-      </p>
-      <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: "1rem" }}>
-        {summaries.map((s) => (
-          <li
-            key={s.id}
-            style={{ border: "1px solid #2a2d34", borderRadius: 8, padding: "1rem" }}
-          >
-            <a href={`/spheres/${encodeURIComponent(s.id)}`} style={{ color: "inherit", textDecoration: "none" }}>
-              <div style={{ fontSize: "1.1rem", fontWeight: 600 }}>{s.name}</div>
-              <div style={{ color: "#9aa0a6", fontSize: "0.9rem" }}>
-                {s.type} · {s.status} · {s.members} member{s.members === 1 ? "" : "s"}
-              </div>
-            </a>
-          </li>
-        ))}
-      </ul>
-    </main>
+    <div className="container">
+      <div className="stack loose">
+        <div className="row between" style={{ alignItems: "flex-end" }}>
+          <div className="stack tight">
+            <span className="eyebrow">local-first trust infrastructure</span>
+            <h1 className="title">Spheres</h1>
+            <p className="help">
+              A Sphere is a governed unit of human representation — a person, family, team or organization. Administer members,
+              deploy permissioned agents, and test them under the same policy pipeline that governs production.
+            </p>
+          </div>
+          <CreateSphere />
+        </div>
+
+        {error !== undefined ? (
+          <div className="note deny">
+            Could not reach the KinOS API at <code>{base}</code> — {error}.
+            <div className="faint" style={{ marginTop: 6 }}>
+              Start it with <code>docker compose up api</code>.
+            </div>
+          </div>
+        ) : summaries.length === 0 ? (
+          <div className="empty">
+            No Spheres yet.
+            <div className="faint" style={{ marginTop: 8 }}>
+              Create your first with <span className="mono">＋ New Sphere</span> above — you become its first administrator.
+            </div>
+          </div>
+        ) : (
+          <div className="grid cols-2">
+            {summaries.map((s) => (
+              <a key={s.id} href={`/spheres/${encodeURIComponent(s.id)}`} className="card reveal">
+                <div className="row between">
+                  <div className="row" style={{ gap: "var(--s3)" }}>
+                    <span className="glyph" style={{ background: "var(--panel-2)", color: "var(--brand)", boxShadow: "inset 0 0 0 1px var(--line)" }}>
+                      {TYPE_GLYPH[s.type] ?? "◈"}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 15 }}>{s.name}</div>
+                      <div className="faint mono" style={{ fontSize: 12 }}>
+                        {s.id}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`badge ${s.status === "active" ? "allow" : ""}`}>
+                    <span className="dot" />
+                    {s.status}
+                  </span>
+                </div>
+                <hr className="hairline" />
+                <div className="row" style={{ gap: "var(--s5)" }}>
+                  <span className="faint">
+                    <strong style={{ color: "var(--ink)" }}>{s.members}</strong> member{s.members === 1 ? "" : "s"}
+                  </span>
+                  <span className="pill">{s.type}</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

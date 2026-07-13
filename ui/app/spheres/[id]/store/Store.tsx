@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import {
+  CLIENT_API_BASE,
+  ageProfileForRole,
   installStorePackage,
   setPackageEnabled,
   type ActingSubject,
@@ -15,26 +17,20 @@ export interface StoreMember {
   readonly role: string;
 }
 
-function ageProfileForRole(role: string): string {
-  if (role === "child") return "child";
-  if (role === "teenager") return "teen";
-  return "adult";
-}
+const TYPE_TONE: Record<string, string> = { skill: "brand", connector: "info", agent_template: "pending" };
 
 /**
  * Package store (RFC-002): browse the curated catalog + Install, and manage
  * installed packages (Enable/Disable). The UI only triggers the governed
  * endpoints; install never grants use (the grant wizard / policies do), and the
- * Policy Engine gates every call. Acting member chosen for the dev MVP.
+ * Policy Engine gates every call.
  */
 export function Store({
-  baseUrl,
   sphereId,
   members,
   catalog,
   installed,
 }: {
-  baseUrl: string;
   sphereId: string;
   members: readonly StoreMember[];
   catalog: readonly StorePackage[];
@@ -55,12 +51,12 @@ export function Store({
     setBusy(true);
     setNote(undefined);
     try {
-      const res = await installStorePackage(baseUrl, sphereId, subject(), pkg.id);
-      if (res.code === "forbidden") setNote(`denied: ${res.message ?? "forbidden"}`);
+      const res = await installStorePackage(CLIENT_API_BASE, sphereId, subject(), pkg.id);
+      if (res.code === "forbidden") setNote(`Denied — ${res.message ?? "forbidden"}`);
       else if (res.status !== undefined)
         setRows((rs) => [...rs.filter((r) => r.id !== pkg.id), { id: pkg.id, type: pkg.type, title: pkg.title, description: pkg.description, status: res.status as string }]);
     } catch (e) {
-      setNote(`error: ${(e as Error).message}`);
+      setNote(`Error — ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -70,65 +66,97 @@ export function Store({
     setBusy(true);
     setNote(undefined);
     try {
-      const res = await setPackageEnabled(baseUrl, sphereId, id, enabled, subject());
-      if (res.code === "forbidden") setNote(`denied: ${res.message ?? "forbidden"}`);
+      const res = await setPackageEnabled(CLIENT_API_BASE, sphereId, id, enabled, subject());
+      if (res.code === "forbidden") setNote(`Denied — ${res.message ?? "forbidden"}`);
       else if (res.status !== undefined) setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status: res.status as string } : r)));
     } catch (e) {
-      setNote(`error: ${(e as Error).message}`);
+      setNote(`Error — ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div>
-      <label style={{ fontSize: "0.85rem" }}>
-        as{" "}
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.role}
-            </option>
-          ))}
-        </select>
-      </label>
+    <div className="stack loose">
+      <div className="row between">
+        <div className="field" style={{ maxWidth: 220 }}>
+          <label>Acting as</label>
+          <select className="select" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.role}
+              </option>
+            ))}
+          </select>
+        </div>
+        {note ? <div className="note deny" style={{ maxWidth: 420 }}>{note}</div> : null}
+      </div>
 
-      <h3 style={{ marginBottom: "0.5rem" }}>Store</h3>
-      <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: "0.5rem" }}>
-        {catalog.map((p) => {
-          const st = statusOf(p.id);
-          return (
-            <li key={p.id} style={{ border: "1px solid #2a2d34", borderRadius: 6, padding: "0.5rem 0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
-              <span>
-                <strong>{p.title}</strong> <span style={{ color: "#9aa0a6" }}>· {p.type}</span>
-                <div style={{ color: "#9aa0a6", fontSize: "0.85rem" }}>{p.description}</div>
-              </span>
-              <button type="button" disabled={busy || memberId === "" || st !== undefined} onClick={() => void install(p)}>
-                {st !== undefined ? st : "Install"}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="stack tight">
+        <span className="eyebrow">curated catalog</span>
+        <div className="grid cols-2">
+          {catalog.map((p) => {
+            const st = statusOf(p.id);
+            return (
+              <div key={p.id} className="card stack tight">
+                <div className="row between">
+                  <div className="row" style={{ gap: "var(--s2)" }}>
+                    <strong>{p.title}</strong>
+                    <span className={`badge ${TYPE_TONE[p.type] ?? ""}`}>{p.type}</span>
+                  </div>
+                  <span className="faint mono" style={{ fontSize: 12 }}>v{p.version}</span>
+                </div>
+                <p className="help" style={{ margin: 0 }}>{p.description}</p>
+                {p.providesCapabilities.length > 0 ? (
+                  <div className="row" style={{ gap: 4 }}>
+                    {p.providesCapabilities.map((c) => (
+                      <code key={c} className="pill">
+                        {c}
+                      </code>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="row between">
+                  <span className="faint" style={{ fontSize: 12 }}>
+                    {p.publisher} · {p.ageRating}
+                  </span>
+                  <button
+                    className={`btn sm${st === undefined ? " primary" : ""}`}
+                    disabled={busy || memberId === "" || st !== undefined}
+                    onClick={() => void install(p)}
+                  >
+                    {st !== undefined ? st : "Install"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {rows.length > 0 ? (
-        <>
-          <h3 style={{ marginBottom: "0.5rem", marginTop: "1.25rem" }}>Installed</h3>
-          <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: "0.5rem" }}>
+        <div className="panel">
+          <div className="panel-head">
+            <h3>Installed · {rows.length}</h3>
+          </div>
+          <div className="panel-body flush">
             {rows.map((p) => (
-              <li key={p.id} style={{ border: "1px solid #2a2d34", borderRadius: 6, padding: "0.5rem 0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>
-                  <strong>{p.title}</strong> <span style={{ color: "#9aa0a6" }}>· {p.status}</span>
-                </span>
-                <button type="button" disabled={busy || memberId === ""} onClick={() => void toggle(p.id, p.status !== "enabled")}>
+              <div key={p.id} className="rowitem">
+                <div className="lead">
+                  <span className={`badge ${p.status === "enabled" ? "allow" : ""}`}>
+                    <span className="dot" />
+                    {p.status}
+                  </span>
+                  <strong>{p.title}</strong>
+                </div>
+                <button className="btn sm" disabled={busy || memberId === ""} onClick={() => void toggle(p.id, p.status !== "enabled")}>
                   {p.status === "enabled" ? "Disable" : "Enable"}
                 </button>
-              </li>
+              </div>
             ))}
-          </ul>
-        </>
+          </div>
+        </div>
       ) : null}
-      {note !== undefined ? <p style={{ color: "#9aa0a6", fontSize: "0.85rem" }}>{note}</p> : null}
     </div>
   );
 }

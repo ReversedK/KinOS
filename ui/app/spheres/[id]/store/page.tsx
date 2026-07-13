@@ -8,37 +8,45 @@ export const dynamic = "force-dynamic";
 // never grants use (policies do), and the Policy Engine gates every call.
 export default async function StorePage({ params }: { params: { id: string } }) {
   const base = apiBaseUrl();
+  const id = params.id;
   try {
     const [sphere, members, catalog, installed] = await Promise.all([
-      getSphere(base, params.id),
-      getMembers(base, params.id),
+      getSphere(base, id),
+      getMembers(base, id),
       getStoreCatalog(base),
-      getInstalledPackages(base, params.id),
+      getInstalledPackages(base, id),
     ]);
     return (
-      <main>
-        <p style={{ marginTop: 0 }}>
-          <a href={`/spheres/${encodeURIComponent(params.id)}`} style={{ color: "#8ab4f8" }}>
-            ← {sphere.name}
-          </a>
-        </p>
-        <Store
-          baseUrl={base}
-          sphereId={params.id}
-          members={members.map((m) => ({ id: m.id, role: m.role }))}
-          catalog={catalog}
-          installed={installed}
-        />
-      </main>
+      <div className="container">
+        <div className="crumbs">
+          <a href="/">spheres</a> / <a href={`/spheres/${encodeURIComponent(id)}`}>{sphere.name}</a> / store
+        </div>
+        <div className="stack loose">
+          <div className="stack tight">
+            <span className="eyebrow">packages &amp; skills</span>
+            <h1 className="title">Store</h1>
+            <p className="help">
+              Install skills, connectors and agent templates into this Sphere. Installing registers capabilities and bindings
+              (disabled by default) — it never grants use; policies and the grant flow do.
+            </p>
+          </div>
+          <Store
+            sphereId={id}
+            members={members.map((m) => ({ id: m.id, role: m.role }))}
+            catalog={catalog}
+            installed={installed}
+          />
+        </div>
+      </div>
     );
   } catch (e) {
     return (
-      <main>
-        <p style={{ marginTop: 0 }}>
-          <a href="/" style={{ color: "#8ab4f8" }}>← Spheres</a>
-        </p>
-        <p style={{ color: "#f28b82" }}>Could not load the store for {params.id}: {(e as Error).message}</p>
-      </main>
+      <div className="container narrow">
+        <div className="crumbs">
+          <a href="/">spheres</a> / store
+        </div>
+        <div className="note deny">Could not load the store for {id} — {(e as Error).message}</div>
+      </div>
     );
   }
 }

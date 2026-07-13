@@ -2,14 +2,9 @@
 
 import { useState } from "react";
 
-import { executeCapability, type ActingSubject } from "../../../lib/api";
-
-/** Map a Sphere role to its age profile (mirrors the core's ageProfileForRole). */
-function ageProfileForRole(role: string): string {
-  if (role === "child") return "child";
-  if (role === "teenager") return "teen";
-  return "adult";
-}
+import { CLIENT_API_BASE, ageProfileForRole, executeCapability, type ActingSubject, type CatalogCapability } from "../../../lib/api";
+import { describeOutcome } from "../../../lib/outcome";
+import { isAgentFacing } from "../../../components/CapabilityPicker";
 
 export interface RunMember {
   readonly id: string;
@@ -17,72 +12,69 @@ export interface RunMember {
 }
 
 /**
- * Dev affordance to request a governed capability execution as a chosen member
- * (RFC-003; the member selector anticipates RFC-006 impersonation). It only
- * triggers the governed endpoint and shows the outcome (executed / pending
- * approval / denied) — the Policy Engine decides, not the UI (coding principle 1).
+ * Test a governed capability as a chosen member (RFC-003; the member selector
+ * anticipates RFC-006 impersonation). It triggers the governed endpoint and
+ * shows the outcome (executed / approval / denied) — the Policy Engine decides,
+ * not the UI. Useful to confirm allow-for-adult / deny-for-child behavior.
  */
 export function RunCapability({
-  baseUrl,
   sphereId,
   members,
+  capabilities,
 }: {
-  baseUrl: string;
   sphereId: string;
   members: readonly RunMember[];
+  capabilities?: readonly CatalogCapability[];
 }) {
-  const [capability, setCapability] = useState("calendar.create_event");
+  const options = (capabilities ?? []).filter((c) => isAgentFacing(c.name)).map((c) => c.name);
+  const [capability, setCapability] = useState(options[0] ?? "calendar.create_event");
   const [memberId, setMemberId] = useState(members[0]?.id ?? "");
-  const [outcome, setOutcome] = useState<string>();
+  const [note, setNote] = useState<{ tone: string; text: string }>();
   const [busy, setBusy] = useState(false);
 
   async function run(): Promise<void> {
     const member = members.find((m) => m.id === memberId);
-    if (member === undefined) {
-      setOutcome("select a member");
-      return;
-    }
+    if (member === undefined) return;
     setBusy(true);
-    setOutcome(undefined);
+    setNote(undefined);
     try {
-      const subject: ActingSubject = {
-        memberId: member.id,
-        role: member.role,
-        ageProfile: ageProfileForRole(member.role),
-      };
-      const res = await executeCapability(baseUrl, sphereId, capability.trim(), subject);
-      setOutcome(res.code === "forbidden" ? `denied: ${res.reason ?? "forbidden"}` : `${res.status ?? "ok"}`);
+      const subject: ActingSubject = { memberId: member.id, role: member.role, ageProfile: ageProfileForRole(member.role) };
+      const res = await executeCapability(CLIENT_API_BASE, sphereId, capability.trim(), subject);
+      setNote(describeOutcome(res));
     } catch (e) {
-      setOutcome(`error: ${(e as Error).message}`);
+      setNote({ tone: "deny", text: (e as Error).message });
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-      <label>
-        as{" "}
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.role} ({m.id})
-            </option>
-          ))}
-        </select>
-      </label>
-      <input
-        value={capability}
-        onChange={(e) => setCapability(e.target.value)}
-        placeholder="capability (e.g. calendar.create_event)"
-        style={{ minWidth: "16rem" }}
-      />
-      <button type="button" disabled={busy || memberId === ""} onClick={() => void run()}>
-        Run
-      </button>
-      {outcome !== undefined ? (
-        <span style={{ color: "#9aa0a6", fontSize: "0.85rem" }}>{outcome}</span>
-      ) : null}
+    <div className="stack tight">
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <div className="field">
+          <label>Acting member</label>
+          <select className="select" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.role} · {m.id}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field grow">
+          <label>Capability</label>
+          <input className="input" list="cap-list" value={capability} onChange={(e) => setCapability(e.target.value)} placeholder="calendar.create_event" />
+          <datalist id="cap-list">
+            {options.map((o) => (
+              <option key={o} value={o} />
+            ))}
+          </datalist>
+        </div>
+        <button className="btn" disabled={busy || memberId === ""} onClick={() => void run()}>
+          {busy ? <span className="spin" /> : null} Run
+        </button>
+      </div>
+      {note ? <div className={`note ${note.tone}`}>{note.text}</div> : null}
     </div>
   );
 }

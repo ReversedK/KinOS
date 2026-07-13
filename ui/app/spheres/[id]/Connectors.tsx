@@ -2,28 +2,20 @@
 
 import { useState } from "react";
 
-import { setIntegrationEnabled, type ActingSubject, type IntegrationSummary } from "../../../lib/api";
+import { CLIENT_API_BASE, ageProfileForRole, setIntegrationEnabled, type ActingSubject, type IntegrationSummary } from "../../../lib/api";
 import type { RunMember } from "./RunCapability";
 
-function ageProfileForRole(role: string): string {
-  if (role === "child") return "child";
-  if (role === "teenager") return "teen";
-  return "adult";
-}
-
 /**
- * Connectors (integrations) view (RFC-003/integration-model). Lists the Sphere's
- * integrations and lets an admin enable/disable each via the governed endpoint.
- * The UI only triggers; the Policy Engine decides. Acting member chosen for the
- * dev MVP (anticipates auth/RFC-006). Secrets are never shown.
+ * Connectors (integrations) view (RFC-003 / integration-model). Lists the
+ * Sphere's integrations and lets an admin enable/disable each via the governed
+ * endpoint. The UI only triggers; the Policy Engine decides. Secrets are never
+ * shown — only the connector, its status, and the capabilities it provides.
  */
 export function Connectors({
-  baseUrl,
   sphereId,
   members,
   integrations,
 }: {
-  baseUrl: string;
   sphereId: string;
   members: readonly RunMember[];
   integrations: readonly IntegrationSummary[];
@@ -42,53 +34,50 @@ export function Connectors({
     setBusy(true);
     setNote(undefined);
     try {
-      const res = await setIntegrationEnabled(baseUrl, sphereId, id, enabled, subject());
-      if (res.code === "forbidden") {
-        setNote(`denied: ${res.message ?? "forbidden"}`);
-      } else if (res.status !== undefined) {
-        setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status: res.status as string } : r)));
-      }
+      const res = await setIntegrationEnabled(CLIENT_API_BASE, sphereId, id, enabled, subject());
+      if (res.code === "forbidden") setNote(`Denied — ${res.message ?? "forbidden"}`);
+      else if (res.status !== undefined) setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status: res.status as string } : r)));
     } catch (e) {
-      setNote(`error: ${(e as Error).message}`);
+      setNote(`Error — ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }
   }
 
   if (rows.length === 0) {
-    return <p style={{ color: "#9aa0a6" }}>No connectors installed.</p>;
+    return <div className="empty">No connectors installed. Install a connector package from the store.</div>;
   }
 
   return (
-    <div>
-      <label style={{ fontSize: "0.85rem" }}>
-        as{" "}
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+    <div className="stack tight">
+      <div className="field" style={{ maxWidth: 220 }}>
+        <label>Acting as</label>
+        <select className="select" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
           {members.map((m) => (
             <option key={m.id} value={m.id}>
               {m.role}
             </option>
           ))}
         </select>
-      </label>
-      <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: "0.5rem", marginTop: "0.5rem" }}>
-        {rows.map((i) => (
-          <li key={i.id} style={{ border: "1px solid #2a2d34", borderRadius: 6, padding: "0.5rem 0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>
-              <strong>{i.provider}</strong> <span style={{ color: "#9aa0a6" }}>· {i.status}</span>
-              <div style={{ color: "#9aa0a6", fontSize: "0.8rem" }}>{i.providesCapabilities.join(", ") || "—"}</div>
+      </div>
+      {rows.map((i) => (
+        <div key={i.id} className="rowitem" style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-sm)" }}>
+          <div className="lead">
+            <span className={`badge ${i.status === "enabled" ? "allow" : ""}`}>
+              <span className="dot" />
+              {i.status}
             </span>
-            <button
-              type="button"
-              disabled={busy || memberId === ""}
-              onClick={() => void toggle(i.id, i.status !== "enabled")}
-            >
-              {i.status === "enabled" ? "Disable" : "Enable"}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {note !== undefined ? <p style={{ color: "#9aa0a6", fontSize: "0.85rem" }}>{note}</p> : null}
+            <span>
+              <strong>{i.provider}</strong>
+              <div className="faint" style={{ fontSize: 12 }}>{i.providesCapabilities.join(", ") || "—"}</div>
+            </span>
+          </div>
+          <button className="btn sm" disabled={busy || memberId === ""} onClick={() => void toggle(i.id, i.status !== "enabled")}>
+            {i.status === "enabled" ? "Disable" : "Enable"}
+          </button>
+        </div>
+      ))}
+      {note ? <div className="note deny">{note}</div> : null}
     </div>
   );
 }

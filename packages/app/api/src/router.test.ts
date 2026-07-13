@@ -68,6 +68,16 @@ describe("API router (api-contract.md)", () => {
     expect(res.correlationId).toBe("req_1");
   });
 
+  it("exposes the read-only capability catalog (name/risk/profiles), no raw tool ids", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/capabilities" }, await deps());
+    expect(res.status).toBe(200);
+    const caps = (res.body as { capabilities: Array<{ name: string; risk: string }> }).capabilities;
+    expect(caps.some((c) => c.name === "memory.search")).toBe(true);
+    expect(caps.some((c) => c.name === "sphere.create")).toBe(true);
+    // Never leaks binding/runtime tool names.
+    expect(JSON.stringify(caps)).not.toContain("runtimeToolName");
+  });
+
   it("lists spheres", async () => {
     const res = await handleApiRequest({ method: "GET", path: "/spheres" }, await deps());
     expect(res.status).toBe(200);

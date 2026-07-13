@@ -23,7 +23,7 @@ export function TopNav() {
     let alive = true;
     const ping = async () => {
       try {
-        const res = await fetch(`${CLIENT_API_BASE}/spheres`, { cache: "no-store" });
+        const res = await fetch(`${CLIENT_API_BASE}/health`, { cache: "no-store" });
         if (alive) setOk(res.ok);
       } catch {
         if (alive) setOk(false);

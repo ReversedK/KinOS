@@ -817,6 +817,22 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     return ok({ ok: true });
   }
 
+  if (segments.length === 1 && segments[0] === "capabilities") {
+    // Read-only capability catalog metadata (RFC-003): the admin surface for
+    // choosing an agent's capability scope. Capabilities are the only
+    // agent-facing surface; no raw tool ids are exposed. This is a floor/default
+    // — the Policy Engine still governs every call (coding principle 1).
+    return ok({
+      capabilities: [...defaultCapabilityCatalog().values()].map((c) => ({
+        name: c.name,
+        description: c.description,
+        risk: c.risk,
+        allowedProfiles: c.allowedProfiles,
+        approvalFloor: c.approvalFloor,
+      })),
+    });
+  }
+
   if (segments.length === 1 && segments[0] === "store") {
     // store.browse (RFC-002): the curated catalog of installable packages.
     return ok({
@@ -866,6 +882,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           ownerId: a.ownerId,
           state: a.state,
           enabledCapabilities: a.enabledCapabilities,
+          ...(a.modelPreference !== undefined ? { modelPreference: a.modelPreference } : {}),
         })),
       });
     }
