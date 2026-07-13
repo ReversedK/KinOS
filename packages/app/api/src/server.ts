@@ -56,6 +56,7 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
 export function createApiServer(deps: ApiDeps, mcp?: SphereMcpServerDeps): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
+      try {
       const apiRequest = toApiRequest(req.method, req.url);
 
       // Sphere MCP gateway (RFC-007, ADR-007): bearer-authenticated JSON-RPC,
@@ -82,6 +83,18 @@ export function createApiServer(deps: ApiDeps, mcp?: SphereMcpServerDeps): Serve
         "x-correlation-id": response.correlationId,
       });
       res.end(JSON.stringify(response.body));
+      } catch (e) {
+        // Safety net: an unexpected error must never crash the process or leak
+        // internals. Surface a correlated 500; the router converts expected
+        // execution failures to 4xx before they reach here.
+        const correlationId = deps.newCorrelationId();
+        if (!res.headersSent) {
+          res.writeHead(500, { "content-type": "application/json", "x-correlation-id": correlationId });
+          res.end(JSON.stringify({ code: "internal_error", message: "Internal error" }));
+        } else {
+          res.end();
+        }
+      }
     })();
   });
 }

@@ -103,8 +103,10 @@ describe("API router (api-contract.md)", () => {
     expect((res.body as { events: unknown[] }).events).toHaveLength(1);
   });
 
-  it("rejects a non-GET method", async () => {
-    const res = await handleApiRequest({ method: "POST", path: "/spheres" }, await deps());
+  it("rejects a non-GET method on a read-only route", async () => {
+    // POST /spheres is now the governed provisioning route (RFC-008); use a
+    // genuinely GET-only read route (members) to exercise the method guard.
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/members" }, await deps());
     expect(res.status).toBe(405);
     expect(res.code).toBe("invalid_request");
   });

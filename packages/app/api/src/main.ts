@@ -11,7 +11,7 @@ import { mkdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { RUNTIME_GOVERNANCE_TOOLS, type AgentRuntime } from "@kinos/core";
+import { PROVISIONING_TOOLS, RUNTIME_GOVERNANCE_TOOLS, type AgentRuntime } from "@kinos/core";
 import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
 import {
   FsEncryptedBlobStore,
@@ -36,6 +36,17 @@ import {
   type RuntimeProjectInput,
   type RuntimeRestoreInput,
 } from "./runtime-governance.js";
+import {
+  createAgentProvision,
+  createSphereProvision,
+  inviteMemberProvision,
+  updateAgentProvision,
+  type CreateAgentInput,
+  type CreateSphereInput,
+  type InviteMemberInput,
+  type ProvisioningDeps,
+  type UpdateAgentInput,
+} from "./provisioning.js";
 
 /**
  * Select the agent runtime. A "boring" swap (coding principle 9): changing the
@@ -104,10 +115,23 @@ const govDeps: RuntimeGovernanceDeps = {
   newSnapshotId: () => `snap_${randomUUID()}`,
 };
 
+// Provisioning executor deps (RFC-008): the side effects generate ids in the
+// application layer (keeping the core deterministic) and mutate the canonical
+// SphereStore behind the governed provisioning capabilities.
+const provDeps: ProvisioningDeps = {
+  store,
+  auditSink: audit,
+  newSphereId: () => `sph_${randomUUID().slice(0, 8)}`,
+  newMemberId: () => `mbr_${randomUUID().slice(0, 8)}`,
+  newIdentityId: () => `idy_${randomUUID().slice(0, 8)}`,
+  newAgentId: () => `agt_${randomUUID().slice(0, 8)}`,
+};
+
 // Local executor for the governed write path (mirrors the CLI's handler set),
 // plus the runtime-governance tools (RFC-007): config.project writes the agent's
 // profile + provisions its token; session.backup/restore capture/restore the
-// agent's runtime state as an opaque encrypted blob.
+// agent's runtime state as an opaque encrypted blob; and the provisioning tools
+// (RFC-008): create Sphere / invite member / create + update agent.
 const executor = new LocalCapabilityExecutor(
   new Map<string, CapabilityHandler>([
     ["local.calendar", async (input) => ({ created: true, input })],
@@ -116,6 +140,10 @@ const executor = new LocalCapabilityExecutor(
     [RUNTIME_GOVERNANCE_TOOLS["runtime.config.project"], async (input) => projectAgentConfig(govDeps, input as RuntimeProjectInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.backup"], async (input) => backupAgentState(govDeps, input as RuntimeBackupInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.restore"], async (input) => restoreAgentState(govDeps, input as RuntimeRestoreInput)],
+    [PROVISIONING_TOOLS["sphere.create"], async (input) => createSphereProvision(provDeps, input as CreateSphereInput)],
+    [PROVISIONING_TOOLS["member.invite"], async (input) => inviteMemberProvision(provDeps, input as InviteMemberInput)],
+    [PROVISIONING_TOOLS["agent.create"], async (input) => createAgentProvision(provDeps, input as CreateAgentInput)],
+    [PROVISIONING_TOOLS["agent.update_config"], async (input) => updateAgentProvision(provDeps, input as UpdateAgentInput)],
   ]),
 );
 

@@ -1633,3 +1633,37 @@ Runtime adapter → integrations/Packages → UI.
 - **Next:** core catalog entries + `defaultAdminPolicies` + provisioning
   bindings/executor tools (TDD), then the instance `POST /spheres` + in-Sphere
   execute endpoints, then the calm-operator-console UI.
+
+### Iteration 88 — 2026-07-13 (core: provisioning capabilities + policy sets)
+- Catalog: `sphere.create`, `member.invite`, `agent.create`,
+  `agent.update_config` (admin-only/high-risk/adult-only, no approval floor).
+- New `provisioning` core module: `provisioningBindings()` (capability → local
+  executor tool, the RFC-007 pattern), `bootstrapPolicies()` (instance-scoped:
+  an adult may `sphere.create`, nothing else) and `defaultAdminPolicies()`
+  (seeds a new Sphere so administrators can provision). Pure domain. Added the
+  `agent.updated` audit fact. 15 core tests.
+
+### Iteration 89 — 2026-07-13 (API: governed provisioning endpoints + hardening)
+- **Instance `POST /spheres`** (bootstrap): evaluates `sphere.create` against
+  `bootstrapPolicies()`; the side effect generates the Sphere id, records the
+  founder as first administrator, seeds `defaultAdminPolicies`, and audits
+  `sphere.created`. A non-adult is denied (403).
+- **In-Sphere provisioning** through the existing execute endpoint: added
+  `provisioningBindings()` to the injected bindings and a `provisioning.ts`
+  side-effect module (`createSphere/inviteMember/createAgent/updateAgent`
+  Provision) wired into `main.ts`'s local executor. The router now injects the
+  **path Sphere id + correlation id** into the executor input (integrity: a
+  client cannot provision into another Sphere). Ids are generated in the app
+  layer (core stays deterministic).
+- **Hardening (found via live smoke):** an executor side-effect throw previously
+  **crashed the API process** (the async request IIFE had no catch). Fixed at two
+  layers — a `server.ts` safety net (never crash → correlated 500) and the
+  router converts an authorized-but-failed side effect into a governed
+  **422 `execution_failed`** (e.g. deploying an agent for a non-member). Deploy
+  ≠ authorize: a capability in an agent's scope is still policy-checked per call.
+- **Verified:** full non-live suite **364 passed**; `tsc` clean. **Live HTTP
+  smoke** (real server + SQLite): create (adult 200 / child 403) → invite (admin
+  seed) → members=2 → deploy agent with scope → agents=1 → child invite 403 →
+  non-member deploy **422, server stays up**.
+- **Next:** the calm-operator-console UI — design system + shell, then wire the
+  admin + agent-testing flows on these endpoints.

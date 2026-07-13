@@ -15,6 +15,7 @@ import {
   ageProfileForRole,
   assertProfileAllowed,
   beginSensitiveAction,
+  bootstrapPolicies,
   createRuntimeProfile,
   createSession,
   defaultCapabilityCatalog,
@@ -28,6 +29,7 @@ import {
   importSphere,
   installPackage,
   projectAgentRuntimeConfig,
+  provisioningBindings,
   resolveInstallPlan,
   runtimeGovernanceBindings,
   authorizeSessionRead,
@@ -94,6 +96,82 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
 
   const segments = req.path.split("/").filter((s) => s.length > 0);
 
+  // --- Governed provisioning: create a Sphere (RFC-008, api-contract §Sphere) ---
+  // POST /spheres  { subject, input: { name, type?, founderName?, founderRole? } }
+  //
+  // Instance-scoped bootstrap: `sphere.create` is evaluated against the fixed
+  // bootstrap policy set (the local operator is the root of trust for an empty
+  // instance), not any Sphere's policies. The side effect generates the Sphere
+  // id, records the founder as first administrator and seeds the default admin
+  // policy set (RFC-008). Deny-by-default is preserved — bootstrap grants only
+  // `sphere.create`.
+  if (req.method === "POST" && segments[0] === "spheres" && segments.length === 1) {
+    if (deps.executor === undefined || deps.auditSink === undefined || deps.newApprovalId === undefined) {
+      return err(501, "invalid_request", "Provisioning is not enabled on this server");
+    }
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: CapabilityExecutionRequest["subject"];
+      input?: unknown;
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    const request: CapabilityExecutionRequest = {
+      subject,
+      capabilityName: "sphere.create",
+      // The side effect generates the Sphere id; the pipeline runs at instance
+      // scope. The correlation id chains the bootstrap check to sphere.created.
+      input: {
+        ...(typeof body.input === "object" && body.input !== null ? body.input : {}),
+        correlationId,
+      },
+      context: {
+        sphereId: "__instance__",
+        time: (deps.now ?? (() => new Date().toISOString()))(),
+        execution: "local",
+        correlationId,
+      },
+    };
+    let result;
+    try {
+      result = await beginSensitiveAction(request, {
+        catalog: defaultCapabilityCatalog(),
+        bindings: provisioningBindings(),
+        policies: bootstrapPolicies(),
+        executor: deps.executor,
+        audit: deps.auditSink,
+        newApprovalId: deps.newApprovalId,
+      });
+    } catch (e) {
+      // An authorized side effect that fails (e.g. invalid input) is a governed
+      // execution failure, not a server error — surface it as a 422.
+      return err(422, "execution_failed", (e as Error).message);
+    }
+    if (result.status === "pending_approval" && result.approval !== undefined) {
+      await deps.approvals.save({ approval: result.approval, request });
+      return {
+        status: 202,
+        correlationId,
+        code: "approval_required",
+        body: {
+          status: result.status,
+          reason: result.reason,
+          approvalId: result.approval.id,
+          approverRoles: result.approval.approverRoles,
+        },
+      };
+    }
+    if (result.status === "denied") {
+      return err(403, "forbidden", result.reason);
+    }
+    return ok({
+      status: result.status,
+      reason: result.reason,
+      ...(result.output !== undefined ? { output: result.output } : {}),
+    });
+  }
+
   // --- Governed write path: request capability execution (api-contract §Capability) ---
   // POST /spheres/:id/capabilities/:name/execute
   if (
@@ -125,7 +203,14 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     const request: CapabilityExecutionRequest = {
       subject,
       capabilityName,
-      input: body.input === undefined ? {} : body.input,
+      // The path Sphere and correlation id are authoritative for the executor
+      // side effect (integrity: a client cannot provision into another Sphere);
+      // path values win over any client-supplied ones.
+      input: {
+        ...(typeof body.input === "object" && body.input !== null ? body.input : {}),
+        sphereId,
+        correlationId,
+      },
       context: {
         sphereId,
         time: (deps.now ?? (() => new Date().toISOString()))(),
@@ -134,16 +219,22 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       },
     };
 
-    const result = await beginSensitiveAction(request, {
-      catalog: defaultCapabilityCatalog(),
-      // Runtime-governance capabilities (RFC-007) bind to the local executor's
-      // runtime.* tools; add their bindings so they run through this pipeline.
-      bindings: [...imported.bindings, ...runtimeGovernanceBindings()],
-      policies: imported.policies,
-      executor: deps.executor,
-      audit: deps.auditSink,
-      newApprovalId: deps.newApprovalId,
-    });
+    let result;
+    try {
+      result = await beginSensitiveAction(request, {
+        catalog: defaultCapabilityCatalog(),
+        // Runtime-governance capabilities (RFC-007) and provisioning capabilities
+        // (RFC-008) bind to the local executor's runtime.*/provisioning.* tools;
+        // add their bindings so they run through this same governed pipeline.
+        bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings()],
+        policies: imported.policies,
+        executor: deps.executor,
+        audit: deps.auditSink,
+        newApprovalId: deps.newApprovalId,
+      });
+    } catch (e) {
+      return err(422, "execution_failed", (e as Error).message);
+    }
 
     if (result.status === "pending_approval" && result.approval !== undefined) {
       await deps.approvals.save({ approval: result.approval, request });
@@ -201,27 +292,32 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     if (snap === undefined) return err(404, "not_found", "Sphere not found");
     const imported = importSphere(snap);
 
-    const result = await resolveApproval(
-      pending.approval,
-      {
-        approver: {
-          memberId: approver.memberId,
-          roles: [approver.role],
-          ageProfile: ageProfileForRole(approver.role as Role),
+    let result;
+    try {
+      result = await resolveApproval(
+        pending.approval,
+        {
+          approver: {
+            memberId: approver.memberId,
+            roles: [approver.role],
+            ageProfile: ageProfileForRole(approver.role as Role),
+          },
+          decision,
+          at: (deps.now ?? (() => new Date().toISOString()))(),
         },
-        decision,
-        at: (deps.now ?? (() => new Date().toISOString()))(),
-      },
-      pending.request,
-      {
-        catalog: defaultCapabilityCatalog(),
-        bindings: [...imported.bindings, ...runtimeGovernanceBindings()],
-        policies: imported.policies,
-        executor: deps.executor,
-        audit: deps.auditSink,
-        newApprovalId: () => approvalId,
-      },
-    );
+        pending.request,
+        {
+          catalog: defaultCapabilityCatalog(),
+          bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings()],
+          policies: imported.policies,
+          executor: deps.executor,
+          audit: deps.auditSink,
+          newApprovalId: () => approvalId,
+        },
+      );
+    } catch (e) {
+      return err(422, "execution_failed", (e as Error).message);
+    }
 
     if (result.approval !== undefined) {
       await deps.approvals.save({ approval: result.approval, request: pending.request });
