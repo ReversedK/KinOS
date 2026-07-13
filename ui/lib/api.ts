@@ -48,9 +48,21 @@ export interface RuntimeInfo {
 
 const DEFAULT_BASE_URL = "http://localhost:8787";
 
+/**
+ * Server-side base URL for the KinOS API. Used by React Server Components, which
+ * call the API directly (server-to-server, no CORS).
+ */
 export function apiBaseUrl(): string {
   return process.env.KINOS_API_URL ?? DEFAULT_BASE_URL;
 }
+
+/**
+ * Client-side base URL. Browser code hits the Next same-origin proxy
+ * (`/api/kinos/*`), which forwards to the KinOS API server-side — no CORS, and
+ * the API URL never leaves the server. Client components pass this to the
+ * wrappers below in place of a real API origin.
+ */
+export const CLIENT_API_BASE = "/api/kinos";
 
 async function getJson<T>(baseUrl: string, path: string, fetchImpl: typeof fetch): Promise<T> {
   // Live read: never serve a cached response (Next caches fetch by default).
