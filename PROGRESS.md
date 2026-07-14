@@ -1782,3 +1782,18 @@ Runtime adapter → integrations/Packages → UI.
 - **Honest open gap** recorded: the console `/chat` still drives inference directly
   (test-mode), not the full Hermes Harness loop; ADR-008 authorizes migrating
   real-condition testing onto the Harness as a follow-up.
+
+### Iteration 97 — 2026-07-14 (domain vocabulary: the Harness)
+- Satisfies ADR-008 acceptance criterion #1: `domain-model.md` now defines
+  **Harness** as the governed agent-execution role — no ambient authority, runs
+  downstream of the Policy Engine on a RuntimeConfigProjection, reaches capabilities
+  only via the Sphere MCP, and is **distinct from the inference runtime**
+  (`AgentRuntime`/RuntimeProfile, which it merely *uses*). Replaceable role; Hermes
+  is the sole MVP harness; never the authorization/privacy boundary.
+- Adds the Harness to the Agent's fields and the relationship summary; reworded
+  RuntimeConfigProjection to write to "the agent's Harness".
+- Spec-first ordering: this domain term precedes the core Harness-port seam
+  (next iteration). The full Hermes agentic path stays blocked until the compose
+  `hermes` service is enabled and a Hermes execution adapter exists (today
+  `runtime-hermes` only projects config; Hermes-as-inference reuses the OpenAI
+  adapter).

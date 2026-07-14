@@ -55,6 +55,7 @@ Fields/concepts:
 - enabled capabilities;
 - memory access profile;
 - runtime configuration projection (the governed runtime config derived from the Sphere's config and this agent's policy scope — see RuntimeConfigProjection, RFC-007);
+- harness (the governed execution environment the agent runs inside; MVP: Hermes — see Harness, ADR-008);
 - runtime state snapshot (opaque, restorable runtime working state; non-canonical — see RuntimeStateSnapshot).
 
 ### MemoryItem
@@ -140,9 +141,28 @@ Fields/concepts:
 - capability bindings;
 - audit settings.
 
+### Harness
+
+The governed execution environment an Agent **always** runs inside — an Agent never
+executes "bare". A Harness holds **no ambient authority**: it runs *downstream* of
+the Policy Engine on an already-governed RuntimeConfigProjection, and reaches every
+capability **only** through the Sphere MCP runtime gateway, where each call is
+policy-checked per call and anchored to the agent's scoped credential. It is
+**distinct from the inference runtime** — the `AgentRuntime` port / RuntimeProfile
+that merely generates text: a Harness *uses* an inference backend and runs the agent
+on exactly the governed model projected into it. A first-class, **replaceable** role,
+not a product: the domain depends on the Harness contract (projection + Sphere MCP +
+scoped credential), never on a specific harness, and swapping one is "boring" (no
+policy/memory/capability/credential migration). **Hermes is the sole MVP Harness**, an
+adapter behind the role. The Harness is **never the authorization or privacy
+boundary** — its profile/prompt is a projection of decisions already made, and it is
+a second line of defence, not the first. See
+`docs/adr/008-agents-always-run-in-a-governed-harness.md`.
+
 ### RuntimeProfile
 
-The Sphere's selected inference provider and model. Configuration, not a model
+The Sphere's selected inference provider and model — the text backend a Harness runs
+on, not the execution environment itself (see Harness). Configuration, not a model
 dependency: the domain references the `AgentRuntime` port, never a provider SDK.
 See `docs/rfcs/004-inference-provider-and-model-configuration.md`.
 
@@ -164,9 +184,10 @@ change.
 ### RuntimeConfigProjection
 
 The governed, per-agent runtime configuration KinOS derives from Sphere config and
-the agent's policy scope, then writes to the agent's runtime instance. The domain
-owns the projection; the runtime never edits its own governance config. Provider-
-agnostic: for the Hermes reference runtime it is realized in the adapter as a
+the agent's policy scope, then writes to the agent's Harness (the execution
+environment it runs in — see Harness). The domain owns the projection; the Harness
+never edits its own governance config. Provider-agnostic: for the Hermes reference
+harness it is realized in the adapter as a
 per-agent profile (its config file plus a scoped credential), and that realization
 name never enters the domain. See `docs/rfcs/007-hermes-governed-runtime.md`.
 
@@ -310,6 +331,7 @@ Fields/concepts:
 - A Policy controls access to MemoryItems, Capabilities, Integrations and Sphere resources.
 - A Package is installed into a Sphere; a `skill` package composes Capabilities, an `mcp` package provides an Integration, and a Package may depend on other Packages.
 - A Sphere has one RuntimeProfile selecting the inference provider and model; an Agent's model preference is constrained to what that profile allows.
+- Each Agent always runs inside a Harness (MVP: Hermes) — a governed execution environment with no ambient authority that reaches capabilities only via the Sphere MCP; the Harness *uses* the inference RuntimeProfile and never decides authorization (ADR-008).
 - A Sphere exposes one governed runtime gateway (the Sphere MCP) surfacing policy-scoped capabilities to agent runtimes; each agent's runtime authenticates with its own scoped credential and sees only its authorized capability surface.
 - Each Agent has one RuntimeConfigProjection derived from Sphere config and its policy scope; the runtime never edits its own governance config and gains new capabilities only via the package store.
 - Each Agent's runtime working state may be captured as a RuntimeStateSnapshot — opaque, encrypted, restorable, non-canonical, and distinct from Sessions and MemoryItems.
