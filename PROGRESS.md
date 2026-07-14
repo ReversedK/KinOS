@@ -1764,3 +1764,21 @@ Runtime adapter → integrations/Packages → UI.
   Sphere default `llama3.2` (unpulled) → admin sets the agent's model to
   `qwen2.5:7b` (executed) → non-admin denied (403) → chat turn replies, running on
   the per-agent model. 376 tests pass; typecheck + `next build` clean.
+
+### Iteration 96 — 2026-07-14 (ADR-008: agents always run in a governed Harness)
+- **ADR-008 accepted.** Settles that an agent never executes "bare": it always runs
+  inside a **Harness** — a governed execution environment with no ambient authority
+  that reaches capabilities only through the Sphere MCP (policy-checked per call).
+- Disentangles the two meanings of "runtime": the **Harness** (agent execution,
+  RFC-007/Hermes) vs the **inference runtime** (the `AgentRuntime` text backend,
+  RFC-004/Ollama·OpenAI). The Harness *uses* an inference backend; the governed
+  per-agent model (RFC-009) is **projected into** the Harness profile.
+- **Hermes is the sole MVP Harness, an adapter behind the role** — the domain
+  depends on the Harness contract (projection + Sphere MCP + token), never on
+  Hermes; adding/replacing a Harness needs no policy/memory/capability/token
+  migration.
+- Rejects the framing "governed = the Hermes profile": governance stays in the
+  Policy Engine upstream; the profile is a projection, never the boundary.
+- **Honest open gap** recorded: the console `/chat` still drives inference directly
+  (test-mode), not the full Hermes Harness loop; ADR-008 authorizes migrating
+  real-condition testing onto the Harness as a follow-up.
