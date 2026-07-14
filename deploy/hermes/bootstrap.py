@@ -16,7 +16,7 @@ for local-first inference behind KinOS:
 
 Idempotent: safe to re-run. Model backend is overridable via env so a deployment
 can point Hermes at a different Ollama/model without editing this file:
-  HARNESS_MODEL (default qwen2.5:7b-128k), HARNESS_OLLAMA_URL
+  HARNESS_MODEL (default gemma4-128k), HARNESS_OLLAMA_URL
   (default http://host.docker.internal:11434/v1), HARNESS_MODEL_CONTEXT (65536,
   Hermes' minimum; higher costs more KV cache and a slower cold start).
 
@@ -29,7 +29,7 @@ import re
 
 CONFIG = os.path.join(os.environ.get("HERMES_HOME", "/opt/data"), "config.yaml")
 
-MODEL = os.environ.get("HARNESS_MODEL", "qwen2.5:7b-128k")
+MODEL = os.environ.get("HARNESS_MODEL", "gemma4-128k")
 OLLAMA_URL = os.environ.get("HARNESS_OLLAMA_URL", "http://host.docker.internal:11434/v1")
 CONTEXT = os.environ.get("HARNESS_MODEL_CONTEXT", "65536")
 

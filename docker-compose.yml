@@ -88,9 +88,17 @@ services:
   # --- Hermes Harness (ADR-008 / RFC-007) — opt-in via the "hermes" profile ----
   # The governed execution environment agents run inside (ADR-008): Hermes runs
   # its OpenAI-compatible API server (`gateway run` → api_server platform on
-  # :8642), which KinOS' AgentRuntime calls when KINOS_RUNTIME=hermes. One install
-  # serves many agents via profiles; KinOS governs at the profile/MCP layer, never
-  # the process layer.
+  # :8642), which KinOS' AgentRuntime calls when KINOS_RUNTIME=hermes.
+  #
+  # SCOPE (verified): this runs Hermes as the governed *inference* Harness on a
+  # single active profile (`hermes-agent`) — the api_server serves ONE active
+  # profile and the request `model` field is cosmetic (no per-request model→profile
+  # routing). The full per-agent governed *tool* loop (each agent its own projected
+  # profile whose mcp_servers.sphere calls back into the KinOS Sphere MCP for
+  # policy-scoped capabilities) needs two things this compose does NOT yet wire:
+  # (a) a profile volume shared between api and hermes (api projects to
+  # data/hermes, hermes reads /opt/data), and (b) a per-agent profile-selection
+  # mechanism the api_server does not provide. Tracked as an architecture decision.
   #
   # Requires the real image (NousResearch/hermes-agent, ~3.8GB), built once:
   #   git clone https://github.com/NousResearch/hermes-agent && \
@@ -118,7 +126,7 @@ services:
       # HERMES_API_KEY. Must be >=16 chars (Hermes refuses shorter on 0.0.0.0).
       - API_SERVER_KEY=${HERMES_API_KEY:-kinos-harness-devkey-0001}
       # Hermes' own inference backend (its profile model). Overridable.
-      - HARNESS_MODEL=${HARNESS_MODEL:-qwen2.5:7b-128k}
+      - HARNESS_MODEL=${HARNESS_MODEL:-gemma4-128k}
       - HARNESS_OLLAMA_URL=${HARNESS_OLLAMA_URL:-http://host.docker.internal:11434/v1}
       - HARNESS_MODEL_CONTEXT=${HARNESS_MODEL_CONTEXT:-65536}
     extra_hosts:
