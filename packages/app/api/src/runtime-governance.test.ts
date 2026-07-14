@@ -115,6 +115,44 @@ describe("projectAgentConfig (RFC-007/ADR-007 — runtime.config.project side ef
     expect(cfg).not.toContain("tok-1");
   });
 
+  it("projects the agent's governed model into its Hermes profile (RFC-009)", async () => {
+    // Same seed, but the agent carries a governed model preference. Hermes must
+    // run on exactly that model, not the Sphere default (llama3.2).
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    const agent = createAgent({
+      id: "agt_0",
+      ownerId: "mbr_p1",
+      ownerType: "member",
+      sphereId: "sph_1",
+      name: "A",
+      modelPreference: "qwen2.5:7b",
+    });
+    await store.save(
+      exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies: [allowSearchForParents], bindings: [searchBinding], exportedAt: NOW }),
+    );
+    const written: Record<string, string> = {};
+    const fs: HermesFsPort = { async mkdir() {}, async writeFile(p, c) { written[p] = c; } };
+    const deps: RuntimeGovernanceDeps = {
+      store,
+      tokens: new FakeTokens(),
+      home: "/opt/data",
+      fs,
+      gatewayEndpoint: (s, a) => `http://api:8787/spheres/${s}/mcp#${a}`,
+      now: () => NOW,
+    };
+
+    await projectAgentConfig(deps, { sphereId: "sph_1", agentId: "agt_0" });
+    const cfg = written["/opt/data/agt_0/config.yaml"];
+    expect(cfg).toContain("qwen2.5:7b"); // the agent's governed model
+    expect(cfg).not.toContain("llama3.2"); // not the Sphere default
+  });
+
   it("re-projection rotates the token (writes a fresh .env)", async () => {
     const { deps, written } = await seed();
     await projectAgentConfig(deps, { sphereId: "sph_1", agentId: "agt_0" });

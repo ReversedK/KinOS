@@ -15,6 +15,7 @@ import {
   ageProfileForRole,
   assertProfileAllowed,
   beginSensitiveAction,
+  changeModelPreference,
   bootstrapPolicies,
   createRuntimeProfile,
   createSession,
@@ -428,6 +429,102 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     return ok({ status: "executed", provider: newProfile.providerId, model: newProfile.model, execution: newProfile.execution });
   }
 
+  // --- Governed per-agent default model (RFC-009) ---
+  // POST /spheres/:id/agents/:aid/model  { subject, model }
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 5 &&
+    segments[2] === "agents" &&
+    segments[4] === "model"
+  ) {
+    if (deps.auditSink === undefined) {
+      return err(501, "invalid_request", "Model configuration is not enabled on this server");
+    }
+    const sphereId = segments[1] as string;
+    const agentId = segments[3] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+      model?: string;
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    if (typeof body.model !== "string" || body.model.trim() === "") {
+      return err(400, "invalid_request", "A non-empty model is required");
+    }
+    const model = body.model.trim();
+
+    const imported = importSphere(snap);
+    const agent = imported.agents.find((a) => a.id === agentId);
+    if (agent === undefined) return err(404, "not_found", "Agent not found");
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+
+    // Catalog profile floor: minors can never set a model (deny by default).
+    const cap = defaultCapabilityCatalog().get("model.set");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "model.set is not allowed for this profile");
+    }
+
+    // Policy Engine decides — the router asserts no authorization the engine couldn't.
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "capability", capabilityName: "model.set", riskLevel: "medium" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      imported.policies,
+    );
+    if (decision.effect !== "allow") {
+      deps.auditSink.record({
+        type: "capability.denied",
+        sphereId,
+        resourceType: "capability",
+        resourceId: agentId,
+        decision: "deny",
+        reason: decision.reason,
+        correlationId,
+        createdAt: stamp,
+        ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+        ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+        ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+      });
+      return err(403, "forbidden", decision.reason);
+    }
+
+    // Deny-by-default: the resulting model must stay within the Sphere-allowed set
+    // (the override only swaps the model on the Sphere's provider; provider/cloud
+    // gating is unchanged and enforced here as defense in depth).
+    try {
+      assertProfileAllowed(imported.runtimeConfig, resolveEffectiveProfile(imported.runtimeConfig, model));
+    } catch (e) {
+      return err(403, "forbidden", (e as Error).message);
+    }
+
+    const updatedAgent = changeModelPreference(agent, model);
+    const agents = imported.agents.map((a) => (a.id === agentId ? updatedAgent : a));
+    await deps.store.save(exportSphere({ ...imported, agents, exportedAt: stamp }));
+    deps.auditSink.record({
+      type: "capability.executed",
+      sphereId,
+      resourceType: "capability",
+      resourceId: agentId,
+      decision: "executed",
+      reason: `model=${model}`,
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+      ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+      ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+    });
+    return ok({ status: "executed", agentId, model });
+  }
+
   // --- Governed connectors: enable/disable an integration (integration-model) ---
   // POST /spheres/:id/integrations/:iid/enable | /disable
   if (
@@ -699,7 +796,11 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     }
 
     const imported = importSphere(snap);
-    const model = resolveEffectiveProfile(imported.runtimeConfig).model;
+    // Honor the agent's governed default model (RFC-009): the session's agent
+    // preference overrides the model within the Sphere-allowed set; unset falls
+    // back to the Sphere default profile.
+    const sessionAgent = imported.agents.find((a) => a.id === session.agentId);
+    const model = resolveEffectiveProfile(imported.runtimeConfig, sessionAgent?.modelPreference).model;
     const stamp = (deps.now ?? (() => new Date().toISOString()))();
 
     // Authorization is decided here, before the runtime — a non-owner subject is

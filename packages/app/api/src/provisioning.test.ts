@@ -49,6 +49,10 @@ describe("provisioning side effects (RFC-008)", () => {
     expect(snap.sphere.administrators).toEqual([res.founderMemberId]);
     // Admin seed present so administrators can provision within the Sphere.
     expect(snap.policies.some((p) => p.id === "pol_sph_doe_admin_provisioning")).toBe(true);
+    // RFC-009: administrators (founder/owner) may set an agent's default model.
+    const modelPolicy = snap.policies.find((p) => p.id === "pol_sph_doe_admin_model");
+    expect(modelPolicy?.effect).toBe("allow");
+    expect(modelPolicy?.resourceSelector.capabilityNames).toEqual(["model.set"]);
     expect(audit.byCorrelation("cor_1").map((e) => e.type)).toContain("sphere.created");
   });
 

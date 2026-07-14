@@ -67,6 +67,19 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
   {
+    // RFC-004/RFC-009: set an agent's default model within the Sphere-allowed
+    // set. Admin/owner-only (the founder is an administrator) and adult-only.
+    // Local and immediate — an override only swaps the model string on the
+    // Sphere's provider, so it never selects a provider or crosses to cloud
+    // (that stays governed by runtime.set_provider). The swap is "boring".
+    name: "model.set",
+    description: "Set an agent's default model within the Sphere-allowed set (admin/owner).",
+    risk: "medium",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "model", "decision", "correlationId"],
+  },
+  {
     name: "integration.enable",
     description: "Enable a connector/integration for the Sphere (admin).",
     risk: "high",

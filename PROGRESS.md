@@ -1740,3 +1740,27 @@ Runtime adapter → integrations/Packages → UI.
 - Regression tests added (router 502 path; adapter message). Verified live against
   the compose API: the same turn now returns `502 … Ollama /api/chat failed: 404
   … model 'llama3.2' not found`.
+
+### Iteration 95 — 2026-07-14 (RFC-009: governed per-agent default model)
+- **RFC-009 accepted** — completes RFC-004's decision that an agent's model is a
+  governed selection (no longer an advisory tag), governable by the Sphere's
+  administrators (the founder/owner is one).
+- **Core:** new `model.set` capability (adult-only, medium risk, immediate);
+  `agent.modelPreference` reframed advisory → governed; `defaultAdminPolicies`
+  seeds a `model.set` grant so admins/owner can set it out of the box (closing the
+  "no governed path" gap that made a Sphere un-repointable).
+- **API:** `POST /spheres/:id/agents/:aid/model { subject, model }` — catalog floor
+  + policy check + Sphere-allowed validation, then writes the preference, audited.
+  The chat/turn path now resolves the model via `resolveEffectiveProfile(config,
+  agent.modelPreference)` (previously ignored the agent entirely).
+- **Hermes profile (RFC-007) now carries the governed per-agent model:**
+  `projectAgentConfig` was dropping `agent.modelPreference` (Hermes always got the
+  Sphere default); it now feeds it into the projection, so an agent's Hermes
+  profile runs on exactly the model KinOS decided. Both runtime paths — direct
+  inference and Hermes — honour the same governed decision.
+- **UI:** the per-agent `AgentConfig` model field now routes through the dedicated
+  `model.set` endpoint (not the broad `agent.update_config`).
+- **Verified live end-to-end:** provision a fresh Sphere → deploy an agent →
+  Sphere default `llama3.2` (unpulled) → admin sets the agent's model to
+  `qwen2.5:7b` (executed) → non-admin denied (403) → chat turn replies, running on
+  the per-agent model. 376 tests pass; typecheck + `next build` clean.

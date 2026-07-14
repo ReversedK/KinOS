@@ -574,6 +574,40 @@ export async function setRuntime(
   throw new Error(`set runtime failed: ${status}`);
 }
 
+export interface SetAgentModelOutcome {
+  /** "executed" on success; undefined on a denial. */
+  readonly status?: string;
+  readonly agentId?: string;
+  readonly model?: string;
+  /** Set on a denial (HTTP 403): "forbidden". */
+  readonly code?: string;
+  readonly message?: string;
+}
+
+/**
+ * Set an agent's default model via the governed per-agent endpoint (RFC-009,
+ * `model.set`). Admin/owner-only and deny-by-default — a denial (403) is a
+ * governed outcome and is returned, not thrown; bad input (400) and unexpected
+ * statuses (404/501/5xx) throw.
+ */
+export async function setAgentModel(
+  baseUrl: string,
+  sphereId: string,
+  agentId: string,
+  subject: ActingSubject,
+  model: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SetAgentModelOutcome> {
+  const { status, body } = await postJson<SetAgentModelOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/agents/${encodeURIComponent(agentId)}/model`,
+    { subject, model },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403) return body;
+  throw new Error(`set agent model failed: ${status}`);
+}
+
 export interface ApproverRef {
   readonly memberId: string;
   readonly role: string;

@@ -6,8 +6,10 @@
  * Lifecycle: entity-lifecycle.md → Agent lifecycle. Disabling an agent does not
  * delete memory; changing runtime/model does not create a new agent identity.
  *
- * Pure domain: no I/O, no provider/runtime imports. The model preference is an
- * advisory tag (e.g. an Ollama model); it is replaceable and owns nothing.
+ * Pure domain: no I/O, no provider/runtime imports. The model preference is a
+ * governed selection (RFC-004/RFC-009): it must lie within the Sphere-allowed
+ * set and is only changed behind the `model.set` policy check (admin/owner);
+ * it is still replaceable and owns nothing, and swapping it must be "boring".
  */
 
 export type AgentOwnerType = "member" | "sphere";
@@ -26,7 +28,11 @@ export interface Agent {
   readonly ownerType: AgentOwnerType;
   readonly sphereId: string;
   readonly name: string;
-  /** Advisory model tag; swapping it must be "boring" (no identity change). */
+  /**
+   * Governed default model within the Sphere-allowed set (RFC-004/RFC-009);
+   * set only behind `model.set`. Swapping it must be "boring" (no identity
+   * change). Unset → the agent runs on the Sphere default profile.
+   */
   readonly modelPreference?: string;
   /** Capability names the agent may request (still policy-checked per call). */
   readonly enabledCapabilities: readonly string[];

@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   CLIENT_API_BASE,
   getAgentRuntimeProjection,
+  setAgentModel,
   updateAgentConfig,
   type ActingSubject,
   type AgentSummary,
@@ -61,6 +62,22 @@ export function AgentConfig({
     }
   }
 
+  // The model is a governed selection of its own (RFC-009, `model.set`) — routed
+  // through the dedicated endpoint, not folded into the broader agent.update_config.
+  async function saveModel(): Promise<void> {
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const res = await setAgentModel(CLIENT_API_BASE, sphereId, agent.id, admin, model.trim());
+      setNote(res.code === "forbidden" ? { tone: "deny", text: `Denied — ${res.message ?? "forbidden"}` } : { tone: "allow", text: `Model set to ${res.model}` });
+      if (res.status === "executed") router.refresh();
+    } catch (e) {
+      setNote({ tone: "deny", text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loadProjection(): Promise<void> {
     setPanel("projection");
     setProjection(undefined);
@@ -72,9 +89,8 @@ export function AgentConfig({
     }
   }
 
-  const dirty =
-    JSON.stringify([...scope].sort()) !== JSON.stringify([...agent.enabledCapabilities].sort()) ||
-    model !== (agent.modelPreference ?? "");
+  const scopeDirty = JSON.stringify([...scope].sort()) !== JSON.stringify([...agent.enabledCapabilities].sort());
+  const modelDirty = model.trim() !== (agent.modelPreference ?? "");
 
   return (
     <div className="stack tight" style={{ width: "100%" }}>
@@ -124,14 +140,20 @@ export function AgentConfig({
             <CapabilityPicker capabilities={capabilities} selected={scope} onChange={setScope} />
           </div>
           <div className="field">
-            <label>Model preference</label>
-            <input className="input" value={model} placeholder="e.g. hermes-agent" onChange={(e) => setModel(e.target.value)} />
+            <label>Default model (governed · model.set)</label>
+            <div className="row" style={{ alignItems: "flex-end" }}>
+              <input className="input grow" value={model} placeholder="e.g. qwen2.5:7b" onChange={(e) => setModel(e.target.value)} />
+              <button className="btn sm" disabled={busy || !modelDirty || model.trim() === ""} onClick={() => void saveModel()}>
+                {busy ? <span className="spin" /> : null} Set model
+              </button>
+            </div>
+            <span className="hint">Admin/owner-only; must be within the Sphere-allowed set (RFC-009).</span>
           </div>
           <div className="row">
             <button
               className="btn primary sm"
-              disabled={busy || !dirty}
-              onClick={() => void apply({ agentId: agent.id, capabilities: scope, ...(model.trim() !== "" ? { model: model.trim() } : {}) })}
+              disabled={busy || !scopeDirty}
+              onClick={() => void apply({ agentId: agent.id, capabilities: scope })}
             >
               {busy ? <span className="spin" /> : null} Save scope
             </button>

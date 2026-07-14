@@ -30,3 +30,22 @@ describe("capability catalog — RFC-007 runtime governance", () => {
     expect(project?.auditFacts).not.toContain("secret");
   });
 });
+
+describe("capability catalog — RFC-009 per-agent model", () => {
+  const catalog = defaultCapabilityCatalog();
+
+  it("declares model.set as adult-only, medium-risk, immediate (no approval floor)", () => {
+    const cap = catalog.get("model.set");
+    expect(cap).toBeDefined();
+    expect(cap?.risk).toBe("medium");
+    expect(cap?.allowedProfiles).toEqual(["adult"]); // minors can never set a model
+    expect(cap?.approvalFloor).toBe(false); // local change is immediate
+  });
+
+  it("audits the chosen model + agent, never conversation content", () => {
+    const cap = catalog.get("model.set");
+    expect(cap?.auditFacts).toContain("model");
+    expect(cap?.auditFacts).toContain("resourceId");
+    expect(cap?.auditFacts).not.toContain("content");
+  });
+});

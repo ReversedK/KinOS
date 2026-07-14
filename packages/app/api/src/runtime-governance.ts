@@ -111,6 +111,9 @@ export async function projectAgentConfig(
     agentId,
     subject,
     runtimeConfig: imported.runtimeConfig,
+    // The agent's governed default model (RFC-009) must reach its Hermes profile:
+    // Hermes runs on exactly the model KinOS decided, not the Sphere default.
+    ...(agent.modelPreference !== undefined ? { agentModelPreference: agent.modelPreference } : {}),
     catalog: defaultCapabilityCatalog(),
     policies: imported.policies,
     bindings: imported.bindings,

@@ -110,5 +110,21 @@ export function defaultAdminPolicies(
       version: 1,
       status: "active",
     },
+    {
+      // RFC-009: administrators (the founder/owner is one) may set an agent's
+      // default model. A seed, not a hidden privilege — remove it and the
+      // ability goes with it (deny-by-default). Narrow to specific administrator
+      // member-ids by editing subjectSelector.
+      id: `pol_${sphereId}_admin_model`,
+      sphereId,
+      description: "Administrators may set an agent's default model.",
+      subjectSelector: { roles: [...adminRoles] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["model.set"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    },
   ];
 }

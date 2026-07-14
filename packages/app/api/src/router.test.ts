@@ -8,6 +8,7 @@ import {
   createApprovalFromDecision,
   createIntegration,
   createSphere,
+  defaultAdminPolicies,
   exportSphere,
   type CapabilityBinding,
   type CapabilityExecutor,
@@ -1039,5 +1040,110 @@ describe("API router — runtime config projection preview (RFC-007/ADR-007)", (
       await projDeps(),
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// --- Governed per-agent default model (RFC-009) ---
+
+describe("API router — set an agent's default model", () => {
+  const adminSubject = { memberId: "mbr_p1", role: "parent", ageProfile: "adult" };
+  const modelPath = "/spheres/sph_1/agents/agt_1/model";
+
+  // Captures the model the runtime is actually asked to run (chat-path check).
+  async function modelDeps(): Promise<{ deps: ApiDeps; lastModel: () => string | undefined }> {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe Family",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    const agent = createAgent({
+      id: "agt_1",
+      ownerId: "mbr_p1",
+      ownerType: "member",
+      sphereId: "sph_1",
+      name: "Dad's agent",
+    });
+    await store.save(
+      exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies: defaultAdminPolicies("sph_1"), exportedAt: NOW }),
+    );
+    let seen: string | undefined;
+    let n = 0;
+    let s = 0;
+    const deps: ApiDeps = {
+      store,
+      approvals: new InMemoryApprovalStore(),
+      audit: new InMemoryAuditSink(),
+      auditSink: new InMemoryAuditSink(),
+      sessions: new InMemorySessionStore(),
+      runtime: {
+        async listModels() {
+          return ["test-model"];
+        },
+        async generate(request) {
+          seen = request.model;
+          return { model: request.model, content: "hi" };
+        },
+        async isAvailable() {
+          return true;
+        },
+      },
+      newCorrelationId: () => `req_${++n}`,
+      newSessionId: () => `ses_${++s}`,
+      now: () => NOW,
+    };
+    return { deps, lastModel: () => seen };
+  }
+
+  it("lets an administrator (founder/owner) set an agent's model, persisted", async () => {
+    const { deps } = await modelDeps();
+    const res = await handleApiRequest({ method: "POST", path: modelPath, body: { subject: adminSubject, model: "qwen2.5:7b" } }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "executed", agentId: "agt_1", model: "qwen2.5:7b" });
+    const snap = (await deps.store.load("sph_1"))!;
+    expect(snap.agents[0]?.modelPreference).toBe("qwen2.5:7b");
+  });
+
+  it("the chat turn then runs on the agent's chosen model (RFC-009)", async () => {
+    const { deps, lastModel } = await modelDeps();
+    await handleApiRequest({ method: "POST", path: modelPath, body: { subject: adminSubject, model: "qwen2.5:7b" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/sessions", body: { subject: adminSubject, agentId: "agt_1" } }, deps);
+    const turn = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/sessions/ses_1/messages", body: { subject: adminSubject, text: "hi" } },
+      deps,
+    );
+    expect(turn.status).toBe(200);
+    expect(lastModel()).toBe("qwen2.5:7b"); // not the Sphere default llama3.2
+  });
+
+  it("denies a non-admin subject (403, deny by default)", async () => {
+    const { deps } = await modelDeps();
+    const res = await handleApiRequest(
+      { method: "POST", path: modelPath, body: { subject: { memberId: "mbr_g1", role: "guest", ageProfile: "adult" }, model: "qwen2.5:7b" } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("denies a minor by the catalog floor even with a permissive role (403)", async () => {
+    const { deps } = await modelDeps();
+    const res = await handleApiRequest(
+      { method: "POST", path: modelPath, body: { subject: { memberId: "mbr_c1", role: "parent", ageProfile: "child" }, model: "qwen2.5:7b" } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("404s for a missing agent", async () => {
+    const { deps } = await modelDeps();
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/agents/ghost/model", body: { subject: adminSubject, model: "x" } }, deps);
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an empty model (400)", async () => {
+    const { deps } = await modelDeps();
+    const res = await handleApiRequest({ method: "POST", path: modelPath, body: { subject: adminSubject, model: "  " } }, deps);
+    expect(res.status).toBe(400);
   });
 });
