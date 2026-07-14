@@ -702,6 +702,28 @@ describe("API router — chat sessions", () => {
     expect(res.status).toBe(403);
   });
 
+  it("surfaces a runtime failure as 502, not a masked 403 (owner is authorized)", async () => {
+    const deps = await withSession();
+    deps.runtime = {
+      async listModels() {
+        return ["test-model"];
+      },
+      async generate() {
+        throw new Error("Ollama /api/chat failed: 500 Internal Server Error");
+      },
+      async isAvailable() {
+        return true;
+      },
+    };
+    const res = await handleApiRequest(
+      { method: "POST", path: turnPath, body: { subject: ownerSubject, text: "hi" } },
+      deps,
+    );
+    expect(res.status).toBe(502);
+    expect(res.body).toMatchObject({ code: "runtime_error" });
+    expect((res.body as { message: string }).message).toContain("Ollama /api/chat failed");
+  });
+
   it("404s a turn on a missing session", async () => {
     const deps = await withSession();
     const res = await handleApiRequest(

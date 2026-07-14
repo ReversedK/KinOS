@@ -1727,3 +1727,16 @@ Runtime adapter → integrations/Packages → UI.
   MVP §19 admin flow (create Sphere → add adults + a child → an agent per member,
   role-gated capabilities, approvals, local runtime) is now doable entirely from
   the console.
+
+### Iteration 94 — 2026-07-14 (chat 403 was a masked runtime failure)
+- **Bug:** the chat-turn handler reported *every* throw from `runChatTurn` —
+  including runtime failures — as `403 forbidden "Not authorized for this
+  session"`. A Sphere seeded with model `llama3.2` (not pulled in Ollama) made
+  every `/chat` turn 404 at the runtime and surface as a bogus 403.
+- **Fix:** `authorizeSessionRead` now runs *explicitly before* the runtime; a real
+  `403` only for a non-owner. A runtime throw surfaces truthfully as `502
+  runtime_error` with the real reason. The Ollama adapter now includes the
+  response body (e.g. `model 'llama3.2' not found`) in its error.
+- Regression tests added (router 502 path; adapter message). Verified live against
+  the compose API: the same turn now returns `502 … Ollama /api/chat failed: 404
+  … model 'llama3.2' not found`.

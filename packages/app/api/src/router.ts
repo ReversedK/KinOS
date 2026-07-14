@@ -702,6 +702,20 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     const model = resolveEffectiveProfile(imported.runtimeConfig).model;
     const stamp = (deps.now ?? (() => new Date().toISOString()))();
 
+    // Authorization is decided here, before the runtime — a non-owner subject is
+    // refused (owner-private, deny by default). Checked explicitly so a genuine
+    // 403 is never conflated with a runtime execution failure below, which must
+    // surface truthfully instead of masquerading as "not authorized".
+    if (
+      authorizeSessionRead(subject, session, imported.policies, {
+        sphereId,
+        time: stamp,
+        correlationId,
+      }).effect !== "allow"
+    ) {
+      return err(403, "forbidden", "Not authorized for this session");
+    }
+
     let result;
     try {
       result = await runChatTurn(
@@ -720,9 +734,11 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           ...(body.systemPrompt !== undefined ? { systemPrompt: body.systemPrompt } : {}),
         },
       );
-    } catch {
-      // Owner-private: a non-owner subject is refused (deny by default).
-      return err(403, "forbidden", "Not authorized for this session");
+    } catch (e) {
+      // Authorization already passed above, so a throw here is the runtime
+      // failing (e.g. Ollama/Hermes unreachable or the model not pulled). Report
+      // it as an upstream failure with the real reason, not as a 403.
+      return err(502, "runtime_error", `Agent runtime failed: ${(e as Error).message}`);
     }
 
     await deps.sessions.save(result.session);

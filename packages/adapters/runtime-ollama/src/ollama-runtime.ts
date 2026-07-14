@@ -62,7 +62,12 @@ export class OllamaRuntime implements AgentRuntime {
       }),
     });
     if (!res.ok) {
-      throw new Error(`Ollama /api/chat failed: ${res.status} ${res.statusText}`);
+      // Surface Ollama's own reason (e.g. `model '…' not found`) — a bare status
+      // hides the most common cause: the Sphere's configured model isn't pulled.
+      const detail = (await res.text().catch(() => "")).trim();
+      throw new Error(
+        `Ollama /api/chat failed: ${res.status} ${res.statusText}${detail !== "" ? ` — ${detail}` : ""}`,
+      );
     }
     const body = (await res.json()) as OllamaChatResponse;
     return {

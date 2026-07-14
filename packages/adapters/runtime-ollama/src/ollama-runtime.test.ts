@@ -14,6 +14,7 @@ function fakeFetch(handler: (url: string, init?: RequestInit) => { status?: numb
       status,
       statusText: "",
       json: async () => body,
+      text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
     } as Response;
   }) as unknown as typeof fetch;
   return { impl, calls };
@@ -56,6 +57,14 @@ describe("OllamaRuntime — generate", () => {
     expect(sent.stream).toBe(false);
     expect(sent.model).toBe("llama3.2");
     expect(sent.messages).toEqual([{ role: "user", content: "hello" }]);
+  });
+
+  it("includes Ollama's own reason (e.g. model not found) in the thrown error", async () => {
+    const { impl } = fakeFetch(() => ({ status: 404, body: { error: "model 'llama3.2' not found" } }));
+    const rt = new OllamaRuntime({ fetchImpl: impl });
+    await expect(
+      rt.generate({ model: "llama3.2", messages: [{ role: "user", content: "hi" }] }),
+    ).rejects.toThrow(/model 'llama3.2' not found/);
   });
 });
 
