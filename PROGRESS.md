@@ -1797,3 +1797,38 @@ Runtime adapter → integrations/Packages → UI.
   `hermes` service is enabled and a Hermes execution adapter exists (today
   `runtime-hermes` only projects config; Hermes-as-inference reuses the OpenAI
   adapter).
+
+### Iteration 98 — 2026-07-14 (live Hermes Harness: /chat runs through Hermes)
+- **Enabled the Hermes Harness in compose** (opt-in `hermes` profile) and verified
+  the ADR-008 Harness inference path **live, end-to-end**: KinOS `/chat` →
+  `KINOS_RUNTIME=hermes` → OpenAI adapter → Hermes `/v1/chat/completions` (profile
+  `hermes-agent`) → Hermes agent loop → host Ollama → reply, persisted through
+  KinOS governance. This closes the ADR-008 "test-mode" gap for **inference**: a
+  chat turn is now served by the governed Harness, not direct Ollama.
+- **`deploy/hermes/bootstrap.py`**: makes Hermes' migrated `config.yaml` a KinOS
+  Harness config on container start (idempotent) — points its `model` at the host
+  Ollama over Ollama's OpenAI-compatible `/v1` (Hermes' `ollama` provider speaks
+  `/v1`; a bare `:11434` base_url 404s), overrides `context_length` to 65536
+  (Hermes requires ≥64K; Ollama reported 32K for the `-128k` tag), enables the
+  `api_server` gateway platform on :8642, and disables the cloud curator (it spammed
+  openrouter/nous auth failures every turn). Model/URL/context overridable via
+  `HARNESS_MODEL` / `HARNESS_OLLAMA_URL` / `HARNESS_MODEL_CONTEXT`.
+- **Compose**: `hermes` service (image `hermes-agent:local`, cont-init → bootstrap
+  → `gateway run`), api reaches it at `hermes:8642` on the compose network, key
+  shared via `HERMES_API_KEY`/`API_SERVER_KEY` (≥16 chars). Start with
+  `KINOS_RUNTIME=hermes docker compose --profile hermes up api hermes`; default
+  stack stays local-first Ollama.
+- **RFC-009 × Harness note:** for a Hermes-backed Sphere the governed "model"
+  (RFC-009) is the Hermes **profile name** (`hermes-agent` for the default profile),
+  not a raw Ollama tag — the raw inference model lives inside the projected profile.
+  Set the agent's model to the profile name.
+- **Verified:** `model.set → hermes-agent` (200), chat turn (200, reply `HARNESS`,
+  ~42s warm; ~52s cold model load). With `KINOS_RUNTIME=hermes` the Ollama runtime
+  is never constructed, so a 200 reply can only come via Hermes (a down Hermes would
+  give the iteration-94 `502`).
+- **Still open (honest):** the **full governed tool loop** — per-agent *projected*
+  profiles (`runtime.config.project`) with `mcp_servers.sphere` calling back into the
+  KinOS Sphere MCP for policy-scoped capabilities — is not yet wired into `/chat`
+  (single default `hermes-agent` profile only). The MCP callback itself was verified
+  against this image earlier (iters 80–82); wiring per-agent profiles into the chat
+  path is the next slice.
