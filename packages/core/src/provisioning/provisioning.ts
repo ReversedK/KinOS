@@ -63,6 +63,7 @@ export const IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES = [
   "runtime.set_provider",
   "integration.enable",
   "integration.disable",
+  "integration.configure",
   "package.install",
   "package.enable",
   "package.disable",

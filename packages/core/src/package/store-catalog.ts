@@ -119,6 +119,40 @@ const CATALOG: readonly PackageManifest[] = [
     ],
   }),
   createManifest({
+    // RFC-016: an integration package — the calendar functionality comes from an
+    // external service configured by the admin, not from KinOS code. Installing it
+    // creates a proposed Integration; configuring it supplies the provider choice
+    // and credentials (by reference); enabling it backs calendar.* via that service.
+    id: "google-calendar",
+    type: "mcp",
+    title: "Google Calendar",
+    description: "Connect a real calendar service (Google, CalDAV, or Apple) so your agent reads and proposes events on it.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "all",
+    providesCapabilities: ["calendar.read", "calendar.create_event"],
+    integration: {
+      provider: "google",
+      providerChoices: ["google", "caldav", "apple"],
+      scopes: ["calendar.read", "calendar.events.write"],
+    },
+    defaultPolicies: [
+      {
+        description: "Adults may read the connected calendar (Google Calendar integration).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["calendar.read"],
+        effect: "allow",
+      },
+      {
+        description: "Adults may propose events on the connected calendar, subject to approval.",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["calendar.create_event"],
+        effect: "require_approval",
+        approverRoles: ["parent"],
+      },
+    ],
+  }),
+  createManifest({
     id: "household-payments",
     type: "skill",
     title: "Household Payments",

@@ -34,6 +34,7 @@ import {
   installPackage,
   packageBindings,
   packageGrantPolicies,
+  packageIntegration,
   type GrantClause,
   projectAgentRuntimeConfig,
   provisioningBindings,
@@ -662,6 +663,84 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     return ok({ id: integrationId, status: updated.status });
   }
 
+  // --- Governed connectors: configure an integration (RFC-016) ---
+  // POST /spheres/:id/integrations/:iid/configure  { subject, provider?, secretRef?, scopes? }
+  // Sets the chosen provider, the credentials secret *reference* (never the value),
+  // and the requested scopes on an integration. Governed settings write; admin-only.
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 5 &&
+    segments[2] === "integrations" &&
+    segments[4] === "configure"
+  ) {
+    if (deps.auditSink === undefined) return err(501, "invalid_request", "Integration configuration is not enabled on this server");
+    const sphereId = segments[1] as string;
+    const integrationId = segments[3] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+    const integration = imported.integrations.find((i) => i.id === integrationId);
+    if (integration === undefined) return err(404, "not_found", "Integration not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+      provider?: unknown;
+      secretRef?: unknown;
+      scopes?: unknown;
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    const cap = defaultCapabilityCatalog().get("integration.configure");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "integration.configure is not allowed for this profile");
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "integration", id: integrationId, capabilityName: "integration.configure", riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      withAdminSeedMigration(sphereId, imported.policies, "integration.configure"),
+    );
+    if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
+
+    // Refuse a raw secret: credentials travel as a secret-store reference only.
+    if (typeof body.secretRef === "string" && /^(sk-|Bearer\s|ya29\.|AIza)/.test(body.secretRef)) {
+      return err(400, "invalid_request", "secretRef must be a secret-store reference, not a credential value");
+    }
+    const provider = typeof body.provider === "string" && body.provider.trim() !== "" ? body.provider.trim() : integration.provider;
+    const scopes = Array.isArray(body.scopes) ? body.scopes.filter((s): s is string => typeof s === "string") : integration.scopes;
+    const configured = {
+      ...integration,
+      provider,
+      scopes: [...scopes],
+      ...(typeof body.secretRef === "string" && body.secretRef.trim() !== "" ? { secretRef: body.secretRef.trim() } : {}),
+    };
+    const integrations = imported.integrations.map((i) => (i.id === integrationId ? configured : i));
+    await deps.store.save(exportSphere({ ...imported, integrations, exportedAt: stamp }));
+    deps.auditSink.record({
+      type: "integration.configured",
+      sphereId,
+      resourceType: "integration",
+      resourceId: integrationId,
+      decision: "executed",
+      // Security fact only: provider + whether a credential reference is set —
+      // never the reference value, never the secret.
+      reason: `provider=${provider} credentialed=${configured.secretRef !== undefined}`,
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+      ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+      ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+    });
+    return ok({ id: integrationId, provider, scopes: configured.scopes, configured: configured.secretRef !== undefined, status: configured.status });
+  }
+
   // --- Store: install a package (RFC-002) ---
   // POST /spheres/:id/packages/install  { subject, packageId }
   if (
@@ -723,11 +802,22 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     const newBindings = plan
       .flatMap((m) => packageBindings(m, "disabled"))
       .filter((b) => !boundCaps.has(b.capability));
+    // RFC-016: an integration package creates a `proposed` Integration (configured
+    // + enabled later, via integration.configure and the connectors). Deduped by id
+    // so a re-install (shouldn't happen — 409 above) never doubles it.
+    const existingIntegrationIds = new Set(imported.integrations.map((i) => i.id));
+    const newIntegrations = plan
+      .flatMap((m) => {
+        const created = packageIntegration(m, sphereId, `int_${m.id}`);
+        return created !== undefined ? [created] : [];
+      })
+      .filter((i) => !existingIntegrationIds.has(i.id));
     await deps.store.save(
       exportSphere({
         ...imported,
         packages: [...imported.packages, ...newPackages],
         bindings: [...imported.bindings, ...newBindings],
+        integrations: [...imported.integrations, ...newIntegrations],
         exportedAt: stamp,
       }),
     );

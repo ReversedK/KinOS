@@ -16,6 +16,7 @@
  */
 
 import type { CapabilityBinding } from "../capability/types.js";
+import { createIntegration, type Integration } from "../integration/integration.js";
 import type { AgeProfile, Policy, RiskLevel } from "../policy/types.js";
 
 export type PackageType = "skill" | "mcp" | "bundle";
@@ -41,6 +42,21 @@ export interface PackageBinding {
   readonly risk: RiskLevel;
   /** Binding-level approval floor; policy may raise it, runtime may not lower it. */
   readonly requiresApproval?: boolean;
+}
+
+/**
+ * Declares that a package's capabilities are backed by a configurable external
+ * integration, not in-process KinOS code (RFC-016). `provider` is the default
+ * adapter family (e.g. "google", "caldav"); `providerChoices` optionally lets an
+ * admin pick among services at configure time. Scopes are the access the
+ * integration will request (visible to administrators). Installing such a package
+ * creates a `proposed` Integration; configuring it supplies credentials by
+ * reference; the capability name is unchanged whichever provider backs it.
+ */
+export interface PackageIntegration {
+  readonly provider: string;
+  readonly providerChoices?: readonly string[];
+  readonly scopes?: readonly string[];
 }
 
 /**
@@ -73,6 +89,8 @@ export interface PackageManifest {
   readonly bindings: readonly PackageBinding[];
   /** The grant the wizard proposes; inert until an admin enables the package (RFC-011). */
   readonly defaultPolicies: readonly PolicyPreset[];
+  /** When set, the capabilities are backed by a configurable integration (RFC-016). */
+  readonly integration?: PackageIntegration;
 }
 
 /** entity-lifecycle.md → Package lifecycle (available is store-side, pre-install). */
@@ -96,6 +114,7 @@ export interface ManifestInput {
   readonly providesCapabilities?: readonly string[];
   readonly bindings?: readonly PackageBinding[];
   readonly defaultPolicies?: readonly PolicyPreset[];
+  readonly integration?: PackageIntegration;
 }
 
 export function createManifest(input: ManifestInput): PackageManifest {
@@ -124,6 +143,7 @@ export function createManifest(input: ManifestInput): PackageManifest {
     providesCapabilities: input.providesCapabilities ? [...input.providesCapabilities] : [],
     bindings: input.bindings ? [...input.bindings] : [],
     defaultPolicies: input.defaultPolicies ? [...input.defaultPolicies] : [],
+    ...(input.integration !== undefined ? { integration: input.integration } : {}),
   };
 }
 
@@ -199,6 +219,23 @@ export function packageGrantPolicies(manifest: PackageManifest, sphereId: string
     version: 1,
     status: "active" as const,
   }));
+}
+
+/**
+ * Materialize an integration package's declared integration into a `proposed`
+ * Sphere Integration (RFC-016), reusing `createIntegration`. Provider and provided
+ * capabilities come from the manifest; no secret yet (configured later, by
+ * reference). Returns undefined for a non-integration package.
+ */
+export function packageIntegration(manifest: PackageManifest, sphereId: string, id: string): Integration | undefined {
+  if (manifest.integration === undefined) return undefined;
+  return createIntegration({
+    id,
+    sphereId,
+    provider: manifest.integration.provider,
+    ...(manifest.integration.scopes !== undefined ? { scopes: [...manifest.integration.scopes] } : {}),
+    providesCapabilities: [...manifest.providesCapabilities],
+  });
 }
 
 /**

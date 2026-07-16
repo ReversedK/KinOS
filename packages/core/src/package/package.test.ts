@@ -10,6 +10,7 @@ import {
   isUsable,
   packageBindings,
   packageGrantPolicies,
+  packageIntegration,
   uninstallPackage,
 } from "./package.js";
 
@@ -180,5 +181,36 @@ describe("customGrantPolicies (RFC-014 advanced scoping)", () => {
     expect(() =>
       customGrantPolicies(m(), "sph_1", [{ roles: ["parent"], capabilities: ["calendar.create_event"], effect: "require_approval" }]),
     ).toThrow(/approver role/i);
+  });
+});
+
+describe("packageIntegration (RFC-016)", () => {
+  const integrationManifest = () =>
+    createManifest({
+      id: "google-calendar",
+      type: "mcp",
+      title: "Google Calendar",
+      description: "Connect a real calendar service.",
+      version: "1",
+      publisher: "kinos",
+      ageRating: "all",
+      providesCapabilities: ["calendar.read", "calendar.create_event"],
+      integration: { provider: "google", providerChoices: ["google", "caldav"], scopes: ["calendar.read"] },
+    });
+
+  it("materializes a proposed Integration from the manifest (provider + capabilities, no secret)", () => {
+    const i = packageIntegration(integrationManifest(), "sph_1", "int_google-calendar")!;
+    expect(i).toMatchObject({
+      id: "int_google-calendar",
+      sphereId: "sph_1",
+      provider: "google",
+      status: "proposed",
+      providesCapabilities: ["calendar.read", "calendar.create_event"],
+    });
+    expect(i.secretRef).toBeUndefined(); // credentials configured later, by reference
+  });
+
+  it("returns undefined for a non-integration package", () => {
+    expect(packageIntegration(manifest(), "sph_1", "int_x")).toBeUndefined();
   });
 });

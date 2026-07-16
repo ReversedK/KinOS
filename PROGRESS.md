@@ -2061,3 +2061,30 @@ Runtime adapter → integrations/Packages → UI.
 - Both real adapters (RFC-012 calendar, RFC-013/015 notes) are now usable by a human
   in the console with the same governance agents get via the Sphere MCP — the
   "backend real → product usable" arc is complete for both.
+
+### Iteration 109 — 2026-07-16 (RFC-016 inc.1: integration packages — add & configure external services)
+- **Direction correction (from the product owner):** do NOT re-code features
+  (calendar/messaging/payment) in KinOS; a feature's functionality comes from a
+  **configurable integration to an external service, added as a package**. The
+  integration model already says this ("the product must not implement every
+  provider directly"; SaaS connector = Google/CalDAV); the `Integration` entity
+  already exists. What was missing — and is added here — is the governed way to
+  **add and configure** one. Nothing re-coded: the local calendar/notes stay as the
+  built-in `local` reference provider.
+- **Manifest `integration` metadata** (provider + providerChoices + scopes); pure
+  `packageIntegration()` materializes a `proposed` Integration via the existing
+  `createIntegration`. New store package **Google Calendar** (type mcp) declares an
+  integration over `calendar.*` with provider choices google/caldav/apple.
+- **Install** an integration package → creates the `proposed` Integration (shows in
+  connectors). New governed capability **`integration.configure`** (admin, seeded):
+  set the chosen provider, the credentials **secret reference** (never the value —
+  a raw key is rejected 400), and scopes. Enable/disable reuse the existing
+  connector lifecycle.
+- **Verified live:** install Google Calendar → connectors shows a `proposed`
+  google integration over calendar.read/create_event; configure → provider caldav,
+  credentials by reference, scopes; a raw `ya29.` token is refused; enable →
+  enabled; the secret reference never appears in the read surface or audit. 458
+  tests, typecheck, next build green.
+- **Increment 2 (follow-up, documented in RFC-016):** route a capability call to the
+  configured provider's adapter via a provider registry (local = built-in reference;
+  Google/CalDAV/Apple = drop-in adapters), denying when unconfigured/disabled.

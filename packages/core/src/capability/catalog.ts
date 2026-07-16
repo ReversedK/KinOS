@@ -117,6 +117,18 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
   {
+    // RFC-016: configure a Sphere integration — choose the external provider, set
+    // the credentials secret *reference* (never the value), and the requested
+    // scopes. Governed settings write; admin-only. Credentials live in the secret
+    // store; the entity, audit and export hold only a reference.
+    name: "integration.configure",
+    description: "Configure an integration: provider, credentials (by reference), and scopes (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
     name: "store.browse",
     description: "Browse the curated package store.",
     risk: "low",

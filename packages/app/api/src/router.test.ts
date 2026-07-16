@@ -980,6 +980,82 @@ describe("API router — package store", () => {
     expect(res.status).toBe(501);
   });
 
+  // RFC-016: an integration package creates a configurable Integration; configuring
+  // it sets provider + a secret reference (never the value) + scopes.
+  it("installing an integration package creates a proposed Integration in the connectors", async () => {
+    const deps = await pkgDeps([allowAdultPackages]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
+    const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
+    const integrations = (list.body as { integrations: { id: string; provider: string; status: string }[] }).integrations;
+    expect(integrations).toEqual([
+      { id: "int_google-calendar", provider: "google", status: "proposed", scopes: expect.any(Array), providesCapabilities: ["calendar.read", "calendar.create_event"] },
+    ]);
+  });
+
+  it("integration.configure sets provider + secret reference + scopes; never leaks the secret", async () => {
+    const configPolicy: Policy = {
+      id: "pol_cfg",
+      sphereId: "sph_1",
+      description: "Adults may configure integrations.",
+      subjectSelector: { ageProfiles: ["adult"] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["integration.configure"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    };
+    const deps = await pkgDeps([allowAdultPackages, configPolicy]);
+    const audit = deps.audit as InMemoryAuditSink;
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
+    const res = await handleApiRequest(
+      {
+        method: "POST",
+        path: "/spheres/sph_1/integrations/int_google-calendar/configure",
+        body: { ...adult, provider: "caldav", secretRef: "secret://caldav/sph_1", scopes: ["calendar.read"] },
+      },
+      deps,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: "int_google-calendar", provider: "caldav", configured: true });
+    // Never expose the reference value or any secret in the read surface / audit.
+    const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
+    expect(JSON.stringify(list.body)).not.toContain("secret://caldav/sph_1");
+    expect(JSON.stringify(audit.events)).not.toContain("secret://caldav/sph_1");
+  });
+
+  it("integration.configure rejects a raw credential value (must be a reference)", async () => {
+    const configPolicy: Policy = {
+      id: "pol_cfg2",
+      sphereId: "sph_1",
+      description: "Adults may configure integrations.",
+      subjectSelector: { ageProfiles: ["adult"] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["integration.configure"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    };
+    const deps = await pkgDeps([allowAdultPackages, configPolicy]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/integrations/int_google-calendar/configure", body: { ...adult, secretRef: "sk-live-abc123" } },
+      deps,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("integration.configure is denied by default without a policy", async () => {
+    const deps = await pkgDeps([allowAdultPackages]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/integrations/int_google-calendar/configure", body: { ...adult, provider: "caldav" } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
+
   // RFC-011: the grant wizard — install creates the binding disabled and grants
   // nothing; enable activates it + applies the grant, so the agent's projected
   // surface (and thus the Sphere MCP tools/list) gains the capability.

@@ -46,6 +46,8 @@ export type KinEventType =
   | "runtime.session.restored"
   /** A terminal was attached to an agent's governed Harness profile (ADR-008 §6). */
   | "runtime.session.attached"
+  /** An integration was configured — provider/scopes set, credentials by reference (RFC-016). */
+  | "integration.configured"
   | "external_transfer.requested"
   | "external_transfer.allowed"
   | "external_transfer.denied";
