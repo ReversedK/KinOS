@@ -30,6 +30,7 @@ import { createApiServer } from "./server.js";
 import { buildLocalHandlers } from "./local-handlers.js";
 import { IntegrationExecutor, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 import { FakeAuthBroker, PendingOAuthStore, type AuthBroker } from "./oauth.js";
+import { BetterAuthBroker } from "./better-auth-broker.js";
 import {
   backupAgentState,
   projectAgentConfig,
@@ -192,9 +193,24 @@ const localExecutor = new LocalCapabilityExecutor(
 // Built-in "local" provider reuses the calendar store; real Google/CalDAV/Apple
 // adapters are drop-in registry entries. Non-integration bindings fall through to
 // the local executor unchanged.
-// OAuth broker (RFC-017): the fake broker by default (no external credentials); a
-// Better Auth broker is the reference for real Google/Apple — see docs/rfcs/017.
-const authBroker: AuthBroker = new FakeAuthBroker();
+// OAuth broker (RFC-017/018): the real Better Auth broker when provider client
+// credentials are configured, else the fake broker (dev/tests without creds).
+// Better Auth owns the provider callback at /api/auth/*; KinOS holds only an
+// account reference.
+function buildAuthBroker(): AuthBroker {
+  const secret = process.env["BETTER_AUTH_SECRET"];
+  const googleId = process.env["GOOGLE_CLIENT_ID"];
+  const googleSecret = process.env["GOOGLE_CLIENT_SECRET"];
+  if (secret !== undefined && googleId !== undefined && googleSecret !== undefined) {
+    return new BetterAuthBroker({
+      baseURL: process.env["BETTER_AUTH_URL"] ?? mcpPublicUrl,
+      secret,
+      google: { clientId: googleId, clientSecret: googleSecret },
+    });
+  }
+  return new FakeAuthBroker();
+}
+const authBroker: AuthBroker = buildAuthBroker();
 const pendingOAuth = new PendingOAuthStore();
 setInterval(() => pendingOAuth.prune(), 60_000).unref();
 
@@ -231,7 +247,7 @@ const server = createApiServer(
     authBroker,
     pendingOAuth,
     newOAuthState: () => randomBytes(24).toString("hex"),
-    oauthRedirectUri: process.env["KINOS_OAUTH_REDIRECT_URI"] ?? `${mcpPublicUrl}/oauth/callback`,
+    oauthRedirectUri: process.env["KINOS_OAUTH_REDIRECT_URI"] ?? `${mcpPublicUrl}/oauth/connected`,
     newCorrelationId: () => randomUUID(),
     newApprovalId: () => `apr_${randomUUID()}`,
     newSessionId: () => `ses_${randomUUID()}`,

@@ -2137,3 +2137,28 @@ Runtime adapter → integrations/Packages → UI.
   `BetterAuthBroker` is the documented reference implementation of the port; the
   fake broker exercises the flow without credentials. 465 tests, typecheck, next
   build unaffected (no UI change).
+
+### Iteration 112 — 2026-07-16 (RFC-018: real Better Auth broker; AuthBroker port redesigned to its model)
+- **Finding (context7):** Better Auth OWNS the provider callback
+  (`/api/auth/callback/:provider`, non-overridable), manages state + the code
+  exchange internally, and is session-centric — so RFC-017's raw-OAuth2 port
+  (`authorizeUrl`/`exchange`) didn't fit. Surfaced the fork to the PO, who chose to
+  redesign for Better Auth.
+- **Port v2:** `beginConnect({provider,scopes,callbackURL})→{url}` ·
+  `resolveConnection({headers})→{accountRef}` · `getAccessToken(accountRef)` ·
+  optional `nodeHandler`/`basePath` (Better Auth's `/api/auth/*`). The governed flow
+  becomes `integration.oauth.begin` (nonce + authorize URL) → `GET /oauth/connected?nonce`
+  (redeem nonce → read broker session → set `secretRef = provider::accountRef`).
+- **Real `BetterAuthBroker`** (installed `better-auth@1.6.23`): `betterAuth()` with
+  google/apple social providers + memory account store; `toNodeHandler` mounted at
+  `/api/auth/*`; `signInSocial`/`getSession`/`getAccessToken`. Selected in main.ts
+  when BETTER_AUTH_SECRET + GOOGLE_CLIENT_ID/SECRET are set, else the fake broker.
+  Server mounts the broker handler; `ApiRequest` gains `headers`.
+- **Verified:** compiles against real better-auth types; **the API boots with the
+  BetterAuthBroker (dummy creds) and Better Auth's handler answers `/api/auth/ok`
+  (200)** — a real adapter, not a stub. Governed flow verified live via the fake
+  broker: begin → `/oauth/connected` → connected; replayed nonce → 403; no token in
+  the read surface or audit. 465 tests, typecheck green.
+- **Deployment boundary (honest):** live Google/Apple consent needs real client
+  credentials + a browser — the one path not in CI; the memory account store should
+  become durable (SQLite/Postgres) in production.

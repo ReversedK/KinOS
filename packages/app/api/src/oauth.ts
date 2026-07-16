@@ -1,31 +1,51 @@
 /**
- * OAuth auth broker + pending-connection store (RFC-017).
+ * OAuth auth broker + pending-connection store (RFC-017/018).
  *
  * KinOS delegates the OAuth consent flow and token storage to a pluggable
- * `AuthBroker` (Better Auth is the reference implementation). KinOS never holds a
- * token: an integration's `secretRef` becomes a broker **account reference**, and a
- * provider adapter fetches a fresh token per call via `getAccessToken`.
+ * `AuthBroker` (Better Auth is the reference — see better-auth-broker.ts). Better
+ * Auth *owns* the provider callback and stores accounts/tokens, so the port is
+ * shaped to that model (RFC-018): `beginConnect` returns the authorize URL, the
+ * broker's own mounted handler processes the provider redirect, and
+ * `resolveConnection` reads the resulting session to identify the connected
+ * account. KinOS never holds a token — an integration's `secretRef` becomes a
+ * broker **account reference**, and a provider adapter fetches a fresh token per
+ * call via `getAccessToken`.
  *
  * The broker lives in the app layer only; the domain core imports none of it.
  */
 
+import type { IncomingMessage, ServerResponse } from "node:http";
+
 /** The OAuth mechanics KinOS needs, abstracted from any provider/library. */
 export interface AuthBroker {
-  /** Build the provider's authorize URL for a consent redirect. */
-  authorizeUrl(input: { provider: string; scopes: readonly string[]; state: string; redirectUri: string }): Promise<string>;
-  /** Exchange a callback code for a stored account; returns a reference, never a token. */
-  exchange(input: { provider: string; code: string; state: string; redirectUri: string }): Promise<{ accountRef: string }>;
+  /**
+   * Begin connecting: returns the provider's authorize URL. `callbackURL` is where
+   * the broker sends the browser after it has processed the provider redirect and
+   * stored the account (KinOS's `/oauth/connected` page).
+   */
+  beginConnect(input: { provider: string; scopes: readonly string[]; callbackURL: string }): Promise<{ url: string }>;
+  /**
+   * After the browser returns to the callback URL, identify the connected account
+   * from the request (the broker's session cookie). Undefined if no session —
+   * refuse. Returns a reference to the broker-held account, never a token.
+   */
+  resolveConnection(input: { headers: Readonly<Record<string, string | undefined>> }): Promise<{ accountRef: string } | undefined>;
   /** Fetch a fresh access token for a connected account (auto-refreshed by the broker). */
   getAccessToken(accountRef: string): Promise<string>;
+  /** A Node handler the broker needs mounted (Better Auth's /api/auth/*); absent for the fake. */
+  readonly nodeHandler?: (req: IncomingMessage, res: ServerResponse) => void;
+  /** Where nodeHandler is mounted (e.g. "/api/auth"). */
+  readonly basePath?: string;
 }
 
 /**
- * A transient pending OAuth connection minted at `integration.oauth.begin` and
- * consumed at the callback. Single-use `state` (CSRF), short-lived. In-memory by
- * design: nothing durable is lost on restart (an in-flight consent just restarts).
+ * A transient pending connection minted at `integration.oauth.begin` and consumed
+ * at `/oauth/connected`. A single-use `nonce` binds the browser round-trip back to
+ * the right Sphere integration (broker-agnostic CSRF + binding). In-memory: nothing
+ * durable is lost on restart (an in-flight consent just restarts).
  */
 export interface PendingOAuth {
-  readonly state: string;
+  readonly nonce: string;
   readonly sphereId: string;
   readonly integrationId: string;
   readonly provider: string;
@@ -40,52 +60,44 @@ export class PendingOAuthStore {
   constructor(private readonly now: () => string = () => new Date().toISOString()) {}
 
   issue(p: PendingOAuth): void {
-    this.pending.set(p.state, p);
+    this.pending.set(p.nonce, p);
   }
 
-  /** Redeem a state once. Undefined for unknown/expired/replayed — caller refuses. */
-  redeem(state: string): PendingOAuth | undefined {
-    const p = this.pending.get(state);
+  /** Redeem a nonce once. Undefined for unknown/expired/replayed — caller refuses. */
+  redeem(nonce: string): PendingOAuth | undefined {
+    const p = this.pending.get(nonce);
     if (p === undefined) return undefined;
-    this.pending.delete(state); // single use
+    this.pending.delete(nonce); // single use
     if (Date.parse(p.expiresAt) <= Date.parse(this.now())) return undefined;
     return p;
   }
 
   prune(): void {
     const now = Date.parse(this.now());
-    for (const [state, p] of this.pending) {
-      if (Date.parse(p.expiresAt) <= now) this.pending.delete(state);
+    for (const [nonce, p] of this.pending) {
+      if (Date.parse(p.expiresAt) <= now) this.pending.delete(nonce);
     }
   }
 }
 
 /**
  * A deterministic broker for tests and local dev without real OAuth credentials.
- * It fabricates an authorize URL, an account reference, and a token — enough to
- * exercise the governed flow end to end. Real deployments use the Better Auth
- * broker with real client credentials.
+ * `beginConnect` returns the callback URL directly (the "provider" immediately
+ * approves), `resolveConnection` fabricates an account, and `getAccessToken`
+ * returns a stable token — enough to exercise the governed flow end to end.
  */
 export class FakeAuthBroker implements AuthBroker {
-  private readonly tokens = new Map<string, string>();
-
-  async authorizeUrl(input: { provider: string; scopes: readonly string[]; state: string; redirectUri: string }): Promise<string> {
-    const u = new URL(`https://oauth.example/${encodeURIComponent(input.provider)}/authorize`);
-    u.searchParams.set("scope", input.scopes.join(" "));
-    u.searchParams.set("state", input.state);
-    u.searchParams.set("redirect_uri", input.redirectUri);
-    return u.toString();
+  async beginConnect(input: { provider: string; scopes: readonly string[]; callbackURL: string }): Promise<{ url: string }> {
+    const sep = input.callbackURL.includes("?") ? "&" : "?";
+    return { url: `${input.callbackURL}${sep}fake_provider=${encodeURIComponent(input.provider)}` };
   }
 
-  async exchange(input: { provider: string; code: string; state: string; redirectUri: string }): Promise<{ accountRef: string }> {
-    const accountRef = `broker://${input.provider}/${input.state}`;
-    this.tokens.set(accountRef, `tok_${input.provider}_${input.code}`);
-    return { accountRef };
+  async resolveConnection(input: { headers: Readonly<Record<string, string | undefined>> }): Promise<{ accountRef: string } | undefined> {
+    const user = input.headers["x-fake-user"] ?? "u1";
+    return { accountRef: `broker://fake/${user}` };
   }
 
   async getAccessToken(accountRef: string): Promise<string> {
-    const token = this.tokens.get(accountRef);
-    if (token === undefined) throw new Error(`No connected account for ${accountRef}`);
-    return token;
+    return `tok_${accountRef.split("/").pop() ?? "x"}`;
   }
 }

@@ -14,7 +14,8 @@
     "@kinos/executor-local": "*",
     "@kinos/persistence-sqlite": "*",
     "@kinos/runtime-hermes": "*",
-    "@kinos/runtime-openai": "*"
+    "@kinos/runtime-openai": "*",
+    "better-auth": "^1.6.23"
   },
   "scripts": {
     "serve": "tsx src/main.ts",

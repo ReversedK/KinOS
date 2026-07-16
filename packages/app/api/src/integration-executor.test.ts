@@ -107,7 +107,6 @@ describe("IntegrationExecutor (RFC-016 inc.2)", () => {
 describe("googleCalendarProvider (RFC-017)", () => {
   it("resolves a token via the broker and calls the API with a Bearer header", async () => {
     const broker = new FakeAuthBroker();
-    const { accountRef } = await broker.exchange({ provider: "google", code: "c1", state: "s1", redirectUri: "http://cb" });
     let seenAuth: string | undefined;
     const fakeFetch = (async (_url: string, init?: RequestInit) => {
       seenAuth = (init?.headers as Record<string, string> | undefined)?.["Authorization"];
@@ -115,10 +114,11 @@ describe("googleCalendarProvider (RFC-017)", () => {
     }) as unknown as typeof fetch;
 
     const provider = googleCalendarProvider(broker, fakeFetch);
-    const out = (await provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secretRef: accountRef, scopes: [], now: () => "", newId: () => "" })) as {
+    // secretRef is the account reference the /oauth/connected handler stored.
+    const out = (await provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secretRef: "google::broker://fake/alice", scopes: [], now: () => "", newId: () => "" })) as {
       events: { title: string }[];
     };
-    expect(seenAuth).toBe("Bearer tok_google_c1"); // token came from the broker
+    expect(seenAuth).toBe("Bearer tok_alice"); // token came from the broker
     expect(out.events.map((e) => e.title)).toEqual(["Standup"]);
   });
 

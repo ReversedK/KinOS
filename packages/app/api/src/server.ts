@@ -59,6 +59,15 @@ export function createApiServer(deps: ApiDeps, mcp?: SphereMcpServerDeps): Serve
       try {
       const apiRequest = toApiRequest(req.method, req.url);
 
+      // OAuth broker handler (RFC-018): Better Auth owns the provider callback at
+      // its own basePath (e.g. /api/auth/*). Mount it verbatim when a broker with a
+      // node handler is wired; it manages its own request/response.
+      const broker = deps.authBroker;
+      if (broker?.nodeHandler !== undefined && broker.basePath !== undefined && apiRequest.path.startsWith(broker.basePath)) {
+        broker.nodeHandler(req, res);
+        return;
+      }
+
       // Sphere MCP gateway (RFC-007, ADR-007): bearer-authenticated JSON-RPC,
       // served only when MCP deps are wired. The token is the boundary.
       const sphereId = matchMcp(req.method, apiRequest.path);
@@ -77,7 +86,9 @@ export function createApiServer(deps: ApiDeps, mcp?: SphereMcpServerDeps): Serve
 
       const hasBody = req.method !== undefined && req.method !== "GET" && req.method !== "HEAD";
       const body = hasBody ? await readJsonBody(req) : undefined;
-      const response = await handleApiRequest(body !== undefined ? { ...apiRequest, body } : apiRequest, deps);
+      // Request headers are needed to read the broker session at /oauth/connected.
+      const headers = req.headers as Record<string, string | undefined>;
+      const response = await handleApiRequest({ ...apiRequest, headers, ...(body !== undefined ? { body } : {}) }, deps);
       res.writeHead(response.status, {
         "content-type": "application/json",
         "x-correlation-id": response.correlationId,

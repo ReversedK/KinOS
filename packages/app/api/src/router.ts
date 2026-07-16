@@ -102,6 +102,8 @@ export interface ApiRequest {
   readonly method: string;
   readonly path: string;
   readonly query?: Readonly<Record<string, string | undefined>>;
+  /** Request headers (e.g. to read the OAuth broker session at /oauth/connected). */
+  readonly headers?: Readonly<Record<string, string | undefined>>;
   /** Parsed JSON body for write requests. */
   readonly body?: unknown;
 }
@@ -797,16 +799,19 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     );
     if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
 
-    const state = deps.newOAuthState();
-    const redirectUri = deps.oauthRedirectUri ?? "http://localhost:8787/oauth/callback";
+    const nonce = deps.newOAuthState();
+    // The browser returns to KinOS's /oauth/connected after the broker has stored
+    // the account; the nonce binds that round-trip to this integration (CSRF-safe).
+    const connectedBase = deps.oauthRedirectUri ?? "http://localhost:8787/oauth/connected";
+    const callbackURL = `${connectedBase}${connectedBase.includes("?") ? "&" : "?"}nonce=${encodeURIComponent(nonce)}`;
     deps.pendingOAuth.issue({
-      state,
+      nonce,
       sphereId,
       integrationId,
       provider: integration.provider,
       expiresAt: new Date(Date.parse(stamp) + OAUTH_STATE_TTL_SECONDS * 1000).toISOString(),
     });
-    const authorizeUrl = await deps.authBroker.authorizeUrl({ provider: integration.provider, scopes: integration.scopes, state, redirectUri });
+    const { url } = await deps.authBroker.beginConnect({ provider: integration.provider, scopes: integration.scopes, callbackURL });
     deps.auditSink.record({
       type: "integration.oauth.begun",
       sphereId,
@@ -818,23 +823,23 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       createdAt: stamp,
       ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
     });
-    return ok({ authorizeUrl, state, provider: integration.provider });
+    return ok({ authorizeUrl: url, nonce, provider: integration.provider });
   }
 
-  // --- OAuth callback (RFC-017) ---
-  // GET /oauth/callback?state=..&code=..
-  // The provider redirects here after consent. Exchanges the code via the broker
-  // and sets the integration's secretRef to the broker account reference (never a
-  // token). CSRF-safe: an unknown/expired state is refused.
-  if (req.method === "GET" && segments.length === 2 && segments[0] === "oauth" && segments[1] === "callback") {
+  // --- OAuth connected (RFC-018) ---
+  // GET /oauth/connected?nonce=..
+  // The broker (Better Auth) has processed the provider callback and stored the
+  // account; the browser lands here. We redeem the nonce (CSRF + binding), read the
+  // connected account from the broker session, and set the integration's secretRef
+  // to a broker account reference — never a token.
+  if (req.method === "GET" && segments.length === 2 && segments[0] === "oauth" && segments[1] === "connected") {
     if (deps.auditSink === undefined || deps.authBroker === undefined || deps.pendingOAuth === undefined) {
       return err(501, "not_implemented", "OAuth connect is not enabled on this deployment");
     }
-    const state = req.query?.["state"];
-    const code = req.query?.["code"];
-    if (typeof state !== "string" || typeof code !== "string") return err(400, "invalid_request", "state and code are required");
-    const pending = deps.pendingOAuth.redeem(state);
-    if (pending === undefined) return err(403, "forbidden", "Invalid or expired OAuth state");
+    const nonce = req.query?.["nonce"];
+    if (typeof nonce !== "string") return err(400, "invalid_request", "nonce is required");
+    const pending = deps.pendingOAuth.redeem(nonce);
+    if (pending === undefined) return err(403, "forbidden", "Invalid or expired OAuth nonce");
 
     const snap = await deps.store.load(pending.sphereId);
     if (snap === undefined) return err(404, "not_found", "Sphere not found");
@@ -843,15 +848,16 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     if (integration === undefined) return err(404, "not_found", "Integration not found");
 
     const stamp = (deps.now ?? (() => new Date().toISOString()))();
-    const redirectUri = deps.oauthRedirectUri ?? "http://localhost:8787/oauth/callback";
-    let accountRef: string;
+    let resolved: { accountRef: string } | undefined;
     try {
-      ({ accountRef } = await deps.authBroker.exchange({ provider: pending.provider, code, state, redirectUri }));
+      resolved = await deps.authBroker.resolveConnection({ headers: req.headers ?? {} });
     } catch (e) {
-      return err(502, "exchange_failed", (e as Error).message);
+      return err(502, "connect_failed", (e as Error).message);
     }
+    if (resolved === undefined) return err(403, "forbidden", "No connected account in the broker session");
     // The secretRef is a reference to the broker-held account — never the token.
-    const configured = { ...integration, secretRef: accountRef };
+    // Carry the provider so the token lookup knows which account to refresh.
+    const configured = { ...integration, secretRef: `${pending.provider}::${resolved.accountRef}` };
     const integrations = imported.integrations.map((i) => (i.id === integration.id ? configured : i));
     await deps.store.save(exportSphere({ ...imported, integrations, exportedAt: stamp }));
     deps.auditSink.record({

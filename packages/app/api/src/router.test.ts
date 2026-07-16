@@ -1063,24 +1063,24 @@ describe("API router — package store", () => {
     const base = await pkgDeps([allowAdultPackages, oauthPolicy]);
     const pendingOAuth = new PendingOAuthStore(() => NOW);
     let n = 0;
-    const deps: ApiDeps = { ...base, authBroker: new FakeAuthBroker(), pendingOAuth, newOAuthState: () => `st_${++n}`, oauthRedirectUri: "http://cb" };
+    const deps: ApiDeps = { ...base, authBroker: new FakeAuthBroker(), pendingOAuth, newOAuthState: () => `n_${++n}`, oauthRedirectUri: "http://cb/oauth/connected" };
     await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
 
     const begin = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_google-calendar/oauth/begin", body: adult }, deps);
     expect(begin.status).toBe(200);
-    expect((begin.body as { authorizeUrl: string }).authorizeUrl).toContain("state=st_1");
+    expect((begin.body as { authorizeUrl: string }).authorizeUrl).toContain("nonce=n_1");
 
-    // Unknown state is refused (CSRF).
-    expect((await handleApiRequest({ method: "GET", path: "/oauth/callback", query: { state: "forged", code: "c" } }, deps)).status).toBe(403);
+    // Unknown nonce is refused (CSRF).
+    expect((await handleApiRequest({ method: "GET", path: "/oauth/connected", query: { nonce: "forged" } }, deps)).status).toBe(403);
 
-    const cb = await handleApiRequest({ method: "GET", path: "/oauth/callback", query: { state: "st_1", code: "code_1" } }, deps);
+    const cb = await handleApiRequest({ method: "GET", path: "/oauth/connected", query: { nonce: "n_1" }, headers: { "x-fake-user": "alice" } }, deps);
     expect(cb.status).toBe(200);
     expect(cb.body).toMatchObject({ id: "int_google-calendar", provider: "google", connected: true });
 
     // The integration is now configured with a broker account reference — never a token.
     const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
-    expect(JSON.stringify(list.body)).not.toContain("tok_google");
-    expect(JSON.stringify((deps.audit as InMemoryAuditSink).events)).not.toContain("tok_google");
+    expect(JSON.stringify(list.body)).not.toContain("tok_"); // no token anywhere
+    expect(JSON.stringify((deps.audit as InMemoryAuditSink).events)).not.toContain("tok_");
   });
 
   it("integration.oauth.begin is denied by default without a policy", async () => {
