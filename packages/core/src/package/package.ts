@@ -16,7 +16,7 @@
  */
 
 import type { CapabilityBinding } from "../capability/types.js";
-import type { Policy, RiskLevel } from "../policy/types.js";
+import type { AgeProfile, Policy, RiskLevel } from "../policy/types.js";
 
 export type PackageType = "skill" | "mcp" | "bundle";
 
@@ -199,4 +199,71 @@ export function packageGrantPolicies(manifest: PackageManifest, sphereId: string
     version: 1,
     status: "active" as const,
   }));
+}
+
+/**
+ * An admin-specified grant clause (RFC-014): who gets which of the package's
+ * capabilities. `capabilities` MUST be a subset of what the package provides — a
+ * package can never be used to grant a capability it does not implement.
+ */
+export interface GrantClause {
+  readonly roles?: readonly string[];
+  readonly memberIds?: readonly string[];
+  readonly ageProfiles?: readonly AgeProfile[];
+  readonly capabilities: readonly string[];
+  readonly effect?: "allow" | "require_approval";
+  readonly approverRoles?: readonly string[];
+}
+
+/**
+ * Materialize an admin's grant clauses into ordinary active Sphere policies
+ * (RFC-014). Bounded by the manifest: a clause naming a capability the package
+ * does not provide is rejected. Minor safety is NOT re-checked here — the catalog
+ * profile floor denies a risky capability for a minor per call regardless, so an
+ * over-broad clause is inert rather than dangerous (defence in depth). A clause
+ * with an empty subject selector or no capabilities is rejected (nothing to grant,
+ * or a grant to everyone — deny-by-default forbids the silent broad grant).
+ */
+export function customGrantPolicies(
+  manifest: PackageManifest,
+  sphereId: string,
+  clauses: readonly GrantClause[],
+): Policy[] {
+  const provided = new Set(manifest.providesCapabilities);
+  return clauses.map((clause, i) => {
+    if (clause.capabilities.length === 0) {
+      throw new Error("A grant clause must name at least one capability");
+    }
+    for (const cap of clause.capabilities) {
+      if (!provided.has(cap)) {
+        throw new Error(`Package '${manifest.id}' does not provide capability '${cap}'`);
+      }
+    }
+    const hasSelector =
+      (clause.roles?.length ?? 0) > 0 || (clause.memberIds?.length ?? 0) > 0 || (clause.ageProfiles?.length ?? 0) > 0;
+    if (!hasSelector) {
+      throw new Error("A grant clause must select at least one role, member, or age profile");
+    }
+    const effect = clause.effect ?? "allow";
+    if (effect === "require_approval" && (clause.approverRoles?.length ?? 0) === 0) {
+      throw new Error("An approval grant clause requires at least one approver role");
+    }
+    return {
+      id: `pol_${sphereId}_pkg_${manifest.id}_grant_${i}`,
+      sphereId,
+      description: `Package '${manifest.id}' grant (admin-scoped).`,
+      subjectSelector: {
+        ...(clause.roles !== undefined ? { roles: [...clause.roles] } : {}),
+        ...(clause.memberIds !== undefined ? { memberIds: [...clause.memberIds] } : {}),
+        ...(clause.ageProfiles !== undefined ? { ageProfiles: [...clause.ageProfiles] } : {}),
+      },
+      action: "execute" as const,
+      resourceSelector: { capabilityNames: [...clause.capabilities] },
+      effect,
+      ...(clause.approverRoles !== undefined ? { approverRoles: [...clause.approverRoles] } : {}),
+      priority: 10,
+      version: 1,
+      status: "active" as const,
+    };
+  });
 }

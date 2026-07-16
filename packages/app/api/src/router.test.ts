@@ -1038,6 +1038,38 @@ describe("API router — package store", () => {
     expect(await projectedTools(deps)).toEqual([]);
   });
 
+  it("enable with an admin grant scopes calendar.read to teens (RFC-014), replacing the default", async () => {
+    const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    await handleApiRequest(
+      {
+        method: "POST",
+        path: "/spheres/sph_1/packages/family-calendar/enable",
+        body: { ...adult, grant: [{ ageProfiles: ["teen"], capabilities: ["calendar.read"] }] },
+      },
+      deps,
+    );
+    const pols = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/policies" }, deps);
+    const ids = (pols.body as { policies: { id: string }[] }).policies.map((p) => p.id);
+    // The custom clause is written; the adult default is NOT.
+    expect(ids).toContain("pol_sph_1_pkg_family-calendar_grant_0");
+    expect(ids).not.toContain("pol_sph_1_pkg_family-calendar_0");
+  });
+
+  it("rejects an enable grant naming a capability the package does not provide (400)", async () => {
+    const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    const res = await handleApiRequest(
+      {
+        method: "POST",
+        path: "/spheres/sph_1/packages/family-calendar/enable",
+        body: { ...adult, grant: [{ roles: ["parent"], capabilities: ["payment.execute"] }] },
+      },
+      deps,
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("re-enabling is idempotent (no duplicate grant policies)", async () => {
     const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
     await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);

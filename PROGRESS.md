@@ -1992,3 +1992,25 @@ Runtime adapter → integrations/Packages → UI.
   (require_approval → grant → `shared_with_members`), after which B's search
   returns **both**. Capture/search/share cannot be forged into another Sphere
   (scope from context). 442 tests (+1 skipped), typecheck, next build green.
+
+### Iteration 105 — 2026-07-16 (RFC-014: advanced admin-scoped package grants)
+- **RFC-014** (accepted): completes the RFC-011 grant wizard's deferred advanced
+  path — an admin can scope a package's grant to specific roles/members/age
+  profiles at enable time, instead of only the one-click adult default.
+- **`POST /packages/:id/enable`** gains an optional `grant`: clauses
+  `{roles?, memberIds?, ageProfiles?, capabilities, effect?, approverRoles?}`.
+  Absent → RFC-011 manifest defaults (backward compatible). Present → the admin's
+  clauses REPLACE the default (stating a grant means "this is the grant").
+- **Bounded + safe by construction:** new pure core fn `customGrantPolicies`
+  rejects a clause naming a capability the package doesn't provide (400), an empty
+  selector (no silent grant-to-everyone), empty capabilities, or an approval clause
+  with no approver. Minor safety is NOT re-checked — the catalog profile floor
+  denies a risky capability for a minor per call regardless, so an over-broad clause
+  is inert, not dangerous (defence in depth).
+- **Verified LIVE:** enable family-calendar granting `calendar.read` to teens →
+  a teen-owned agent's projected surface is exactly `[calendar.read]` (not
+  create_event), while an adult-owned agent's surface is `[]` (custom grant
+  replaced the adult default). Granting `payment.execute` to teens is inert: absent
+  from the teen surface, and a teen's direct call is refused by the floor
+  ("Profile 'teen' is not allowed for capability payment.execute"). 449 tests
+  (+1 skipped), typecheck, next build green.

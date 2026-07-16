@@ -30,9 +30,11 @@ import {
   evaluate,
   exportSphere,
   importSphere,
+  customGrantPolicies,
   installPackage,
   packageBindings,
   packageGrantPolicies,
+  type GrantClause,
   projectAgentRuntimeConfig,
   provisioningBindings,
   resolveInstallPlan,
@@ -765,7 +767,10 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     const pkg = imported.packages.find((p) => p.manifest.id === packageId);
     if (pkg === undefined) return err(404, "not_found", "Package not installed");
 
-    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as { subject?: PolicyRequest["subject"] };
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+      grant?: readonly GrantClause[];
+    };
     const subject = body.subject;
     if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
       return err(400, "invalid_request", "A subject with role and ageProfile is required");
@@ -804,9 +809,18 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
 
     let policies = imported.policies;
     if (action === "enable") {
-      // Merge the manifest's grant presets, skipping ids already present so a
-      // re-enable is idempotent (RFC-011). These are ordinary editable policies.
-      const grants = packageGrantPolicies(pkg.manifest, sphereId);
+      // RFC-011 default grant, or RFC-014 admin-scoped clauses when supplied.
+      // Custom clauses REPLACE the default (an admin stating a grant means "this
+      // is the grant"); they are bounded to the package's capabilities and remain
+      // subject to the catalog profile floor per call.
+      let grants;
+      try {
+        grants = body.grant !== undefined && body.grant.length > 0
+          ? customGrantPolicies(pkg.manifest, sphereId, body.grant)
+          : packageGrantPolicies(pkg.manifest, sphereId);
+      } catch (e) {
+        return err(400, "invalid_request", (e as Error).message);
+      }
       const existing = new Set(policies.map((p) => p.id));
       policies = [...policies, ...grants.filter((g) => !existing.has(g.id))];
     }

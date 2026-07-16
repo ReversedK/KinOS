@@ -5,6 +5,7 @@ import {
   createManifest,
   disablePackage,
   enablePackage,
+  customGrantPolicies,
   installPackage,
   isUsable,
   packageBindings,
@@ -126,5 +127,58 @@ describe("Package grant wizard (RFC-011)", () => {
     const m = manifest();
     expect(packageBindings(m, "enabled")).toEqual([]);
     expect(packageGrantPolicies(m, "sph_1")).toEqual([]);
+  });
+});
+
+describe("customGrantPolicies (RFC-014 advanced scoping)", () => {
+  const m = () =>
+    createManifest({
+      id: "family-calendar",
+      type: "skill",
+      title: "Family Calendar",
+      description: "x",
+      version: "1",
+      publisher: "kinos",
+      ageRating: "all",
+      providesCapabilities: ["calendar.read", "calendar.create_event"],
+    });
+
+  it("materializes an admin clause into a policy with a stable id", () => {
+    const [pol] = customGrantPolicies(m(), "sph_1", [{ ageProfiles: ["teen"], capabilities: ["calendar.read"] }]);
+    expect(pol?.id).toBe("pol_sph_1_pkg_family-calendar_grant_0");
+    expect(pol?.subjectSelector.ageProfiles).toEqual(["teen"]);
+    expect(pol?.resourceSelector.capabilityNames).toEqual(["calendar.read"]);
+    expect(pol?.effect).toBe("allow");
+  });
+
+  it("lets a teen be granted calendar.read (scoped grant beyond the adult default)", () => {
+    const policies = customGrantPolicies(m(), "sph_1", [{ ageProfiles: ["teen"], capabilities: ["calendar.read"] }]);
+    const d = evaluate(
+      {
+        subject: { role: "teenager", ageProfile: "teen" },
+        action: "execute",
+        resource: { type: "capability", capabilityName: "calendar.read" },
+        context: { sphereId: "sph_1", time: "2026-07-16T10:00:00Z", execution: "local", correlationId: "c" },
+      },
+      policies,
+    );
+    expect(d.effect).toBe("allow");
+  });
+
+  it("cannot grant a capability the package does not provide", () => {
+    expect(() => customGrantPolicies(m(), "sph_1", [{ roles: ["parent"], capabilities: ["payment.execute"] }])).toThrow(
+      /does not provide/i,
+    );
+  });
+
+  it("rejects an empty selector (no silent grant-to-everyone) and empty capabilities", () => {
+    expect(() => customGrantPolicies(m(), "sph_1", [{ capabilities: ["calendar.read"] }])).toThrow(/select at least one/i);
+    expect(() => customGrantPolicies(m(), "sph_1", [{ roles: ["parent"], capabilities: [] }])).toThrow(/at least one capability/i);
+  });
+
+  it("an approval clause requires an approver role", () => {
+    expect(() =>
+      customGrantPolicies(m(), "sph_1", [{ roles: ["parent"], capabilities: ["calendar.create_event"], effect: "require_approval" }]),
+    ).toThrow(/approver role/i);
   });
 });
