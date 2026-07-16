@@ -1944,3 +1944,29 @@ Runtime adapter → integrations/Packages → UI.
   (require_approval); `payment.execute` → **suspend** even with an `allow` grant,
   because the critical approval floor wins per call — a grant can never lower a
   floor. 429 tests, typecheck, next build green.
+
+### Iteration 103 — 2026-07-16 (RFC-012: execution context + a real Sphere-scoped calendar)
+- **RFC-012** (accepted): two coupled changes turning the family-calendar demo into
+  a genuine integration.
+- **Execution context threaded to handlers** (additive, zero breakage): new
+  `ExecutionContext` {sphereId, subject, correlationId, execution, time}; optional
+  3rd param on `CapabilityExecutor.execute` and `CapabilityHandler`; passed at the
+  single call site (`resolver.ts`), so both the direct and post-approval paths
+  cover it. Descriptive only — a handler never authorizes; it scopes/attributes.
+- **First real integration adapter:** `calendar.*` now backed by a persistent,
+  Sphere-scoped store. Core `calendar/` module (`CalendarEvent`, `CalendarStore`
+  port, `createCalendarEvent`, `InMemoryCalendarStore`); `SqliteCalendarStore`
+  (`calendar_events` table, `sphere_id`-scoped); `local.calendar_read`/
+  `local.calendar` handlers read `context.sphereId` (never agent input) for scope
+  and `context.subject` for `createdBy`. `local-handlers.ts` is now a factory over
+  its deps.
+- **Isolation is enforced by the governed context, not agent input:** an agent that
+  puts `sphereId` in the tools/call args cannot plant an event in another Sphere
+  (covered by a dedicated test; scope always comes from the token's Sphere).
+- **The swap is "boring":** the family-calendar manifest, bindings, grant presets
+  and the Policy Engine are unchanged — only the backend became real.
+- **Verified LIVE, full round-trip** through the governed loop: `calendar.read` →
+  empty; `calendar.create_event` → suspends (require_approval) → grant → **persists
+  a real event** (sphereId from the governed context, createdBy from the subject);
+  `calendar.read` → returns the persisted event. 439 tests (+1 skipped),
+  typecheck, next build green.

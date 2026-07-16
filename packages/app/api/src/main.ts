@@ -19,6 +19,7 @@ import {
   SqliteApprovalStore,
   SqliteAuditSink,
   SqliteSessionStore,
+  SqliteCalendarStore,
   SqliteSnapshotStore,
   SqliteSphereStore,
 } from "@kinos/persistence-sqlite";
@@ -26,7 +27,7 @@ import type { HermesFsPort } from "@kinos/runtime-hermes";
 import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
-import { localCapabilityHandlers } from "./local-handlers.js";
+import { buildLocalHandlers } from "./local-handlers.js";
 import {
   backupAgentState,
   projectAgentConfig,
@@ -85,6 +86,8 @@ const audit = new SqliteAuditSink(ensureDir(process.env["KINOS_AUDIT_DB"] ?? "da
 const sessions = new SqliteSessionStore(ensureDir(process.env["KINOS_SESSIONS_DB"] ?? "data/sessions.sqlite"));
 const tokens = new SqliteAgentTokenStore(ensureDir(process.env["KINOS_TOKENS_DB"] ?? "data/tokens.sqlite"));
 const snapshots = new SqliteSnapshotStore(ensureDir(process.env["KINOS_SNAPSHOTS_DB"] ?? "data/snapshots.sqlite"));
+// Real Sphere-scoped calendar behind the family-calendar capabilities (RFC-012).
+const calendarStore = new SqliteCalendarStore(ensureDir(process.env["KINOS_CALENDAR_DB"] ?? "data/calendar.sqlite"));
 
 // Snapshot blob encryption key (ADR-007: from the secret store; env in dev).
 // A generated key is fine for a single run but makes prior blobs unreadable on
@@ -168,10 +171,10 @@ const provDeps: ProvisioningDeps = {
 // (RFC-008): create Sphere / invite member / create + update agent.
 const executor = new LocalCapabilityExecutor(
   new Map<string, CapabilityHandler>([
-    // Local demo handlers behind the store packages' capability bindings
-    // (RFC-002/011). Kept in a shared, test-covered module so every store binding
-    // is guaranteed a handler.
-    ...localCapabilityHandlers,
+    // Local handlers behind the store packages' capability bindings
+    // (RFC-002/011/012): a real Sphere-scoped calendar + synthetic stubs. Built
+    // from a shared, test-covered factory so every store binding has a handler.
+    ...buildLocalHandlers({ calendar: calendarStore }),
     [RUNTIME_GOVERNANCE_TOOLS["runtime.config.project"], async (input) => projectAgentConfig(govDeps, input as RuntimeProjectInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.backup"], async (input) => backupAgentState(govDeps, input as RuntimeBackupInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.restore"], async (input) => restoreAgentState(govDeps, input as RuntimeRestoreInput)],

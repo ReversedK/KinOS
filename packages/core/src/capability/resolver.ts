@@ -169,7 +169,15 @@ export async function executeCapability(
     // Fall through: a granted approval authorizes this single action.
   }
   emit("capability.allowed", decision);
-  const output = await deps.executor.execute(binding, request.input);
+  // Hand the handler the already-governed execution context (RFC-012): scope and
+  // attribution only — the Policy Engine has already decided this call is allowed.
+  const output = await deps.executor.execute(binding, request.input, {
+    sphereId: request.context.sphereId,
+    subject: request.subject,
+    correlationId,
+    execution: request.context.execution,
+    time: request.context.time,
+  });
   emit("capability.executed", decision);
   return { outcome: "executed", reason: decision.reason, correlationId, decision, output };
 }

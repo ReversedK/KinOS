@@ -10,7 +10,7 @@
  * Pure domain: no provider/runtime imports.
  */
 
-import type { AgeProfile, RiskLevel } from "../policy/types.js";
+import type { AgeProfile, PolicyRequest, RiskLevel } from "../policy/types.js";
 
 export interface Capability {
   /** Stable lowercase-dotted name, e.g. "calendar.create_event". */
@@ -38,10 +38,32 @@ export interface CapabilityBinding {
 }
 
 /**
+ * The already-governed facts a handler may need to run a stateful adapter
+ * correctly (RFC-012): which Sphere, which acting subject, the correlation id.
+ *
+ * It is **descriptive, not an authorization input**: every decision it reports was
+ * already made upstream by the Policy Engine. A handler must never branch on it to
+ * grant or widen access (the runtime is a second line of defence, not the first).
+ * Its purpose is scoping and attribution — e.g. a Sphere-scoped calendar reads
+ * `sphereId` from here, never from agent-supplied `tools/call` input, so an agent
+ * cannot reach another Sphere's data by lying about a Sphere id.
+ */
+export interface ExecutionContext {
+  readonly sphereId: string;
+  readonly subject: PolicyRequest["subject"];
+  readonly correlationId: string;
+  readonly execution: "local" | "cloud";
+  readonly time: string;
+}
+
+/**
  * Port that runs a resolved binding. Implemented by adapters outside the core
  * (a local executor, an n8n adapter, …). The domain never calls a provider
  * directly; it hands an authorized binding + input to this port.
+ *
+ * `context` is optional and additive (RFC-012): handlers that don't need scope or
+ * attribution ignore it and are unchanged.
  */
 export interface CapabilityExecutor {
-  execute(binding: CapabilityBinding, input: unknown): Promise<unknown>;
+  execute(binding: CapabilityBinding, input: unknown, context?: ExecutionContext): Promise<unknown>;
 }

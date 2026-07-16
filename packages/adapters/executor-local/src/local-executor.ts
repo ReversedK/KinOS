@@ -11,22 +11,24 @@
  * failed capability execution rather than a silent success.
  */
 
-import type { AgentRuntime, CapabilityBinding, CapabilityExecutor } from "@kinos/core";
+import type { AgentRuntime, CapabilityBinding, CapabilityExecutor, ExecutionContext } from "@kinos/core";
 
 export type CapabilityHandler = (
   input: unknown,
   binding: CapabilityBinding,
+  /** Already-governed scope/attribution (RFC-012); optional — stubs ignore it. */
+  context?: ExecutionContext,
 ) => Promise<unknown>;
 
 export class LocalCapabilityExecutor implements CapabilityExecutor {
   constructor(private readonly handlers: ReadonlyMap<string, CapabilityHandler>) {}
 
-  async execute(binding: CapabilityBinding, input: unknown): Promise<unknown> {
+  async execute(binding: CapabilityBinding, input: unknown, context?: ExecutionContext): Promise<unknown> {
     const handler = this.handlers.get(binding.runtimeToolName);
     if (handler === undefined) {
       throw new Error(`No local handler for runtime tool '${binding.runtimeToolName}'`);
     }
-    return handler(input, binding);
+    return handler(input, binding, context);
   }
 }
 
