@@ -266,6 +266,7 @@ export function packageIntegration(manifest: PackageManifest, sphereId: string, 
     provider: manifest.integration.provider,
     ...(manifest.integration.scopes !== undefined ? { scopes: [...manifest.integration.scopes] } : {}),
     providesCapabilities: [...manifest.providesCapabilities],
+    ...(manifest.integration.auth !== undefined ? { auth: manifest.integration.auth } : {}),
   });
 }
 

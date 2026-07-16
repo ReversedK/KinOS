@@ -466,6 +466,10 @@ export interface IntegrationSummary {
   readonly status: string;
   readonly scopes: readonly string[];
   readonly providesCapabilities: readonly string[];
+  /** How it authorizes (RFC-018): oauth → Connect; apikey → Configure. */
+  readonly auth?: "oauth" | "apikey";
+  /** Whether credentials are set (never the reference value). */
+  readonly configured?: boolean;
 }
 
 export async function getIntegrations(
@@ -510,6 +514,64 @@ export async function setIntegrationEnabled(
   );
   if (status === 200 || status === 403) return body;
   throw new Error(`${action} integration failed: ${status}`);
+}
+
+export interface OAuthBeginOutcome {
+  readonly authorizeUrl?: string;
+  readonly provider?: string;
+  readonly code?: string;
+  readonly message?: string;
+}
+
+/**
+ * Begin connecting an OAuth integration (RFC-018): returns the provider authorize
+ * URL to redirect the browser to. A denial (403) is a governed outcome, returned.
+ */
+export async function beginOAuthConnect(
+  baseUrl: string,
+  sphereId: string,
+  integrationId: string,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<OAuthBeginOutcome> {
+  const { status, body } = await postJson<OAuthBeginOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/integrations/${encodeURIComponent(integrationId)}/oauth/begin`,
+    { subject },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403) return body;
+  throw new Error(`begin oauth failed: ${status}`);
+}
+
+export interface ConfigureIntegrationOutcome {
+  readonly id?: string;
+  readonly provider?: string;
+  readonly configured?: boolean;
+  readonly code?: string;
+  readonly message?: string;
+}
+
+/**
+ * Configure an api-key integration (RFC-016): set the provider and a credentials
+ * secret *reference* (never a value). A denial (403) is returned, not thrown.
+ */
+export async function configureIntegration(
+  baseUrl: string,
+  sphereId: string,
+  integrationId: string,
+  input: { provider?: string; secretRef?: string; scopes?: readonly string[] },
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ConfigureIntegrationOutcome> {
+  const { status, body } = await postJson<ConfigureIntegrationOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/integrations/${encodeURIComponent(integrationId)}/configure`,
+    { subject, ...input },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403 || status === 400) return body;
+  throw new Error(`configure integration failed: ${status}`);
 }
 
 // --- Chat sessions (RFC-005) ---

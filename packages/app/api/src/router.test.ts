@@ -847,7 +847,7 @@ describe("API router — integrations", () => {
     const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, await intDeps([]));
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      integrations: [{ id: "int_1", provider: "google", status: "proposed", scopes: ["calendar.read"], providesCapabilities: ["calendar.create_event"] }],
+      integrations: [{ id: "int_1", provider: "google", status: "proposed", scopes: ["calendar.read"], providesCapabilities: ["calendar.create_event"], configured: true }],
     });
   });
 
@@ -989,7 +989,7 @@ describe("API router — package store", () => {
     const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
     const integrations = (list.body as { integrations: { id: string; provider: string; status: string }[] }).integrations;
     expect(integrations).toEqual([
-      { id: "int_google-calendar", provider: "google", status: "proposed", scopes: expect.any(Array), providesCapabilities: ["calendar.read", "calendar.create_event"] },
+      { id: "int_google-calendar", provider: "google", status: "proposed", scopes: expect.any(Array), providesCapabilities: ["calendar.read", "calendar.create_event"], auth: "oauth", configured: false },
     ]);
   });
 

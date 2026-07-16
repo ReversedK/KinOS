@@ -26,6 +26,8 @@ export interface Integration {
   readonly secretRef?: string;
   /** Capability names this integration can back (the agent-facing surface). */
   readonly providesCapabilities: readonly string[];
+  /** How it authorizes (RFC-018): `oauth` → connect via the broker; `apikey` → a secret reference. */
+  readonly auth?: "oauth" | "apikey";
   readonly status: IntegrationStatus;
 }
 
@@ -36,6 +38,7 @@ export interface CreateIntegrationInput {
   readonly scopes?: readonly string[];
   readonly secretRef?: string;
   readonly providesCapabilities?: readonly string[];
+  readonly auth?: "oauth" | "apikey";
 }
 
 export function createIntegration(input: CreateIntegrationInput): Integration {
@@ -50,6 +53,7 @@ export function createIntegration(input: CreateIntegrationInput): Integration {
     scopes: input.scopes ? [...input.scopes] : [],
     ...(input.secretRef !== undefined ? { secretRef: input.secretRef } : {}),
     providesCapabilities: input.providesCapabilities ? [...input.providesCapabilities] : [],
+    ...(input.auth !== undefined ? { auth: input.auth } : {}),
     status: "proposed",
   };
 }

@@ -2162,3 +2162,21 @@ Runtime adapter → integrations/Packages → UI.
 - **Deployment boundary (honest):** live Google/Apple consent needs real client
   credentials + a browser — the one path not in CI; the memory account store should
   become durable (SQLite/Postgres) in production.
+
+### Iteration 113 — 2026-07-16 (Connectors UI: Connect (OAuth) + configure — integrations become human-usable)
+- The last human-usable gap: you could install the "Google Calendar" package but had
+  no UI to connect/configure it. The **Connectors panel** now shows, per integration:
+  status, whether it is `connected`, its capabilities, and the right affordance — a
+  **Connect <provider>** button for OAuth integrations (redirects to the provider
+  consent via `integration.oauth.begin`) or a **credentials reference** field +
+  Save for api-key ones (`integration.configure`). Secrets are never shown.
+- **Domain:** `Integration` gains `auth` ('oauth'|'apikey'), set from the manifest at
+  install; the connectors read exposes `auth` + `configured` (bool, never the
+  reference). UI client gains `beginOAuthConnect` + `configureIntegration`.
+- **Verified live:** the Sphere page renders "Connect google" + the OAuth hint for an
+  installed Google Calendar integration; the UI→API proxy `oauth/begin` returns the
+  authorize URL. 465 tests, typecheck, next build green.
+- **Dev caveat (honest):** with the fake broker the authorize URL points at the
+  compose-internal `api:8787`, which a host browser can't reach — real deployments set
+  a public BETTER_AUTH_URL/KINOS_PUBLIC_URL, and real Google's authorize URL is
+  browser-reachable. Not a code issue; a dev-config nuance.

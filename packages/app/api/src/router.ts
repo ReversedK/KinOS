@@ -1533,6 +1533,9 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           status: i.status,
           scopes: i.scopes,
           providesCapabilities: i.providesCapabilities,
+          // How it authorizes + whether credentials are set — never the reference value.
+          ...(i.auth !== undefined ? { auth: i.auth } : {}),
+          configured: i.secretRef !== undefined,
         })),
       });
     }
