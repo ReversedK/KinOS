@@ -1919,3 +1919,28 @@ Runtime adapter → integrations/Packages → UI.
   ADR-008 loop end-to-end, per-call policy-checked. RFC-010's verification gap is
   closed.
 - 424 tests, typecheck, next build green.
+
+### Iteration 102 — 2026-07-16 (store: valid, testable packages across the governance spectrum)
+- Applies RFC-011 (no new decision) to populate the store with packages that are
+  fully wired for the governed tool loop — capability in the core catalog + manifest
+  binding + adult grant preset + registered executor handler — so an operator can
+  actually test each governance shape end-to-end.
+- **New packages:** `family-notes` (memory.search allow / memory.share
+  require_approval), `household-messaging` (message.send require_approval, parent
+  approver), `household-payments` (payment.execute — `allow` preset that the
+  catalog's *critical approval floor* still raises to approval per call).
+- **Local demo handlers extracted** to `packages/app/api/src/local-handlers.ts`
+  (exported map) and added: `local.memory_search`, `local.memory_share`,
+  `local.message` (+ existing calendar/pay/echo). Synthetic data only — stand-ins
+  for real integration adapters; swapping one in changes no policy/memory/token.
+- **Guard tests (prevent "enables but no handler"):** core — every store binding's
+  capability is provided, is a known core catalog capability, and is granted, and
+  every preset is adult-scoped (minors deny-by-default); app — every `local`
+  store binding's runtimeToolName has a registered handler.
+- **Verified LIVE, full spectrum** on the fresh governed Sphere (install+enable each
+  → re-project → `tools/call` from the Hermes container with the agent's real
+  token): `calendar.read` + `memory.search` → **execute** (real demo results);
+  `memory.share` + `message.send` + `calendar.create_event` → **suspend**
+  (require_approval); `payment.execute` → **suspend** even with an `allow` grant,
+  because the critical approval floor wins per call — a grant can never lower a
+  floor. 429 tests, typecheck, next build green.

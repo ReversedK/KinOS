@@ -26,6 +26,7 @@ import type { HermesFsPort } from "@kinos/runtime-hermes";
 import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
+import { localCapabilityHandlers } from "./local-handlers.js";
 import {
   backupAgentState,
   projectAgentConfig,
@@ -167,12 +168,10 @@ const provDeps: ProvisioningDeps = {
 // (RFC-008): create Sphere / invite member / create + update agent.
 const executor = new LocalCapabilityExecutor(
   new Map<string, CapabilityHandler>([
-    ["local.calendar", async (input) => ({ created: true, input })],
-    // RFC-011 demo read behind calendar.read: synthetic events, no real calendar.
-    // A genuine calendar integration replaces this handler without any policy change.
-    ["local.calendar_read", async (input) => ({ events: [{ title: "Family dinner", start: "2026-07-18T19:00:00Z" }], input })],
-    ["local.pay", async (input) => ({ paid: true, input })],
-    ["local.echo", async (input) => ({ echoed: input })],
+    // Local demo handlers behind the store packages' capability bindings
+    // (RFC-002/011). Kept in a shared, test-covered module so every store binding
+    // is guaranteed a handler.
+    ...localCapabilityHandlers,
     [RUNTIME_GOVERNANCE_TOOLS["runtime.config.project"], async (input) => projectAgentConfig(govDeps, input as RuntimeProjectInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.backup"], async (input) => backupAgentState(govDeps, input as RuntimeBackupInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.restore"], async (input) => restoreAgentState(govDeps, input as RuntimeRestoreInput)],
