@@ -64,6 +64,7 @@ export const IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES = [
   "integration.enable",
   "integration.disable",
   "integration.configure",
+  "integration.oauth.begin",
   "package.install",
   "package.enable",
   "package.disable",

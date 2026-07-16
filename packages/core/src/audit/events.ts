@@ -48,6 +48,9 @@ export type KinEventType =
   | "runtime.session.attached"
   /** An integration was configured — provider/scopes set, credentials by reference (RFC-016). */
   | "integration.configured"
+  /** An OAuth integration connect was begun / completed (RFC-017); never the token. */
+  | "integration.oauth.begun"
+  | "integration.oauth.connected"
   | "external_transfer.requested"
   | "external_transfer.allowed"
   | "external_transfer.denied";

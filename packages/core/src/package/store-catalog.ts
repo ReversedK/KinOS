@@ -134,9 +134,10 @@ const CATALOG: readonly PackageManifest[] = [
     integration: {
       provider: "google",
       // "local" uses KinOS's built-in reference calendar (no external service);
-      // the others are real SaaS connectors (adapters are drop-in registry entries).
+      // google/apple connect via OAuth (RFC-017); caldav uses an api-key reference.
       providerChoices: ["local", "google", "caldav", "apple"],
       scopes: ["calendar.read", "calendar.events.write"],
+      auth: "oauth",
     },
     defaultPolicies: [
       {

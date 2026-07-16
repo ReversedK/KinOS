@@ -61,6 +61,8 @@ import {
   type TuiTicketStore,
 } from "@kinos/core";
 
+import { OAUTH_STATE_TTL_SECONDS, type AuthBroker, type PendingOAuthStore } from "./oauth.js";
+
 export interface ApiDeps {
   readonly store: SphereStore;
   readonly approvals: ApprovalStore;
@@ -83,6 +85,15 @@ export interface ApiDeps {
   readonly tuiTickets?: TuiTicketStore;
   /** Mints a ticket value; the app layer supplies a CSPRNG. */
   readonly newTuiTicket?: () => string;
+  /**
+   * OAuth broker + pending-connection store for connecting OAuth integrations
+   * (RFC-017). Absent → the OAuth connect flow is disabled (deny by default).
+   */
+  readonly authBroker?: AuthBroker;
+  readonly pendingOAuth?: PendingOAuthStore;
+  readonly newOAuthState?: () => string;
+  /** Where providers redirect after consent (the KinOS callback URL). */
+  readonly oauthRedirectUri?: string;
   /** Injectable clock for the execution context; defaults to wall-clock. */
   readonly now?: () => string;
 }
@@ -740,6 +751,121 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
     });
     return ok({ id: integrationId, provider, scopes: configured.scopes, configured: configured.secretRef !== undefined, status: configured.status });
+  }
+
+  // --- Governed OAuth connect: begin (RFC-017) ---
+  // POST /spheres/:id/integrations/:iid/oauth/begin  { subject }
+  // Mints a CSRF state, records a pending connection, returns the provider's
+  // authorize URL. Admin-gated; an external-transfer/consent event.
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 6 &&
+    segments[2] === "integrations" &&
+    segments[4] === "oauth" &&
+    segments[5] === "begin"
+  ) {
+    if (deps.auditSink === undefined || deps.authBroker === undefined || deps.pendingOAuth === undefined || deps.newOAuthState === undefined) {
+      return err(501, "not_implemented", "OAuth connect is not enabled on this deployment");
+    }
+    const sphereId = segments[1] as string;
+    const integrationId = segments[3] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+    const integration = imported.integrations.find((i) => i.id === integrationId);
+    if (integration === undefined) return err(404, "not_found", "Integration not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as { subject?: PolicyRequest["subject"] };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    const cap = defaultCapabilityCatalog().get("integration.oauth.begin");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "integration.oauth.begin is not allowed for this profile");
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "integration", id: integrationId, capabilityName: "integration.oauth.begin", riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      withAdminSeedMigration(sphereId, imported.policies, "integration.oauth.begin"),
+    );
+    if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
+
+    const state = deps.newOAuthState();
+    const redirectUri = deps.oauthRedirectUri ?? "http://localhost:8787/oauth/callback";
+    deps.pendingOAuth.issue({
+      state,
+      sphereId,
+      integrationId,
+      provider: integration.provider,
+      expiresAt: new Date(Date.parse(stamp) + OAUTH_STATE_TTL_SECONDS * 1000).toISOString(),
+    });
+    const authorizeUrl = await deps.authBroker.authorizeUrl({ provider: integration.provider, scopes: integration.scopes, state, redirectUri });
+    deps.auditSink.record({
+      type: "integration.oauth.begun",
+      sphereId,
+      resourceType: "integration",
+      resourceId: integrationId,
+      decision: "executed",
+      reason: `provider=${integration.provider}`,
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+    });
+    return ok({ authorizeUrl, state, provider: integration.provider });
+  }
+
+  // --- OAuth callback (RFC-017) ---
+  // GET /oauth/callback?state=..&code=..
+  // The provider redirects here after consent. Exchanges the code via the broker
+  // and sets the integration's secretRef to the broker account reference (never a
+  // token). CSRF-safe: an unknown/expired state is refused.
+  if (req.method === "GET" && segments.length === 2 && segments[0] === "oauth" && segments[1] === "callback") {
+    if (deps.auditSink === undefined || deps.authBroker === undefined || deps.pendingOAuth === undefined) {
+      return err(501, "not_implemented", "OAuth connect is not enabled on this deployment");
+    }
+    const state = req.query?.["state"];
+    const code = req.query?.["code"];
+    if (typeof state !== "string" || typeof code !== "string") return err(400, "invalid_request", "state and code are required");
+    const pending = deps.pendingOAuth.redeem(state);
+    if (pending === undefined) return err(403, "forbidden", "Invalid or expired OAuth state");
+
+    const snap = await deps.store.load(pending.sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+    const integration = imported.integrations.find((i) => i.id === pending.integrationId);
+    if (integration === undefined) return err(404, "not_found", "Integration not found");
+
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    const redirectUri = deps.oauthRedirectUri ?? "http://localhost:8787/oauth/callback";
+    let accountRef: string;
+    try {
+      ({ accountRef } = await deps.authBroker.exchange({ provider: pending.provider, code, state, redirectUri }));
+    } catch (e) {
+      return err(502, "exchange_failed", (e as Error).message);
+    }
+    // The secretRef is a reference to the broker-held account — never the token.
+    const configured = { ...integration, secretRef: accountRef };
+    const integrations = imported.integrations.map((i) => (i.id === integration.id ? configured : i));
+    await deps.store.save(exportSphere({ ...imported, integrations, exportedAt: stamp }));
+    deps.auditSink.record({
+      type: "integration.oauth.connected",
+      sphereId: pending.sphereId,
+      resourceType: "integration",
+      resourceId: integration.id,
+      decision: "executed",
+      // Security fact only: which provider connected — never the account ref or token.
+      reason: `provider=${pending.provider}`,
+      correlationId,
+      createdAt: stamp,
+    });
+    return ok({ id: integration.id, provider: pending.provider, connected: true });
   }
 
   // --- Store: install a package (RFC-002) ---

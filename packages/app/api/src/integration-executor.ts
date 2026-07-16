@@ -74,6 +74,47 @@ export function localCalendarProvider(calendar: CalendarStore): IntegrationProvi
   };
 }
 
+/**
+ * Google Calendar provider (RFC-017): resolves a fresh access token from the auth
+ * broker (Better Auth — auto-refreshed) using the integration's account reference,
+ * then calls the real Google Calendar API. The HTTP call is the only
+ * provider-specific code; token acquisition is uniform across OAuth services.
+ * `fetchImpl` is injectable so the broker→token→Authorization wiring is testable
+ * without hitting Google.
+ */
+export function googleCalendarProvider(
+  broker: { getAccessToken(accountRef: string): Promise<string> },
+  fetchImpl: typeof fetch = fetch,
+): IntegrationProviderAdapter {
+  const CAL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+  return async (capability, input, ctx) => {
+    if (ctx.secretRef === undefined) throw new Error("Google Calendar integration is not connected (no account)");
+    const token = await broker.getAccessToken(ctx.secretRef);
+    const auth = { Authorization: `Bearer ${token}` };
+    if (capability === "calendar.read") {
+      const res = await fetchImpl(`${CAL}?maxResults=50&singleEvents=true&orderBy=startTime`, { headers: auth });
+      if (!res.ok) throw new Error(`Google Calendar read failed: ${res.status}`);
+      const body = (await res.json()) as { items?: Array<{ id?: string; summary?: string; start?: { dateTime?: string; date?: string } }> };
+      return {
+        events: (body.items ?? []).map((e) => ({ id: e.id ?? "", title: e.summary ?? "(no title)", start: e.start?.dateTime ?? e.start?.date ?? "" })),
+      };
+    }
+    if (capability === "calendar.create_event") {
+      const args = (typeof input === "object" && input !== null ? input : {}) as { title?: unknown; start?: unknown };
+      const start = typeof args.start === "string" ? args.start : ctx.now();
+      const res = await fetchImpl(CAL, {
+        method: "POST",
+        headers: { ...auth, "content-type": "application/json" },
+        body: JSON.stringify({ summary: typeof args.title === "string" ? args.title : "", start: { dateTime: start }, end: { dateTime: start } }),
+      });
+      if (!res.ok) throw new Error(`Google Calendar create failed: ${res.status}`);
+      const body = (await res.json()) as { id?: string };
+      return { created: true, event: { id: body.id ?? "", title: typeof args.title === "string" ? args.title : "", start } };
+    }
+    throw new Error(`The Google provider does not implement '${capability}'`);
+  };
+}
+
 export interface IntegrationExecutorDeps {
   readonly spheres: SphereStore;
   /** provider id -> adapter. Built-in "local" + drop-in external providers. */

@@ -129,6 +129,18 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
   },
   {
+    // RFC-017: begin connecting an OAuth integration — mints a CSRF state and
+    // returns the provider's authorize URL. Consent is completed at the callback,
+    // which sets the integration's secretRef to a broker account reference (never
+    // a token). Admin-only; an external-transfer/consent event.
+    name: "integration.oauth.begin",
+    description: "Begin connecting an OAuth integration (returns the provider authorize URL) (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
     name: "store.browse",
     description: "Browse the curated package store.",
     risk: "low",

@@ -12,7 +12,8 @@ import {
 } from "@kinos/core";
 import { describe, expect, it } from "vitest";
 
-import { IntegrationExecutor, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { FakeAuthBroker } from "./oauth.js";
+import { IntegrationExecutor, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 
 const NOW = "2026-07-16T10:00:00.000Z";
 const ctx: ExecutionContext = {
@@ -100,5 +101,31 @@ describe("IntegrationExecutor (RFC-016 inc.2)", () => {
   it("refuses an unknown integration id", async () => {
     const e = exec(await storeWith(enableIntegration(localIntegration())));
     await expect(e.execute({ ...customBinding("calendar.read"), runtimeToolName: "int_missing" }, {}, ctx)).rejects.toThrow(/not found/i);
+  });
+});
+
+describe("googleCalendarProvider (RFC-017)", () => {
+  it("resolves a token via the broker and calls the API with a Bearer header", async () => {
+    const broker = new FakeAuthBroker();
+    const { accountRef } = await broker.exchange({ provider: "google", code: "c1", state: "s1", redirectUri: "http://cb" });
+    let seenAuth: string | undefined;
+    const fakeFetch = (async (_url: string, init?: RequestInit) => {
+      seenAuth = (init?.headers as Record<string, string> | undefined)?.["Authorization"];
+      return { ok: true, json: async () => ({ items: [{ id: "g1", summary: "Standup", start: { dateTime: "2026-07-20T09:00:00Z" } }] }) } as Response;
+    }) as unknown as typeof fetch;
+
+    const provider = googleCalendarProvider(broker, fakeFetch);
+    const out = (await provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secretRef: accountRef, scopes: [], now: () => "", newId: () => "" })) as {
+      events: { title: string }[];
+    };
+    expect(seenAuth).toBe("Bearer tok_google_c1"); // token came from the broker
+    expect(out.events.map((e) => e.title)).toEqual(["Standup"]);
+  });
+
+  it("refuses when the integration is not connected (no account reference)", async () => {
+    const provider = googleCalendarProvider(new FakeAuthBroker());
+    await expect(
+      provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, scopes: [], now: () => "", newId: () => "" }),
+    ).rejects.toThrow(/not connected/i);
   });
 });

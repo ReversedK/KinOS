@@ -57,6 +57,12 @@ export interface PackageIntegration {
   readonly provider: string;
   readonly providerChoices?: readonly string[];
   readonly scopes?: readonly string[];
+  /**
+   * How the integration authorizes (RFC-017). `oauth` → connect via the auth
+   * broker's consent flow (secretRef becomes a broker account reference); `apikey`
+   * → a static secret reference set via integration.configure. Absent → apikey.
+   */
+  readonly auth?: "oauth" | "apikey";
 }
 
 /**

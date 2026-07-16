@@ -2111,3 +2111,29 @@ Runtime adapter → integrations/Packages → UI.
   error to the agent (internals not leaked, which is the safe default) rather than a
   cleanly-audited "provider not available" — polish for a follow-up. 460 tests,
   typecheck, next build green.
+
+### Iteration 111 — 2026-07-16 (RFC-017: OAuth integrations via a pluggable auth broker; Better Auth as reference)
+- **Feasibility (verified via context7):** Better Auth is a strong fit as a single
+  OAuth/SSO broker — social + generic-OAuth providers, framework-agnostic, and
+  server-side `getAccessToken({providerId,accountId})` with auto-refresh. It sits in
+  the app layer; KinOS holds only a **secret reference** to the broker-held account,
+  never a token — consistent with credentials-by-reference.
+- **Mechanism (this slice):** `AuthBroker` port + `FakeAuthBroker` + a transient
+  `PendingOAuthStore` (single-use CSRF `state`). Manifest `integration.auth: "oauth"`
+  (the Calendar package's google/apple providers). New governed capability
+  `integration.oauth.begin` (admin, seeded) → mints state, returns the provider
+  authorize URL. `GET /oauth/callback?state&code` → `broker.exchange` → sets the
+  integration's `secretRef` to a broker **account reference** → audits consent
+  (never the token).
+- **Provider adapter:** `googleCalendarProvider` resolves a fresh token via
+  `broker.getAccessToken(secretRef)` and calls the real Google Calendar API
+  (injectable fetch); token acquisition is uniform across OAuth services.
+- **Verified live (fake broker):** begin → authorize URL + state; callback →
+  connected; a replayed/forged state → 403; the integration is configured with an
+  account reference and **no token or reference leaks** into the read surface or
+  audit. Unit test proves the broker→token→Bearer wiring for the Google adapter.
+- **Deployment boundary (honest):** real Google/Apple consent needs a Better Auth
+  broker wired with client credentials (GOOGLE_CLIENT_ID/SECRET, Apple keys) — the
+  `BetterAuthBroker` is the documented reference implementation of the port; the
+  fake broker exercises the flow without credentials. 465 tests, typecheck, next
+  build unaffected (no UI change).

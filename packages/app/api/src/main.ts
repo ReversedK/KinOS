@@ -28,7 +28,8 @@ import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
 import { buildLocalHandlers } from "./local-handlers.js";
-import { IntegrationExecutor, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { IntegrationExecutor, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { FakeAuthBroker, PendingOAuthStore, type AuthBroker } from "./oauth.js";
 import {
   backupAgentState,
   projectAgentConfig,
@@ -191,7 +192,18 @@ const localExecutor = new LocalCapabilityExecutor(
 // Built-in "local" provider reuses the calendar store; real Google/CalDAV/Apple
 // adapters are drop-in registry entries. Non-integration bindings fall through to
 // the local executor unchanged.
-const providerRegistry = new Map<string, IntegrationProviderAdapter>([["local", localCalendarProvider(calendarStore)]]);
+// OAuth broker (RFC-017): the fake broker by default (no external credentials); a
+// Better Auth broker is the reference for real Google/Apple — see docs/rfcs/017.
+const authBroker: AuthBroker = new FakeAuthBroker();
+const pendingOAuth = new PendingOAuthStore();
+setInterval(() => pendingOAuth.prune(), 60_000).unref();
+
+const providerRegistry = new Map<string, IntegrationProviderAdapter>([
+  ["local", localCalendarProvider(calendarStore)],
+  // Google/Apple resolve a fresh token via the broker (RFC-017) and call the real
+  // Calendar API. Wire real client credentials into the broker to use live.
+  ["google", googleCalendarProvider(authBroker)],
+]);
 const executor = new IntegrationExecutor(localExecutor, { spheres: store, registry: providerRegistry });
 
 // Attach tickets live in memory: they are redeemed seconds after minting, and
@@ -213,6 +225,13 @@ const server = createApiServer(
     // Engine allows runtime.session.attach, and redeemed once by the bridge.
     tuiTickets,
     newTuiTicket: () => randomBytes(32).toString("hex"),
+    // OAuth connect flow (RFC-017): the broker runs the consent + token storage;
+    // KinOS stores only an account reference. Fake broker in dev; Better Auth is
+    // the reference for real Google/Apple (client credentials at deploy time).
+    authBroker,
+    pendingOAuth,
+    newOAuthState: () => randomBytes(24).toString("hex"),
+    oauthRedirectUri: process.env["KINOS_OAUTH_REDIRECT_URI"] ?? `${mcpPublicUrl}/oauth/callback`,
     newCorrelationId: () => randomUUID(),
     newApprovalId: () => `apr_${randomUUID()}`,
     newSessionId: () => `ses_${randomUUID()}`,

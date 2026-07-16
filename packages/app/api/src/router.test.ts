@@ -18,6 +18,7 @@ import {
 } from "@kinos/core";
 
 import { handleApiRequest, type ApiDeps } from "./router.js";
+import { FakeAuthBroker, PendingOAuthStore } from "./oauth.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
 
@@ -1044,6 +1045,50 @@ describe("API router — package store", () => {
       deps,
     );
     expect(res.status).toBe(400);
+  });
+
+  it("connects an OAuth integration via begin -> callback; secretRef becomes an account reference, never a token (RFC-017)", async () => {
+    const oauthPolicy: Policy = {
+      id: "pol_oauth",
+      sphereId: "sph_1",
+      description: "Adults may begin OAuth connects.",
+      subjectSelector: { ageProfiles: ["adult"] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["integration.oauth.begin"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    };
+    const base = await pkgDeps([allowAdultPackages, oauthPolicy]);
+    const pendingOAuth = new PendingOAuthStore(() => NOW);
+    let n = 0;
+    const deps: ApiDeps = { ...base, authBroker: new FakeAuthBroker(), pendingOAuth, newOAuthState: () => `st_${++n}`, oauthRedirectUri: "http://cb" };
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
+
+    const begin = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_google-calendar/oauth/begin", body: adult }, deps);
+    expect(begin.status).toBe(200);
+    expect((begin.body as { authorizeUrl: string }).authorizeUrl).toContain("state=st_1");
+
+    // Unknown state is refused (CSRF).
+    expect((await handleApiRequest({ method: "GET", path: "/oauth/callback", query: { state: "forged", code: "c" } }, deps)).status).toBe(403);
+
+    const cb = await handleApiRequest({ method: "GET", path: "/oauth/callback", query: { state: "st_1", code: "code_1" } }, deps);
+    expect(cb.status).toBe(200);
+    expect(cb.body).toMatchObject({ id: "int_google-calendar", provider: "google", connected: true });
+
+    // The integration is now configured with a broker account reference — never a token.
+    const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
+    expect(JSON.stringify(list.body)).not.toContain("tok_google");
+    expect(JSON.stringify((deps.audit as InMemoryAuditSink).events)).not.toContain("tok_google");
+  });
+
+  it("integration.oauth.begin is denied by default without a policy", async () => {
+    const base = await pkgDeps([allowAdultPackages]);
+    const deps: ApiDeps = { ...base, authBroker: new FakeAuthBroker(), pendingOAuth: new PendingOAuthStore(() => NOW), newOAuthState: () => "st", oauthRedirectUri: "http://cb" };
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
+    const begin = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_google-calendar/oauth/begin", body: adult }, deps);
+    expect(begin.status).toBe(403);
   });
 
   it("integration.configure is denied by default without a policy", async () => {
