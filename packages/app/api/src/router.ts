@@ -31,6 +31,8 @@ import {
   exportSphere,
   importSphere,
   installPackage,
+  packageBindings,
+  packageGrantPolicies,
   projectAgentRuntimeConfig,
   provisioningBindings,
   resolveInstallPlan,
@@ -710,9 +712,23 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       const msg = (e as Error).message;
       return /not found/i.test(msg) ? err(404, "not_found", msg) : err(409, "invalid_request", msg);
     }
-    // Install != authorization: each package is `installed`; use is granted only by policy.
+    // Install != authorization: each package is `installed`; use is granted only by
+    // policy. Create the package's bindings DISABLED (RFC-011) — available but
+    // deny-by-default until an admin enables — deduped by capability against the
+    // Sphere's existing bindings so a shared dependency is not double-bound.
     const newPackages = plan.map((m) => installPackage(m, sphereId));
-    await deps.store.save(exportSphere({ ...imported, packages: [...imported.packages, ...newPackages], exportedAt: stamp }));
+    const boundCaps = new Set(imported.bindings.map((b) => b.capability));
+    const newBindings = plan
+      .flatMap((m) => packageBindings(m, "disabled"))
+      .filter((b) => !boundCaps.has(b.capability));
+    await deps.store.save(
+      exportSphere({
+        ...imported,
+        packages: [...imported.packages, ...newPackages],
+        bindings: [...imported.bindings, ...newBindings],
+        exportedAt: stamp,
+      }),
+    );
     for (const m of plan) {
       deps.auditSink.record({
         type: "package.installed",
@@ -778,7 +794,24 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       return err(409, "invalid_request", (e as Error).message);
     }
     const packages = imported.packages.map((p) => (p.manifest.id === packageId ? updated : p));
-    await deps.store.save(exportSphere({ ...imported, packages, exportedAt: stamp }));
+
+    // RFC-011: enable activates this package's bindings and applies its default
+    // grant; disable flips them back to disabled (deny-by-default blocks the future).
+    // The capability→tool mapping is a mechanism; authorization is the policies only.
+    const pkgCaps = new Set(pkg.manifest.bindings.map((b) => b.capability));
+    const boundStatus = action === "enable" ? ("enabled" as const) : ("disabled" as const);
+    const bindings = imported.bindings.map((b) => (pkgCaps.has(b.capability) ? { ...b, status: boundStatus } : b));
+
+    let policies = imported.policies;
+    if (action === "enable") {
+      // Merge the manifest's grant presets, skipping ids already present so a
+      // re-enable is idempotent (RFC-011). These are ordinary editable policies.
+      const grants = packageGrantPolicies(pkg.manifest, sphereId);
+      const existing = new Set(policies.map((p) => p.id));
+      policies = [...policies, ...grants.filter((g) => !existing.has(g.id))];
+    }
+
+    await deps.store.save(exportSphere({ ...imported, packages, bindings, policies, exportedAt: stamp }));
     deps.auditSink.record({
       type: action === "enable" ? "package.enabled" : "package.disabled",
       sphereId,

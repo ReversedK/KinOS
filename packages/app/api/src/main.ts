@@ -168,6 +168,9 @@ const provDeps: ProvisioningDeps = {
 const executor = new LocalCapabilityExecutor(
   new Map<string, CapabilityHandler>([
     ["local.calendar", async (input) => ({ created: true, input })],
+    // RFC-011 demo read behind calendar.read: synthetic events, no real calendar.
+    // A genuine calendar integration replaces this handler without any policy change.
+    ["local.calendar_read", async (input) => ({ events: [{ title: "Family dinner", start: "2026-07-18T19:00:00Z" }], input })],
     ["local.pay", async (input) => ({ paid: true, input })],
     ["local.echo", async (input) => ({ echoed: input })],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.config.project"], async (input) => projectAgentConfig(govDeps, input as RuntimeProjectInput)],

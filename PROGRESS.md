@@ -1887,3 +1887,35 @@ Runtime adapter → integrations/Packages → UI.
   backfill; `status: "disabled"` is the revocation that survives. The bridge port
   is published for the browser, so the ticket is the boundary — same posture as
   the ADR-007 note on the Sphere MCP, and it wants the same hardening.
+
+### Iteration 101 — 2026-07-16 (RFC-011: governed binding creation completes the tool loop)
+- **RFC-011** (accepted): completes the RFC-002 grant wizard, which had stopped at
+  a status flag — `installPackage`/`enablePackage` created no `CapabilityBinding`
+  and emitted no policy, so every projected agent surface was empty and the ADR-008
+  governed tool loop (agent → Sphere MCP → policy-checked `tools/call`) could not be
+  exercised. This was the gap flagged when verifying RFC-010.
+- **Manifest** gains `bindings` (capability→runtimeToolName/risk/execution —
+  mechanism only, authorizes nothing, coding principle 8) and `defaultPolicies`
+  (adult-scoped grant presets, deny-by-default for minors). `createManifest` rejects
+  a binding for a capability the package does not provide.
+- **Two pure core fns:** `packageBindings(manifest, status)` and
+  `packageGrantPolicies(manifest, sphereId)` (stable ids, idempotent).
+- **Governed lifecycle:** install merges the bindings **disabled** (install ≠
+  authorize); enable flips them **enabled** + merges the grant policies (idempotent
+  re-enable); disable flips them back to disabled (deny-by-default blocks the
+  future). All through the already-policy-checked package handlers.
+- **Demo wiring:** `family-calendar` → `calendar.read`→`local.calendar_read`
+  (allow), `calendar.create_event`→`local.calendar` (require_approval, parent
+  approver). New `local.calendar_read` executor handler returns synthetic events (a
+  real calendar integration replaces it later with no policy change).
+- **Verified LIVE, full loop, on a fresh governed Sphere:** create Sphere → deploy
+  agent → install (surface stays **empty**) → enable (surface becomes
+  `[calendar.create_event, calendar.read]`) → project profile (approved by a 2nd
+  parent). Then from the **Hermes container** with the agent's real 43-char token:
+  `tools/list` shows both (create_event flagged requiresApproval); `tools/call
+  calendar.read` → Policy Engine allow → executor → `{"events":[{"title":"Family
+  dinner",...}]}` `isError:false`; `tools/call calendar.create_event` → **suspends**
+  `pending_approval` (does not execute); **forged token → rejected**. This is the
+  ADR-008 loop end-to-end, per-call policy-checked. RFC-010's verification gap is
+  closed.
+- 424 tests, typecheck, next build green.

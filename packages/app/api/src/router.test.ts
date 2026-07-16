@@ -979,6 +979,75 @@ describe("API router — package store", () => {
     const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, await deps());
     expect(res.status).toBe(501);
   });
+
+  // RFC-011: the grant wizard — install creates the binding disabled and grants
+  // nothing; enable activates it + applies the grant, so the agent's projected
+  // surface (and thus the Sphere MCP tools/list) gains the capability.
+  const allowProject: Policy = {
+    id: "pol_proj",
+    sphereId: "sph_1",
+    description: "Parents may project agent runtime config.",
+    subjectSelector: { roles: ["parent"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["runtime.config.project"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+
+  async function pkgDepsWithAgent(policies: Policy[]) {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe Family",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A" });
+    await store.save(exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies, exportedAt: NOW }));
+    const audit = new InMemoryAuditSink();
+    let n = 0;
+    const deps: ApiDeps = { store, approvals: new InMemoryApprovalStore(), audit, auditSink: audit, newCorrelationId: () => `req_${++n}`, now: () => NOW };
+    return deps;
+  }
+
+  const projectedTools = async (deps: ApiDeps): Promise<string[]> => {
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/agents/agt_0/runtime/projection", body: adult }, deps);
+    return (res.body as { allowedTools?: string[] }).allowedTools ?? [];
+  };
+
+  it("install creates the binding disabled and grants nothing — projected surface stays empty", async () => {
+    const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    expect(await projectedTools(deps)).toEqual([]);
+  });
+
+  it("enable activates the binding + grant, so the agent's projected surface gains calendar.read", async () => {
+    const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
+    expect(await projectedTools(deps)).toContain("calendar.read");
+  });
+
+  it("disable empties the surface again (disabled binding → deny by default)", async () => {
+    const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/disable", body: adult }, deps);
+    expect(await projectedTools(deps)).toEqual([]);
+  });
+
+  it("re-enabling is idempotent (no duplicate grant policies)", async () => {
+    const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/disable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
+    const pols = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/policies" }, deps);
+    const ids = (pols.body as { policies: { id: string }[] }).policies.map((p) => p.id);
+    expect(ids.filter((id) => id === "pol_sph_1_pkg_family-calendar_0")).toHaveLength(1);
+  });
 });
 
 describe("API router — runtime config projection preview (RFC-007/ADR-007)", () => {

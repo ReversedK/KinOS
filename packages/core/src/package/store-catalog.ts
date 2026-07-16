@@ -39,6 +39,31 @@ const CATALOG: readonly PackageManifest[] = [
     publisher: "kinos",
     ageRating: "all",
     providesCapabilities: ["calendar.read", "calendar.create_event"],
+    // How each capability runs (RFC-011): mechanism only, authorizes nothing. The
+    // MVP maps to local executor handlers; a real calendar integration replaces
+    // these later without touching policy.
+    bindings: [
+      { capability: "calendar.read", runtime: "local", runtimeToolName: "local.calendar_read", execution: "local", risk: "low" },
+      { capability: "calendar.create_event", runtime: "local", runtimeToolName: "local.calendar", execution: "local", risk: "medium" },
+    ],
+    // The grant the wizard proposes: adults may read; creating an event proposes it
+    // for approval (require_approval). Minors are denied by default (no preset, and
+    // the catalog profile floor denies them regardless).
+    defaultPolicies: [
+      {
+        description: "Adults may read the family calendar (Family Calendar package).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["calendar.read"],
+        effect: "allow",
+      },
+      {
+        description: "Adults may propose calendar events for approval (Family Calendar package).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["calendar.create_event"],
+        effect: "require_approval",
+        approverRoles: ["parent"],
+      },
+    ],
   }),
 ];
 

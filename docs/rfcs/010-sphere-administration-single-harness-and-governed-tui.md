@@ -201,7 +201,11 @@ browser ──ws://<hermes>:8788?ticket=…──▶ TUI bridge (inside Hermes)
   projection's deny-by-default (unbound → not offered) leaves nothing to call. The
   execution half is covered by `e2e.test.ts` (token → list surface → execute a
   tool call, forged-token fail-closed). Wiring governed binding-creation (the
-  package grant-wizard) is a separate slice.
+  package grant-wizard) is a separate slice. **Resolved by RFC-011**: enabling a
+  package now emits an enabled binding + grant policy, so the full loop was
+  verified live — from the Hermes container, `tools/call calendar.read` executes
+  through the Policy Engine and returns a result, while `calendar.create_event`
+  suspends for approval and a forged token is rejected.
 
 ## Acceptance criteria
 

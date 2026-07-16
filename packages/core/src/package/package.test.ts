@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { evaluate } from "../policy/engine.js";
 import {
   createManifest,
   disablePackage,
   enablePackage,
   installPackage,
   isUsable,
+  packageBindings,
+  packageGrantPolicies,
   uninstallPackage,
 } from "./package.js";
 
@@ -57,5 +60,71 @@ describe("Package (RFC-002)", () => {
     expect(removed.status).toBe("uninstalled");
     expect(() => enablePackage(removed)).toThrow(/uninstalled/i);
     expect(() => disablePackage(removed)).toThrow(/uninstalled/i);
+  });
+});
+
+describe("Package grant wizard (RFC-011)", () => {
+  function calendarManifest() {
+    return createManifest({
+      id: "family-calendar",
+      type: "skill",
+      title: "Family Calendar",
+      description: "Read the family calendar and propose events.",
+      version: "1.0.0",
+      publisher: "kinos",
+      ageRating: "all",
+      providesCapabilities: ["calendar.read", "calendar.create_event"],
+      bindings: [
+        { capability: "calendar.read", runtime: "local", runtimeToolName: "local.calendar_read", execution: "local", risk: "low" },
+        { capability: "calendar.create_event", runtime: "local", runtimeToolName: "local.calendar", execution: "local", risk: "medium" },
+      ],
+      defaultPolicies: [
+        { description: "Adults may read the calendar.", subjectSelector: { ageProfiles: ["adult"] }, capabilityNames: ["calendar.read"], effect: "allow" },
+      ],
+    });
+  }
+
+  it("rejects a binding for a capability the package does not provide", () => {
+    expect(() =>
+      createManifest({
+        id: "bad",
+        type: "skill",
+        title: "Bad",
+        description: "x",
+        version: "1",
+        publisher: "p",
+        ageRating: "all",
+        providesCapabilities: ["calendar.read"],
+        bindings: [{ capability: "payment.execute", runtime: "local", runtimeToolName: "local.pay", execution: "local", risk: "critical" }],
+      }),
+    ).toThrow(/not in providesCapabilities/i);
+  });
+
+  it("materializes bindings disabled on install, enabled on enable (install != authorize)", () => {
+    const m = calendarManifest();
+    const disabled = packageBindings(m, "disabled");
+    expect(disabled.map((b) => b.status)).toEqual(["disabled", "disabled"]);
+    expect(disabled[0]).toMatchObject({ capability: "calendar.read", runtimeToolName: "local.calendar_read", status: "disabled" });
+    expect(packageBindings(m, "enabled").every((b) => b.status === "enabled")).toBe(true);
+  });
+
+  it("emits grant policies with stable ids; the grant authorizes only adults", () => {
+    const policies = packageGrantPolicies(calendarManifest(), "sph_1");
+    expect(policies[0]?.id).toBe("pol_sph_1_pkg_family-calendar_0");
+    const req = (ageProfile: "adult" | "child") => ({
+      subject: { role: "parent", ageProfile },
+      action: "execute" as const,
+      resource: { type: "capability" as const, capabilityName: "calendar.read" },
+      context: { sphereId: "sph_1", time: "2026-07-16T10:00:00Z", execution: "local" as const, correlationId: "c" },
+    });
+    expect(evaluate(req("adult"), policies).effect).toBe("allow");
+    // A minor is not covered by the adult-scoped grant → deny by default.
+    expect(evaluate(req("child"), policies).effect).toBe("deny");
+  });
+
+  it("a package with no bindings/presets materializes nothing (unchanged behaviour)", () => {
+    const m = manifest();
+    expect(packageBindings(m, "enabled")).toEqual([]);
+    expect(packageGrantPolicies(m, "sph_1")).toEqual([]);
   });
 });
