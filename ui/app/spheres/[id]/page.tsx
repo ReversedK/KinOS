@@ -1,6 +1,9 @@
 import { AgentConfig } from "../../../components/AgentConfig";
+import { DevActorSwitcher } from "../../../components/DevActorSwitcher";
 import { DeployAgent } from "../../../components/DeployAgent";
 import { InviteMember } from "../../../components/InviteMember";
+import { PolicyManager } from "../../../components/PolicyManager";
+import { SphereNav } from "../../../components/SphereNav";
 import {
   ageProfileForRole,
   apiBaseUrl,
@@ -8,6 +11,7 @@ import {
   getCapabilities,
   getIntegrations,
   getMembers,
+  getPolicies,
   getRuntime,
   getSphere,
   type ActingSubject,
@@ -20,23 +24,24 @@ import { SetRuntime } from "./SetRuntime";
 // members and agents (security facts only — role, status, capabilities), never
 // private profile or memory content (§18). Every action triggers the governed
 // pipeline; the Policy Engine decides.
-export default async function SpherePage({ params }: { params: { id: string } }) {
+export default async function SpherePage({ params, searchParams }: { params: { id: string }; searchParams: { actor?: string } }) {
   const base = apiBaseUrl();
   const id = params.id;
   try {
-    const [sphere, members, agents, runtime, integrations, capabilities] = await Promise.all([
+    const [sphere, members, agents, runtime, integrations, capabilities, policies] = await Promise.all([
       getSphere(base, id),
       getMembers(base, id),
       getAgents(base, id),
       getRuntime(base, id),
       getIntegrations(base, id),
       getCapabilities(base).catch(() => []),
+      getPolicies(base, id),
     ]);
 
     // The administrator acting in the console (dev: the founder/first parent;
     // anticipates real auth / RFC-006 impersonation). Provisioning is governed
     // by the seeded admin policy — being "admin in the UI" grants nothing extra.
-    const adminMember = members.find((m) => m.role === "parent") ?? members[0];
+    const adminMember = members.find((m) => m.id === searchParams.actor) ?? members.find((m) => m.role === "parent") ?? members[0];
     const admin: ActingSubject = adminMember
       ? { memberId: adminMember.id, role: adminMember.role, ageProfile: ageProfileForRole(adminMember.role) }
       : { role: "parent", ageProfile: "adult" };
@@ -46,7 +51,9 @@ export default async function SpherePage({ params }: { params: { id: string } })
       { label: "members", value: String(members.length) },
       { label: "agents", value: String(agents.length) },
       { label: "runtime", value: runtime.provider, sub: runtime.model },
+      { label: "harness", value: runtime.harness.runtime, sub: runtime.harness.model },
       { label: "connectors", value: String(integrations.filter((i) => i.status === "enabled").length) },
+      { label: "active rules", value: String(policies.filter((policy) => policy.status === "active").length) },
     ];
 
     return (
@@ -55,8 +62,17 @@ export default async function SpherePage({ params }: { params: { id: string } })
           <a href="/">spheres</a> / <span className="mono">{sphere.id}</span>
         </div>
 
-        <div className="stack loose">
-          <div className="row between" style={{ alignItems: "flex-start" }}>
+        <div className="admin-shell">
+          <aside className="admin-rail">
+            <SphereNav />
+            <DevActorSwitcher members={members} actorId={adminMember?.id} />
+            <div className="rail-note">
+              <span className="eyebrow">Security model</span>
+              <p>The selected identity never bypasses policy. It only determines whose existing rights apply.</p>
+            </div>
+          </aside>
+          <main className="stack loose admin-content">
+          <div id="overview" className="row between section-anchor" style={{ alignItems: "flex-start" }}>
             <div className="stack tight">
               <h1 className="title">{sphere.name}</h1>
               <div className="row" style={{ gap: "var(--s2)" }}>
@@ -91,7 +107,7 @@ export default async function SpherePage({ params }: { params: { id: string } })
           </div>
 
           {/* Members */}
-          <div className="panel">
+          <div id="members" className="panel section-anchor">
             <div className="panel-head">
               <h3>Members · {members.length}</h3>
               <InviteMember sphereId={id} admin={admin} />
@@ -126,7 +142,7 @@ export default async function SpherePage({ params }: { params: { id: string } })
           </div>
 
           {/* Agents */}
-          <div className="panel">
+          <div id="agents" className="panel section-anchor">
             <div className="panel-head">
               <h3>Agents · {agents.length}</h3>
               <DeployAgent sphereId={id} admin={admin} members={members} capabilities={capabilities} />
@@ -166,10 +182,24 @@ export default async function SpherePage({ params }: { params: { id: string } })
             </div>
           </div>
 
-          {/* Runtime */}
-          <div className="panel">
+          {/* Permissions */}
+          <div id="permissions" className="panel section-anchor">
             <div className="panel-head">
-              <h3>Inference runtime</h3>
+              <div>
+                <span className="eyebrow">Policy engine</span>
+                <h3>Permissions & rules · {policies.length}</h3>
+              </div>
+              <span className="badge brand">deny by default</span>
+            </div>
+            <div className="panel-body">
+              <PolicyManager sphereId={id} actor={admin} policies={policies} capabilities={capabilities} />
+            </div>
+          </div>
+
+          {/* Runtime */}
+          <div id="runtime" className="panel section-anchor">
+            <div className="panel-head">
+              <h3>Runtime & harness</h3>
               <span className="badge">
                 <span className="dot" />
                 {runtime.execution}
@@ -177,30 +207,68 @@ export default async function SpherePage({ params }: { params: { id: string } })
               </span>
             </div>
             <div className="panel-body stack">
-              <div className="row" style={{ gap: "var(--s4)" }}>
-                <span>
-                  provider <code>{runtime.provider}</code>
-                </span>
-                <span>
-                  model <code>{runtime.model}</code>
-                </span>
-                <span className="faint">
-                  allowed: {runtime.allowedProviders.join(", ")}
-                  {runtime.allowed ? "" : " · current profile not permitted"}
-                </span>
+              <div className="runtime-explainer">
+                <span className="runtime-number">01</span>
+                <div className="stack tight">
+                <span className="eyebrow">Sphere inference profile</span>
+                <p className="section-intro">The governed default used for KinOS conversations. It chooses where inference runs and which model is requested; changing it never changes identities, memory, or permissions.</p>
+                <div className="row" style={{ gap: "var(--s4)" }}>
+                  <span>
+                    provider <code>{runtime.provider}</code>
+                  </span>
+                  <span>
+                    model <code>{runtime.model}</code>
+                  </span>
+                  <span className="faint">
+                    allowed: {runtime.allowedProviders.join(", ")}
+                    {runtime.allowed ? "" : " · current profile not permitted"}
+                  </span>
+                </div>
+                </div>
+              </div>
+              <div className="runtime-explainer">
+                <span className="runtime-number">02</span>
+                <div className="stack tight">
+                <span className="eyebrow">Active agent harness</span>
+                <p className="section-intro">
+                  The governed environment every agent runs inside — it hosts agent profiles and tool calling, and never executes bare. Hermes is
+                  the only harness, so there is nothing to choose here; KinOS remains the authority for permissions and exposed capabilities, and
+                  the inference backend below is the governed choice projected into its profile.
+                </p>
+                <div className="row" style={{ gap: "var(--s4)" }}>
+                  <span>
+                    harness <code>{runtime.harness.runtime}</code>
+                  </span>
+                  {runtime.harness.provider ? (
+                    <span>
+                      backend <code>{runtime.harness.provider}</code>
+                    </span>
+                  ) : null}
+                  {runtime.harness.model ? (
+                    <span>
+                      model <code>{runtime.harness.model}</code>
+                    </span>
+                  ) : null}
+                  {runtime.harness.baseUrl ? (
+                    <span className="faint">
+                      endpoint <code>{runtime.harness.baseUrl}</code>
+                    </span>
+                  ) : null}
+                </div>
+                </div>
               </div>
               <hr className="hairline" style={{ margin: 0 }} />
-              <SetRuntime sphereId={id} members={runMembers} />
+              <SetRuntime sphereId={id} actor={admin} />
             </div>
           </div>
 
           {/* Connectors */}
-          <div className="panel">
+          <div id="connectors" className="panel section-anchor">
             <div className="panel-head">
               <h3>Connectors</h3>
             </div>
             <div className="panel-body">
-              <Connectors sphereId={id} members={runMembers} integrations={integrations} />
+              <Connectors sphereId={id} actor={admin} integrations={integrations} />
             </div>
           </div>
 
@@ -214,6 +282,7 @@ export default async function SpherePage({ params }: { params: { id: string } })
               <RunCapability sphereId={id} members={runMembers} capabilities={capabilities} />
             </div>
           </div>
+          </main>
         </div>
       </div>
     );

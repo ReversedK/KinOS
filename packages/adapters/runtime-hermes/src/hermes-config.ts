@@ -29,6 +29,26 @@ import type { RuntimeConfigProjection } from "@kinos/core";
 /** Env var (resolved from the profile `.env`) holding the Sphere MCP token. */
 export const SPHERE_MCP_TOKEN_ENV = "SPHERE_MCP_TOKEN";
 
+/**
+ * Hermes refuses a context window below 64K, and Ollama frequently reports a
+ * smaller window than the model's real one — so the projected profile must state
+ * one explicitly or Hermes rejects the config. This is a Hermes-specific
+ * requirement and stays in the adapter: the domain's RuntimeProfile (RFC-004)
+ * describes provider/model, not a runtime's config minimums (coding principle 1).
+ */
+export const HERMES_MIN_CONTEXT_LENGTH = 65536;
+
+/**
+ * Hermes' `ollama` provider speaks the OpenAI-compatible endpoint: a bare
+ * `:11434` base_url 404s, so the `/v1` suffix is required. Applied only to a
+ * local Ollama base URL the operator supplied without it — a deployment detail of
+ * talking to Ollama, not a domain rule.
+ */
+function normalizeBaseUrl(providerId: string, baseUrl: string): string {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  return providerId === "ollama" && !/\/v\d+$/.test(trimmed) ? `${trimmed}/v1` : trimmed;
+}
+
 export interface HermesMcpServer {
   readonly url: string;
   readonly headers: Readonly<Record<string, string>>;
@@ -42,6 +62,7 @@ export interface HermesConfig {
     readonly provider: string;
     readonly base_url?: string;
     readonly api_key?: string;
+    readonly context_length: number;
   };
   /** Map keyed by server name — KinOS registers exactly one: "sphere". */
   readonly mcp_servers: Readonly<Record<string, HermesMcpServer>>;
@@ -53,12 +74,18 @@ export interface HermesConfig {
 export function projectionToHermesConfig(projection: RuntimeConfigProjection): HermesConfig {
   const { profile, gateway } = projection;
   return {
+    // The governed provider/model (RFC-004/009) becomes the profile's model block:
+    // Hermes runs the agent on exactly what KinOS decided, never a Hermes-local
+    // default (ADR-008 §4).
     model: {
       default: profile.model,
       provider: profile.providerId,
-      ...(profile.baseUrl !== undefined ? { base_url: profile.baseUrl } : {}),
+      ...(profile.baseUrl !== undefined
+        ? { base_url: normalizeBaseUrl(profile.providerId, profile.baseUrl) }
+        : {}),
       // Provider key (cloud) referenced via env, never inlined (secret-store.md).
       ...(profile.secretRef !== undefined ? { api_key: `\${${providerKeyEnv(profile.providerId)}}` } : {}),
+      context_length: HERMES_MIN_CONTEXT_LENGTH,
     },
     mcp_servers: {
       sphere: {
@@ -78,14 +105,19 @@ function providerKeyEnv(provider: string): string {
   return `${provider.toUpperCase()}_API_KEY`;
 }
 
+export function hermesProfileDir(home: string, profileName: string): string {
+  return `${home.replace(/\/+$/, "")}/profiles/${profileName}`;
+}
+
 /** Minimal YAML serializer for the fixed HermesConfig shape. */
 export function toYaml(config: HermesConfig): string {
   const lines: string[] = [];
-  const scalar = (v: string | boolean): string => (typeof v === "boolean" ? String(v) : quoteIfNeeded(v));
+  const scalar = (v: string | number | boolean): string =>
+    typeof v === "string" ? quoteIfNeeded(v) : String(v);
 
   lines.push("model:");
   for (const [k, v] of Object.entries(config.model)) {
-    if (v !== undefined) lines.push(`  ${k}: ${scalar(v as string)}`);
+    if (v !== undefined) lines.push(`  ${k}: ${scalar(v as string | number)}`);
   }
 
   lines.push("mcp_servers:");
@@ -123,9 +155,103 @@ function quoteIfNeeded(v: string): string {
   return /^[A-Za-z0-9_./:-]+$/.test(v) ? v : JSON.stringify(v);
 }
 
+function replaceTopLevelBlock(src: string, key: string, block: string): string {
+  const lines = src.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  let replaced = false;
+
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    if (line.startsWith(`${key}:`)) {
+      if (!replaced) out.push(...block.split("\n"));
+      replaced = true;
+      i += 1;
+      while (i < lines.length) {
+        const next = lines[i] ?? "";
+        if (next.length === 0) {
+          i += 1;
+          continue;
+        }
+        if (/^[^ \t#]/.test(next)) break;
+        i += 1;
+      }
+      continue;
+    }
+    out.push(line);
+    i += 1;
+  }
+
+  if (!replaced) {
+    if (out.length > 0 && out[out.length - 1] !== "") out.push("");
+    out.push(...block.split("\n"));
+  }
+
+  return `${out.join("\n").replace(/\n+$/, "")}\n`;
+}
+
+export function mergeHermesConfig(existing: string | undefined, projection: RuntimeConfigProjection): string {
+  const cfg = projectionToHermesConfig(projection);
+  let merged = existing?.trim().length ? existing : "";
+  merged = replaceTopLevelBlock(
+    merged,
+    "model",
+    [
+      "model:",
+      ...Object.entries(cfg.model).flatMap(([k, v]) =>
+        v !== undefined ? [`  ${k}: ${typeof v === "string" ? quoteIfNeeded(v) : String(v)}`] : [],
+      ),
+    ].join("\n"),
+  );
+  merged = replaceTopLevelBlock(
+    merged,
+    "mcp_servers",
+    [
+      "mcp_servers:",
+      ...Object.entries(cfg.mcp_servers).flatMap(([name, s]) => [
+        `  ${quoteIfNeeded(name)}:`,
+        `    url: ${quoteIfNeeded(s.url)}`,
+        `    enabled: ${s.enabled}`,
+        "    headers:",
+        ...Object.entries(s.headers).map(([hk, hv]) => `      ${quoteIfNeeded(hk)}: ${quoteIfNeeded(hv)}`),
+        "    tools:",
+        "      include:",
+        ...s.tools.include.map((t) => `        - ${quoteIfNeeded(t)}`),
+      ]),
+    ].join("\n"),
+  );
+  merged = replaceTopLevelBlock(
+    merged,
+    "native_tools",
+    ["native_tools:", "  allow:", ...cfg.native_tools.allow.map((t) => `    - ${quoteIfNeeded(t)}`)].join("\n"),
+  );
+  merged = replaceTopLevelBlock(merged, "autonomous_mcp_install", `autonomous_mcp_install: ${cfg.autonomous_mcp_install}`);
+  return merged;
+}
+
+function parseEnvFile(src: string | undefined): Map<string, string> {
+  const entries = new Map<string, string>();
+  if (src === undefined) return entries;
+  for (const line of src.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    const idx = line.indexOf("=");
+    if (idx <= 0) continue;
+    entries.set(line.slice(0, idx), line.slice(idx + 1));
+  }
+  return entries;
+}
+
+export function mergeHermesEnv(existing: string | undefined, entries: Readonly<Record<string, string>>): string {
+  const merged = parseEnvFile(existing);
+  for (const [k, v] of Object.entries(entries)) merged.set(k, v);
+  return toEnvFile(Object.fromEntries(merged));
+}
+
 /** Filesystem port (injectable for tests). */
 export interface HermesFsPort {
   mkdir(path: string): Promise<void>;
+  readFile(path: string): Promise<string | undefined>;
   writeFile(path: string, content: string): Promise<void>;
 }
 
@@ -150,12 +276,15 @@ export async function writeHermesProfile(
   projection: RuntimeConfigProjection,
   options: WriteHermesProfileOptions,
 ): Promise<string> {
-  const dir = `${options.home.replace(/\/+$/, "")}/${projection.agentId}`;
+  const dir = hermesProfileDir(options.home, projection.agentId);
   const path = `${dir}/config.yaml`;
+  const envPath = `${dir}/.env`;
   await options.fs.mkdir(dir);
-  await options.fs.writeFile(path, toYaml(projectionToHermesConfig(projection)));
+  const currentConfig = await options.fs.readFile(path);
+  await options.fs.writeFile(path, mergeHermesConfig(currentConfig, projection));
   if (options.token !== undefined) {
-    await options.fs.writeFile(`${dir}/.env`, toEnvFile({ [SPHERE_MCP_TOKEN_ENV]: options.token }));
+    const currentEnv = await options.fs.readFile(envPath);
+    await options.fs.writeFile(envPath, mergeHermesEnv(currentEnv, { [SPHERE_MCP_TOKEN_ENV]: options.token }));
   }
   return path;
 }

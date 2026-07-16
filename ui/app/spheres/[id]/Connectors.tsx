@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 
-import { CLIENT_API_BASE, ageProfileForRole, setIntegrationEnabled, type ActingSubject, type IntegrationSummary } from "../../../lib/api";
-import type { RunMember } from "./RunCapability";
+import { CLIENT_API_BASE, setIntegrationEnabled, type ActingSubject, type IntegrationSummary } from "../../../lib/api";
 
 /**
  * Connectors (integrations) view (RFC-003 / integration-model). Lists the
@@ -13,28 +12,22 @@ import type { RunMember } from "./RunCapability";
  */
 export function Connectors({
   sphereId,
-  members,
+  actor,
   integrations,
 }: {
   sphereId: string;
-  members: readonly RunMember[];
+  actor: ActingSubject;
   integrations: readonly IntegrationSummary[];
 }) {
-  const [memberId, setMemberId] = useState(members[0]?.id ?? "");
   const [rows, setRows] = useState<readonly IntegrationSummary[]>(integrations);
   const [note, setNote] = useState<string>();
   const [busy, setBusy] = useState(false);
-
-  const subject = (): ActingSubject => {
-    const m = members.find((x) => x.id === memberId);
-    return { memberId, role: m?.role ?? "guest", ageProfile: ageProfileForRole(m?.role ?? "guest") };
-  };
 
   async function toggle(id: string, enabled: boolean): Promise<void> {
     setBusy(true);
     setNote(undefined);
     try {
-      const res = await setIntegrationEnabled(CLIENT_API_BASE, sphereId, id, enabled, subject());
+      const res = await setIntegrationEnabled(CLIENT_API_BASE, sphereId, id, enabled, actor);
       if (res.code === "forbidden") setNote(`Denied — ${res.message ?? "forbidden"}`);
       else if (res.status !== undefined) setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status: res.status as string } : r)));
     } catch (e) {
@@ -50,16 +43,6 @@ export function Connectors({
 
   return (
     <div className="stack tight">
-      <div className="field" style={{ maxWidth: 220 }}>
-        <label>Acting as</label>
-        <select className="select" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.role}
-            </option>
-          ))}
-        </select>
-      </div>
       {rows.map((i) => (
         <div key={i.id} className="rowitem" style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-sm)" }}>
           <div className="lead">
@@ -72,7 +55,7 @@ export function Connectors({
               <div className="faint" style={{ fontSize: 12 }}>{i.providesCapabilities.join(", ") || "—"}</div>
             </span>
           </div>
-          <button className="btn sm" disabled={busy || memberId === ""} onClick={() => void toggle(i.id, i.status !== "enabled")}>
+          <button className="btn sm" disabled={busy} onClick={() => void toggle(i.id, i.status !== "enabled")}>
             {i.status === "enabled" ? "Disable" : "Enable"}
           </button>
         </div>

@@ -1,11 +1,19 @@
 import { apiBaseUrl, getAgents, getMembers, getSphere } from "../../../../lib/api";
-import { Chat } from "./Chat";
+import { Tui } from "./Tui";
 
 export const dynamic = "force-dynamic";
 
-// Test agents in real conditions (RFC-005). Loads members + agents (facts only)
-// and mounts the client Chat console, which talks to the governed chat endpoints.
-export default async function ChatPage({ params }: { params: { id: string } }) {
+/**
+ * Test agents in real conditions (ADR-008 §6). Loads agents (facts only) and
+ * mounts the Harness terminal, which attaches to an agent's own governed Hermes
+ * profile.
+ *
+ * This is deliberately not the old direct-inference chat bench: ADR-008 §6
+ * classified that path as test-mode because it never exercised the Harness loop,
+ * and authorized migrating real-condition testing onto the Harness. Here the
+ * agent genuinely runs inside it.
+ */
+export default async function TestAgentsPage({ params }: { params: { id: string } }) {
   const base = apiBaseUrl();
   const id = params.id;
   try {
@@ -14,6 +22,9 @@ export default async function ChatPage({ params }: { params: { id: string } }) {
       getMembers(base, id),
       getAgents(base, id),
     ]);
+    // Act as an administrator: attaching is admin-gated, and the Policy Engine
+    // re-checks it server-side regardless of what the console sends.
+    const admin = members.find((m) => m.role === "parent") ?? members[0];
     return (
       <div className="container">
         <div className="crumbs">
@@ -24,8 +35,9 @@ export default async function ChatPage({ params }: { params: { id: string } }) {
             <span className="eyebrow">real-condition testing</span>
             <h1 className="title">Test agents</h1>
             <p className="help">
-              Talk to a deployed agent as any member. Turns run through the governed runtime — with the Hermes runtime the agent
-              reaches back into the Sphere MCP for exactly its policy-authorized capabilities.
+              Attach a terminal to a deployed agent&apos;s governed Hermes profile. The agent runs inside the Harness — on the model
+              KinOS decided, reaching back into the Sphere MCP for exactly its policy-authorized capabilities, with every call
+              re-checked there.
             </p>
           </div>
           {agents.length === 0 ? (
@@ -36,11 +48,13 @@ export default async function ChatPage({ params }: { params: { id: string } }) {
               </a>
               .
             </div>
+          ) : admin === undefined ? (
+            <div className="note deny">This Sphere has no member to act as.</div>
           ) : (
-            <Chat
+            <Tui
               sphereId={id}
-              members={members.map((m) => ({ id: m.id, role: m.role }))}
-              agents={agents.map((a) => ({ id: a.id, name: a.name, capabilities: a.enabledCapabilities }))}
+              agents={agents.map((a) => ({ id: a.id, name: a.name }))}
+              actor={{ memberId: admin.id, role: admin.role, ageProfile: "adult" }}
             />
           )}
         </div>
@@ -52,7 +66,7 @@ export default async function ChatPage({ params }: { params: { id: string } }) {
         <div className="crumbs">
           <a href="/">spheres</a> / test
         </div>
-        <div className="note deny">Could not load chat for {id} — {(e as Error).message}</div>
+        <div className="note deny">Could not load the test console for {id} — {(e as Error).message}</div>
       </div>
     );
   }

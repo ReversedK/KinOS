@@ -1,4 +1,4 @@
-import { apiBaseUrl, getPendingApprovals } from "../../lib/api";
+import { apiBaseUrl, getMembers, getPendingApprovals, type ApproverRef } from "../../lib/api";
 import { ApprovalActions } from "./ApprovalActions";
 
 export const dynamic = "force-dynamic";
@@ -9,9 +9,16 @@ export const dynamic = "force-dynamic";
 export default async function ApprovalsPage() {
   const base = apiBaseUrl();
   let pending: Awaited<ReturnType<typeof getPendingApprovals>> = [];
+  let approversBySphere = new Map<string, readonly ApproverRef[]>();
   let error: string | undefined;
   try {
     pending = await getPendingApprovals(base);
+    const sphereIds = [...new Set(pending.map((item) => item.sphereId))];
+    approversBySphere = new Map(await Promise.all(sphereIds.map(async (sphereId) => {
+      const members = await getMembers(base, sphereId);
+      const eligibleRoles = new Set(pending.filter((item) => item.sphereId === sphereId).flatMap((item) => item.approverRoles));
+      return [sphereId, members.filter((member) => eligibleRoles.has(member.role)).map((member) => ({ memberId: member.id, role: member.role }))] as const;
+    })));
   } catch (e) {
     error = (e as Error).message;
   }
@@ -67,7 +74,10 @@ export default async function ApprovalsPage() {
                       <code>{p.id}</code>
                     </span>
                   </div>
-                  <ApprovalActions approvalId={p.id} />
+                  <ApprovalActions
+                    approvalId={p.id}
+                    approvers={(approversBySphere.get(p.sphereId) ?? []).filter((approver) => p.approverRoles.includes(approver.role ?? ""))}
+                  />
                 </div>
               </div>
             ))}

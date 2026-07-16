@@ -29,6 +29,7 @@ export const PROVISIONING_TOOLS = {
   "member.invite": "provisioning.invite_member",
   "agent.create": "provisioning.create_agent",
   "agent.update_config": "provisioning.update_agent",
+  "policy.manage": "provisioning.manage_policy",
 } as const;
 
 export type ProvisioningCapability = keyof typeof PROVISIONING_TOOLS;
@@ -38,7 +39,34 @@ export const IN_SPHERE_PROVISIONING_CAPABILITIES: readonly ProvisioningCapabilit
   "member.invite",
   "agent.create",
   "agent.update_config",
+  "policy.manage",
 ];
+
+/** Runtime-governance capabilities administrators may invoke inside a Sphere. */
+export const IN_SPHERE_RUNTIME_GOVERNANCE_CAPABILITIES = [
+  "runtime.config.project",
+  "runtime.session.backup",
+  "runtime.session.restore",
+  "runtime.session.attach",
+] as const;
+
+/**
+ * The Sphere-settings capabilities administrators may invoke: the inference
+ * provider/model (RFC-004), connectors, and store packages (RFC-002). Each is a
+ * catalog capability the router already policy-checks; without a seed granting
+ * them, deny-by-default left an administrator unable to administer these aspects
+ * of their own Sphere. Granting them here does not weaken anything: the per-call
+ * policy check, the adult-only catalog profile floor, and the cloud/consent path
+ * on a cloud provider all still apply.
+ */
+export const IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES = [
+  "runtime.set_provider",
+  "integration.enable",
+  "integration.disable",
+  "package.install",
+  "package.enable",
+  "package.disable",
+] as const;
 
 /** The default administrator roles that the admin seed grants provisioning to. */
 export const DEFAULT_ADMIN_ROLES: readonly Role[] = ["parent"];
@@ -99,11 +127,44 @@ export function defaultAdminPolicies(
     {
       id: `pol_${sphereId}_admin_provisioning`,
       sphereId,
-      description: "Administrators may invite members and deploy or update agents.",
+      description: "Administrators may manage members, agents, and Sphere policies.",
       subjectSelector: { roles: [...adminRoles] },
       action: "execute",
       resourceSelector: {
         capabilityNames: [...IN_SPHERE_PROVISIONING_CAPABILITIES],
+      },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    },
+    {
+      id: `pol_${sphereId}_admin_runtime_governance`,
+      sphereId,
+      description: "Administrators may project, back up, and restore agent runtime state.",
+      subjectSelector: { roles: [...adminRoles] },
+      action: "execute",
+      resourceSelector: {
+        capabilityNames: [...IN_SPHERE_RUNTIME_GOVERNANCE_CAPABILITIES],
+      },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    },
+    {
+      // RFC-004/RFC-002: administrators may change the Sphere's inference
+      // provider/model and manage connectors and store packages. Without this
+      // seed an administrator was denied by default on their own Sphere's
+      // settings. Selecting a cloud provider still engages the external-transfer
+      // / consent path, and every call is still policy-checked per call.
+      id: `pol_${sphereId}_admin_settings`,
+      sphereId,
+      description: "Administrators may manage Sphere settings: inference provider/model, connectors, and packages.",
+      subjectSelector: { roles: [...adminRoles] },
+      action: "execute",
+      resourceSelector: {
+        capabilityNames: [...IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES],
       },
       effect: "allow",
       priority: 0,

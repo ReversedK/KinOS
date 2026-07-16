@@ -158,6 +158,19 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "snapshotRef", "decision", "correlationId"],
   },
   {
+    // ADR-008 §6: attach an interactive terminal to an agent's governed Harness
+    // profile — the real-condition test path that replaces direct inference.
+    // Interactive and high-risk: the session runs as the agent, so it reaches
+    // exactly the agent's policy-authorized surface through the Sphere MCP (each
+    // call re-checked there) and nothing more. Attaching is not authorizing.
+    name: "runtime.session.attach",
+    description: "Attach an interactive terminal to an agent's governed Harness profile (admin/owner).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
     // RFC-008: create a Sphere. Instance-scoped (bootstrap) — evaluated against
     // the bootstrap policy set, not a Sphere's policies. The founder becomes the
     // first administrator; a default admin policy set is seeded on creation.
@@ -197,6 +210,14 @@ const CAPABILITIES: readonly Capability[] = [
     allowedProfiles: ["adult"],
     approvalFloor: false,
     auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
+    name: "policy.manage",
+    description: "Create, update, activate, or disable a Sphere policy (admin).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "policyId", "decision", "correlationId"],
   },
 ];
 

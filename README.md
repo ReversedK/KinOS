@@ -184,9 +184,10 @@ you can:
   the **inference runtime** (RFC-004);
 - **Resolve approvals** in the inbox (quorum, minor-safety and no-self-approval
   enforced by the core);
-- **Test agents in real conditions** — chat runs through the governed runtime;
-  with `KINOS_RUNTIME=hermes` the agent reaches back into the Sphere MCP for
-  exactly its policy-authorized capabilities (`docs/rfcs/007`, `docs/adr/007`).
+- **Test agents in real conditions** — a terminal attached to the agent's own
+  governed Hermes profile, so it runs on the model KinOS decided and reaches back
+  into the Sphere MCP for exactly its policy-authorized capabilities
+  (`docs/rfcs/007`, `docs/adr/007`, `docs/adr/008`).
 
 Every governed action surfaces its outcome (allow / approval / deny) with a safe
 reason and never displays secrets, embeddings, raw tool ids or runtime internals

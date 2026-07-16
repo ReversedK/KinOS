@@ -6,11 +6,13 @@ import { useState } from "react";
 import {
   CLIENT_API_BASE,
   getAgentRuntimeProjection,
+  projectAgentRuntimeConfig,
   setAgentModel,
   updateAgentConfig,
   type ActingSubject,
   type AgentSummary,
   type CatalogCapability,
+  type RuntimeProjectOutput,
   type RuntimeProjection,
 } from "../lib/api";
 import { describeOutcome } from "../lib/outcome";
@@ -89,6 +91,25 @@ export function AgentConfig({
     }
   }
 
+  async function projectProfile(): Promise<void> {
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const res = await projectAgentRuntimeConfig(CLIENT_API_BASE, sphereId, admin, { agentId: agent.id });
+      if (res.status === "executed" && typeof res.output === "object" && res.output !== null && "configPath" in res.output) {
+        const out = res.output as RuntimeProjectOutput;
+        setNote({ tone: "allow", text: `Projected to Hermes profile · ${out.configPath}` });
+      } else {
+        setNote(describeOutcome(res));
+      }
+      if (res.status === "executed") router.refresh();
+    } catch (e) {
+      setNote({ tone: "deny", text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const scopeDirty = JSON.stringify([...scope].sort()) !== JSON.stringify([...agent.enabledCapabilities].sort());
   const modelDirty = model.trim() !== (agent.modelPreference ?? "");
 
@@ -119,6 +140,9 @@ export function AgentConfig({
           </button>
           <button className="btn ghost sm" onClick={() => void loadProjection()}>
             Projection
+          </button>
+          <button className="btn ghost sm" disabled={busy} onClick={() => void projectProfile()}>
+            {busy ? <span className="spin" /> : null} Project to Hermes
           </button>
         </div>
       </div>

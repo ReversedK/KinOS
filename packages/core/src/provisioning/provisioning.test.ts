@@ -5,7 +5,9 @@ import { evaluate } from "../policy/engine.js";
 import type { AgeProfile, PolicyRequest } from "../policy/types.js";
 import {
   DEFAULT_ADMIN_ROLES,
+  IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES,
   IN_SPHERE_PROVISIONING_CAPABILITIES,
+  IN_SPHERE_RUNTIME_GOVERNANCE_CAPABILITIES,
   PROVISIONING_TOOLS,
   bootstrapPolicies,
   defaultAdminPolicies,
@@ -38,12 +40,13 @@ describe("provisioning catalog entries (RFC-008)", () => {
 });
 
 describe("provisioningBindings (RFC-008)", () => {
-  it("binds the four provisioning capabilities to local executor tools, enabled + high-risk", () => {
+  it("binds provisioning and policy administration to local executor tools, enabled + high-risk", () => {
     const bindings = provisioningBindings();
     expect(bindings.map((b) => b.capability).sort()).toEqual([
       "agent.create",
       "agent.update_config",
       "member.invite",
+      "policy.manage",
       "sphere.create",
     ]);
     for (const b of bindings) {
@@ -87,6 +90,29 @@ describe("defaultAdminPolicies (RFC-008)", () => {
     for (const name of IN_SPHERE_PROVISIONING_CAPABILITIES) {
       const d = evaluate(request(name, { role: DEFAULT_ADMIN_ROLES[0]!, ageProfile: "adult" }), policies);
       expect(d.effect).toBe("allow");
+    }
+  });
+
+  it("lets an administrator invoke runtime governance capabilities", () => {
+    for (const name of IN_SPHERE_RUNTIME_GOVERNANCE_CAPABILITIES) {
+      const d = evaluate(request(name, { role: DEFAULT_ADMIN_ROLES[0]!, ageProfile: "adult" }), policies);
+      expect(d.effect).toBe("allow");
+    }
+  });
+
+  it("lets an administrator manage Sphere settings: provider/model, connectors, packages", () => {
+    for (const name of IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES) {
+      const d = evaluate(request(name, { role: DEFAULT_ADMIN_ROLES[0]!, ageProfile: "adult" }), policies);
+      expect(d.effect).toBe("allow");
+    }
+  });
+
+  it("denies a non-administrator the Sphere settings capabilities by default", () => {
+    for (const name of IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES) {
+      for (const role of ["teenager", "child", "guest"]) {
+        const d = evaluate(request(name, { role, ageProfile: "adult" }), policies);
+        expect(d.effect).toBe("deny");
+      }
     }
   });
 

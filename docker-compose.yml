@@ -35,20 +35,27 @@ services:
       - .:/app
       - node_modules:/app/node_modules
       - kinos_data:/app/data
+      - hermes_home:/app/data/hermes
     ports:
       - "8787:8787"
     environment:
       - KINOS_API_PORT=8787
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      # Boring runtime swap (coding principle 9). Default local-first Ollama;
-      # set to "hermes" once the hermes service below is enabled. Hermes-as-
-      # inference reuses the OpenAI adapter against Hermes' OpenAI-compatible API
-      # server (/v1, default :8642), Bearer-authenticated by API_SERVER_KEY.
-      - KINOS_RUNTIME=${KINOS_RUNTIME:-ollama}
+      # Hermes is the sole Harness (ADR-008 §3) — there is no harness selection.
+      # KinOS reaches it through its OpenAI-compatible API server (/v1, default
+      # :8642), Bearer-authenticated by API_SERVER_KEY. Which provider/model the
+      # agent runs on is NOT set here: that is the governed RFC-004/009 decision,
+      # projected into the agent's Hermes profile by runtime.config.project.
       - HERMES_BASE_URL=http://hermes:8642/v1
+      # The Sphere-MCP endpoint written into each agent's projected profile. It
+      # must be reachable from the HERMES container, where "localhost" is Hermes
+      # itself — so this is the compose service name, not the API's own address.
+      - KINOS_PUBLIC_URL=http://api:8787
       # Shared with the hermes service's API_SERVER_KEY; must be >=16 chars (the
       # Hermes API server refuses to start otherwise on a 0.0.0.0 bind).
       - HERMES_API_KEY=${HERMES_API_KEY:-kinos-harness-devkey-0001}
+      # Shared Hermes home: the API reconciles per-agent named profiles here and
+      # the Hermes container reads the same volume at /opt/data.
+      - HERMES_HOME=/app/data/hermes
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # ADR-007 hardening note: the Sphere MCP is currently path-mounted on this
@@ -85,31 +92,31 @@ services:
       - KINOS_API_URL=http://api:8787
       - PORT=3000
 
-  # --- Hermes Harness (ADR-008 / RFC-007) — opt-in via the "hermes" profile ----
-  # The governed execution environment agents run inside (ADR-008): Hermes runs
-  # its OpenAI-compatible API server (`gateway run` → api_server platform on
-  # :8642), which KinOS' AgentRuntime calls when KINOS_RUNTIME=hermes.
+  # --- Hermes Harness (ADR-008 / RFC-007) — the sole Harness ------------------
+  # The governed execution environment agents run inside (ADR-008 §2: an agent
+  # never executes bare). Hermes runs its OpenAI-compatible API server
+  # (`gateway run` → api_server platform on :8642), which the api service calls.
+  # There is no alternative harness and no harness switch: ADR-008 §3 makes Hermes
+  # an adapter behind the Harness role, not a deployment choice.
   #
-  # SCOPE (verified): this runs Hermes as the governed *inference* Harness on a
-  # single active profile (`hermes-agent`) — the api_server serves ONE active
-  # profile and the request `model` field is cosmetic (no per-request model→profile
-  # routing). The full per-agent governed *tool* loop (each agent its own projected
-  # profile whose mcp_servers.sphere calls back into the KinOS Sphere MCP for
-  # policy-scoped capabilities) needs two things this compose does NOT yet wire:
-  # (a) a profile volume shared between api and hermes (api projects to
-  # data/hermes, hermes reads /opt/data), and (b) a per-agent profile-selection
-  # mechanism the api_server does not provide. Tracked as an architecture decision.
+  # SCOPE (verified): the api_server serves ONE active profile and the request
+  # `model` field is cosmetic (no per-request model→profile routing). The shared
+  # profile volume is wired below, so KinOS reconciles Hermes-native per-agent
+  # profiles in-place under /opt/data/profiles/<agent>. Remaining gap: the
+  # api_server lacks per-request profile selection, so the per-agent governed
+  # profile is exercised through the TUI (docker exec → `hermes --profile <agent>`),
+  # not through /v1 chat.
   #
   # Requires the real image (NousResearch/hermes-agent, ~3.8GB), built once:
   #   git clone https://github.com/NousResearch/hermes-agent && \
   #     cd hermes-agent && docker build -t hermes-agent:local .
   #
-  # Start the whole Hermes-backed stack (opt-in; default stack stays local Ollama):
-  #   KINOS_RUNTIME=hermes docker compose --profile hermes up api hermes
-  # Then set the Sphere/agent model (RFC-004/009) to the Hermes profile name
-  # ("hermes-agent" for the default profile). The bootstrap points Hermes' own
-  # inference at the host Ollama (deploy/hermes/bootstrap.py) — override the model
-  # with HARNESS_MODEL / HARNESS_OLLAMA_URL / HARNESS_MODEL_CONTEXT.
+  # Start the stack:
+  #   docker compose up api hermes ui
+  # The provider/model each agent runs on is NOT configured here — it is the
+  # governed RFC-004/009 decision, projected into that agent's Hermes profile by
+  # runtime.config.project. HARNESS_* below only seeds the container's own default
+  # profile for first boot, before any projection has been written.
   #
   # Per-agent projected profiles + the Sphere-MCP tool callback (RFC-007/ADR-007:
   # config.yaml `mcp_servers.sphere` → http://api:8787/spheres/<id>/mcp, token in
@@ -118,7 +125,6 @@ services:
   # policy-scoped tool discovery, forged-token fail-closed).
   hermes:
     image: hermes-agent:local
-    profiles: ["hermes"]
     environment:
       - HERMES_UID=${HERMES_UID:-10000}
       - HERMES_GID=${HERMES_GID:-10000}
@@ -129,14 +135,28 @@ services:
       - HARNESS_MODEL=${HARNESS_MODEL:-gemma4-128k}
       - HARNESS_OLLAMA_URL=${HARNESS_OLLAMA_URL:-http://host.docker.internal:11434/v1}
       - HARNESS_MODEL_CONTEXT=${HARNESS_MODEL_CONTEXT:-65536}
+      # Where the TUI bridge redeems attach tickets (ADR-008 §6). It decides
+      # nothing: KinOS answers with an agent id and the bridge opens that
+      # profile. No docker socket is mounted anywhere — the bridge runs here,
+      # beside the terminal, so the API keeps no host privilege.
+      - KINOS_API_URL=http://api:8787
+      - TUI_BRIDGE_PORT=8788
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    ports:
+      # Harness terminal websocket, consumed by the console's TUI page.
+      - "${KINOS_TUI_PORT:-8788}:8788"
     volumes:
       - hermes_home:/opt/data                       # per-profile config/sessions/state
       - ./deploy/hermes/bootstrap.py:/opt/harness-bootstrap.py:ro
+      - ./deploy/hermes/tui-bridge.py:/opt/tui-bridge.py:ro
     # cont-init creates/migrates config.yaml first; then bootstrap makes it a
-    # KinOS Harness config and we hand off to the gateway (api_server platform).
-    command: ["sh", "-c", "python3 /opt/harness-bootstrap.py && exec hermes gateway run"]
+    # KinOS Harness config, the TUI bridge comes up beside the gateway, and we
+    # hand off to the gateway (api_server platform).
+    command:
+      - "sh"
+      - "-c"
+      - "python3 /opt/harness-bootstrap.py && (python3 /opt/tui-bridge.py &) && exec hermes gateway run"
 
 volumes:
   node_modules:

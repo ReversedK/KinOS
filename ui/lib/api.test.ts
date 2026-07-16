@@ -5,6 +5,7 @@ import {
   denyApproval,
   executeCapability,
   getAgents,
+  getAgentRuntimeProjection,
   getMembers,
   getPendingApprovals,
   getInstalledPackages,
@@ -18,6 +19,7 @@ import {
   installStorePackage,
   listSessions,
   postChatTurn,
+  projectAgentRuntimeConfig,
   setIntegrationEnabled,
   setPackageEnabled,
   setRuntime,
@@ -88,9 +90,18 @@ describe("UI API client", () => {
     const out = await getRuntime(
       "http://x",
       "sph_1",
-      fakeFetch({ provider: "ollama", model: "llama3.2", execution: "local", cloudInferenceEnabled: false, allowedProviders: ["ollama"], allowed: true }),
+      fakeFetch({
+        provider: "ollama",
+        model: "llama3.2",
+        execution: "local",
+        cloudInferenceEnabled: false,
+        allowedProviders: ["ollama"],
+        allowed: true,
+        harness: { runtime: "hermes", provider: "ollama", model: "gemma4-128k", baseUrl: "http://hermes:8642/v1" },
+      }),
     );
     expect(out).toMatchObject({ provider: "ollama", execution: "local", allowed: true });
+    expect(out.harness).toMatchObject({ runtime: "hermes", model: "gemma4-128k" });
   });
 
   it("throws on a non-ok response", async () => {
@@ -182,6 +193,48 @@ describe("UI API client", () => {
       fakeFetch({ code: "forbidden", message: "denied" }, 403),
     );
     expect(out).toMatchObject({ code: "forbidden" });
+  });
+
+  it("projectAgentRuntimeConfig POSTs the governed runtime.config.project capability", async () => {
+    const { impl, calls } = capturingFetch({
+      status: "executed",
+      output: { agentId: "agt_0", version: 1, allowedTools: ["memory.search"], configPath: "/opt/data/profiles/agt_0/config.yaml" },
+    });
+    const out = await projectAgentRuntimeConfig(
+      "http://x",
+      "sph_1",
+      { memberId: "mbr_p1", role: "parent", ageProfile: "adult" },
+      { agentId: "agt_0" },
+      impl,
+    );
+    expect(out).toMatchObject({ status: "executed" });
+    expect(calls[0]?.url).toBe("http://x/spheres/sph_1/capabilities/runtime.config.project/execute");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      subject: { memberId: "mbr_p1", role: "parent", ageProfile: "adult" },
+      input: { agentId: "agt_0" },
+    });
+  });
+
+  it("getAgentRuntimeProjection returns the preview payload", async () => {
+    const out = await getAgentRuntimeProjection(
+      "http://x",
+      "sph_1",
+      "agt_0",
+      { memberId: "mbr_p1", role: "parent", ageProfile: "adult" },
+      fakeFetch({
+        agentId: "agt_0",
+        provider: "ollama",
+        model: "qwen2.5:7b",
+        execution: "local",
+        gatewayEndpoint: "http://x/spheres/sph_1/mcp",
+        authSecretRef: "secret://sphere-mcp/sph_1/agt_0",
+        allowedTools: ["memory.search"],
+        nativeToolsAllow: [],
+        autonomousInstallDisabled: true,
+      }),
+    );
+    expect(out.agentId).toBe("agt_0");
+    expect(out.allowedTools).toEqual(["memory.search"]);
   });
 
   // --- package store (RFC-002) ---

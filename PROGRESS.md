@@ -1832,3 +1832,58 @@ Runtime adapter → integrations/Packages → UI.
   (single default `hermes-agent` profile only). The MCP callback itself was verified
   against this image earlier (iters 80–82); wiring per-agent profiles into the chat
   path is the next slice.
+
+### Iteration 100 — 2026-07-15 (RFC-010: full Sphere administration, one Harness, the governed TUI)
+- **RFC-010** (`docs/rfcs/010-…`): three changes that all trace to the ADR-008
+  Harness/provider conflation, plus the administration gap it left behind.
+- **Administrators can administer their whole Sphere.** `defaultAdminPolicies`
+  seeded provisioning + runtime governance + `model.set`, but the console also
+  exposes connectors, the store and the provider/model — all policy-checked, none
+  seeded, so **deny-by-default refused a `parent` on their own Sphere**. New
+  `IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES` (`runtime.set_provider`,
+  `integration.*`, `package.*`) + the `admin_settings` seed. The `Role` union is
+  unchanged — no `admin` role; administration stays role-based on `parent`.
+- **Seed backfill is now lineage-anchored.** Routing the settings capabilities
+  through `withAdminSeedMigration` exposed that the old unconditional backfill
+  authorized a Sphere with **zero policies** (existing tests caught it — it broke
+  deny-by-default). It now applies only to a Sphere still carrying the
+  `admin_provisioning` seed, so it can never fabricate authority.
+- **Fixed a real pre-existing bug:** the approval *grant* path re-evaluated
+  against un-migrated policies, so an action could be authorized, suspend for
+  approval, then be **denied at grant time** — an unresolvable approval. Hit live
+  on `runtime.config.project`.
+- **One Harness.** `KINOS_RUNTIME` is gone (Hermes always), the compose `hermes`
+  profile gate is gone, and `hermes` is no longer offered as a *provider*. Ollama
+  stays exactly as it was — an RFC-004 inference **provider**, not a harness.
+  `GET /spheres/:id/runtime` now reports the sole Hermes Harness with the
+  **governed** provider/model instead of reading `HARNESS_MODEL`/`KINOS_RUNTIME`
+  env — it could previously show a model KinOS never decided.
+- **Provider/model is wired into the Hermes profile** (ADR-008 §4, verified live):
+  the projection writes `model: {default, provider, base_url, context_length}`.
+  The adapter owns the two Hermes-specific facts the domain must not carry —
+  `/v1` on an Ollama base_url, and `context_length: 65536` (Hermes refuses <64K;
+  projected profiles previously had **none**, so bootstrap.py's default profile
+  was the only valid one). `defaultRuntimeConfig()` model → `gemma4-128k`.
+  Profile dirs are chowned to the Harness uid/gid or Hermes cannot read them.
+- **The governed TUI replaces the chat bench** (closes the ADR-008 §6 gap for the
+  *agent loop*, not just inference). New `runtime.session.attach` capability;
+  browser → API (policy-checks, mints a single-use 60s ticket) → websocket →
+  **bridge inside the Hermes container** → `pty: hermes chat --tui` with
+  `HERMES_HOME=<profile>`. `ui/…/chat/Chat.tsx` deleted.
+- **Two findings that shaped it.** (1) Hermes has **no `--profile` flag**: a
+  profile *is* a `HERMES_HOME` (`hermes_cli/profiles.py`), and `HERMES_PROFILE`
+  does *not* select one — it only appears in a denylist and kanban. (2) The bridge
+  runs **inside** Hermes rather than `docker exec` from the API, so **no docker
+  socket is mounted anywhere**: exec would have given host-root to the component
+  that *is* the authorization boundary. The bridge decides nothing — it redeems a
+  ticket and is told an **agent id, never a path**.
+- **Verified live** against the real stack and real Spheres: `parent` sets the
+  provider (`executed`, previously denied); harness reports `hermes` +
+  `gemma4-128k`; the projected profile lands as `hermes:hermes` with the governed
+  model; a real **Hermes TUI banner renders over the websocket**; a **minor is
+  refused** by the catalog floor; a **replayed ticket is refused** (1008); the
+  ticket value never reaches the audit. 416 tests, typecheck and `next build` green.
+- **Known limitation (tracked):** a seed an admin *deletes* is re-added by the
+  backfill; `status: "disabled"` is the revocation that survives. The bridge port
+  is published for the browser, so the ticket is the boundary — same posture as
+  the ADR-007 note on the Sphere MCP, and it wants the same hardening.

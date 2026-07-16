@@ -63,10 +63,15 @@ export function createRuntimeProfile(input: CreateRuntimeProfileInput): RuntimeP
   };
 }
 
-/** A new Sphere is local-first: Ollama only, cloud off (RFC-004, invariant 13). */
+/**
+ * A new Sphere is local-first: Ollama only, cloud off (RFC-004, invariant 13).
+ * The model matches the Harness's default profile so a freshly created Sphere
+ * projects a profile the Harness can actually run; no baseUrl is pinned here —
+ * where a provider lives is a deployment detail, not domain config.
+ */
 export function defaultRuntimeConfig(): SphereRuntimeConfig {
   return {
-    defaultProfile: { providerId: "ollama", model: "llama3.2", execution: "local" },
+    defaultProfile: { providerId: "ollama", model: "gemma4-128k", execution: "local" },
     allowedProviders: ["ollama"],
     cloudInferenceEnabled: false,
   };

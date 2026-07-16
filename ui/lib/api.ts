@@ -45,6 +45,36 @@ export interface RuntimeInfo {
   readonly cloudInferenceEnabled: boolean;
   readonly allowedProviders: readonly string[];
   readonly allowed: boolean;
+  readonly harness: {
+    readonly runtime: string;
+    readonly model?: string;
+    readonly provider?: string;
+    readonly baseUrl?: string;
+  };
+}
+
+export type PolicyEffect = "allow" | "deny" | "require_approval";
+export type PolicyStatus = "draft" | "test" | "active" | "disabled" | "superseded" | "archived";
+
+export interface SpherePolicy {
+  readonly id: string;
+  readonly sphereId: string;
+  readonly description: string;
+  readonly subjectSelector: {
+    readonly roles?: readonly string[];
+    readonly ageProfiles?: readonly ("adult" | "teen" | "child")[];
+    readonly memberIds?: readonly string[];
+  };
+  readonly action: "execute" | "any";
+  readonly resourceSelector: {
+    readonly capabilityNames?: readonly string[];
+    readonly riskLevels?: readonly string[];
+  };
+  readonly effect: PolicyEffect;
+  readonly approverRoles?: readonly string[];
+  readonly priority: number;
+  readonly version: number;
+  readonly status: PolicyStatus;
 }
 
 const DEFAULT_BASE_URL = "http://localhost:8787";
@@ -152,6 +182,19 @@ export async function getRuntime(
   return getJson<RuntimeInfo>(baseUrl, `/spheres/${encodeURIComponent(sphereId)}/runtime`, fetchImpl);
 }
 
+export async function getPolicies(
+  baseUrl: string,
+  sphereId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly SpherePolicy[]> {
+  const body = await getJson<{ policies: readonly SpherePolicy[] }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/policies`,
+    fetchImpl,
+  );
+  return body.policies;
+}
+
 // --- Governed write actions (RFC-003) ---
 //
 // The UI only triggers governed actions; the Policy Engine decides. These
@@ -176,6 +219,13 @@ export interface ExecutionOutcome {
   /** Set on a denial (403: "forbidden") or execution failure (422). */
   readonly code?: string;
   readonly message?: string;
+}
+
+export interface RuntimeProjectOutput {
+  readonly agentId: string;
+  readonly version: number;
+  readonly allowedTools: readonly string[];
+  readonly configPath: string;
 }
 
 async function postJson<T>(
@@ -264,6 +314,26 @@ export function updateAgentConfig(
   fetchImpl: typeof fetch = fetch,
 ): Promise<ExecutionOutcome> {
   return executeCapability(baseUrl, sphereId, "agent.update_config", subject, input, fetchImpl);
+}
+
+export function managePolicy(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  policy: SpherePolicy,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "policy.manage", subject, { policy }, fetchImpl);
+}
+
+export function projectAgentRuntimeConfig(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  input: { readonly agentId: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "runtime.config.project", subject, input, fetchImpl);
 }
 
 // --- Runtime config projection preview (RFC-007/ADR-007) ---
@@ -572,6 +642,40 @@ export async function setRuntime(
   );
   if (status === 200 || status === 403) return body;
   throw new Error(`set runtime failed: ${status}`);
+}
+
+export interface HarnessTerminalGrant {
+  /** Single-use attach ticket; undefined on a denial. Never persisted or logged. */
+  readonly ticket?: string;
+  readonly expiresAt?: string;
+  readonly agentId?: string;
+  /** Set on a denial (HTTP 403): "forbidden". */
+  readonly code?: string;
+  readonly message?: string;
+}
+
+/**
+ * Ask the API to authorize attaching a terminal to an agent's governed Harness
+ * profile (ADR-008 §6). The Policy Engine decides; a denial (403) is a governed
+ * outcome and is returned, not thrown. The returned ticket is single-use and
+ * short-lived — it is handed straight to the bridge and never stored.
+ */
+export async function openHarnessTerminal(
+  baseUrl: string,
+  sphereId: string,
+  agentId: string,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<HarnessTerminalGrant> {
+  const { status, body } = await postJson<HarnessTerminalGrant>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/agents/${encodeURIComponent(agentId)}/runtime/tui`,
+    { subject },
+    fetchImpl,
+  );
+  if (status === 200 || status === 403) return body;
+  if (status === 501) return { code: "not_implemented", message: "The Harness terminal is not enabled on this deployment." };
+  throw new Error(`open harness terminal failed: ${status}`);
 }
 
 export interface SetAgentModelOutcome {

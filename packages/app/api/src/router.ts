@@ -19,7 +19,9 @@ import {
   bootstrapPolicies,
   createRuntimeProfile,
   createSession,
+  createTuiTicket,
   defaultCapabilityCatalog,
+  defaultAdminPolicies,
   defaultStoreCatalog,
   disableIntegration,
   disablePackage,
@@ -50,6 +52,7 @@ import {
   type RuntimeProviderId,
   type SessionStore,
   type SphereStore,
+  type TuiTicketStore,
 } from "@kinos/core";
 
 export interface ApiDeps {
@@ -66,6 +69,14 @@ export interface ApiDeps {
   readonly newSessionId?: () => string;
   /** Agent runtime for chat turns. Absent → the turn endpoint is disabled. */
   readonly runtime?: AgentRuntime;
+  /**
+   * Single-use tickets for attaching a terminal to an agent's governed Harness
+   * profile (ADR-008 §6). Absent → the Harness terminal is disabled entirely
+   * (deny by default: no store, no attach).
+   */
+  readonly tuiTickets?: TuiTicketStore;
+  /** Mints a ticket value; the app layer supplies a CSPRNG. */
+  readonly newTuiTicket?: () => string;
   /** Injectable clock for the execution context; defaults to wall-clock. */
   readonly now?: () => string;
 }
@@ -96,6 +107,45 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
   });
 
   const segments = req.path.split("/").filter((s) => s.length > 0);
+  /**
+   * Backfill admin seed policies onto Spheres provisioned before a seed existed,
+   * so an administrator is not locked out of their own Sphere by a seed set that
+   * has grown since (RFC-008 seeds are ordinary policies, not hidden privilege).
+   *
+   * Anchored on seed lineage, never fabricating authority: the backfill applies
+   * ONLY to a Sphere that still carries the `admin_provisioning` seed, proving it
+   * was created by RFC-008 provisioning and merely predates the newer seeds. A
+   * Sphere with no policies — or one whose admin seed was removed — is left
+   * untouched and stays denied by default (invariant: deny by default; a missing
+   * policy is never read as permission). Only *missing* seeds are added, nothing
+   * is widened beyond today's seed, and every call is still policy-checked.
+   */
+  const withAdminSeedMigration = (
+    sphereId: string,
+    policies: ReturnType<typeof importSphere>["policies"],
+    capabilityName = "runtime.config.project",
+  ) => {
+    const seeded = policies.some((p) => p.id === `pol_${sphereId}_admin_provisioning`);
+    const missing = seeded
+      ? defaultAdminPolicies(sphereId).filter((seed) => !policies.some((p) => p.id === seed.id))
+      : [];
+    let migrated = [...policies, ...missing];
+    if (capabilityName === "policy.manage") {
+      const id = `pol_${sphereId}_admin_provisioning`;
+      migrated = migrated.map((policy) =>
+        policy.id === id && policy.version === 1 && !policy.resourceSelector.capabilityNames?.includes("policy.manage")
+          ? {
+              ...policy,
+              resourceSelector: {
+                ...policy.resourceSelector,
+                capabilityNames: [...(policy.resourceSelector.capabilityNames ?? []), "policy.manage"],
+              },
+            }
+          : policy,
+      );
+    }
+    return migrated;
+  };
 
   // --- Governed provisioning: create a Sphere (RFC-008, api-contract §Sphere) ---
   // POST /spheres  { subject, input: { name, type?, founderName?, founderRole? } }
@@ -201,6 +251,9 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     }
 
     const imported = importSphere(snap);
+    const effectivePolicies = capabilityName === "runtime.config.project" || capabilityName === "policy.manage"
+      ? withAdminSeedMigration(sphereId, imported.policies, capabilityName)
+      : imported.policies;
     const request: CapabilityExecutionRequest = {
       subject,
       capabilityName,
@@ -228,7 +281,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         // (RFC-008) bind to the local executor's runtime.*/provisioning.* tools;
         // add their bindings so they run through this same governed pipeline.
         bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings()],
-        policies: imported.policies,
+        policies: effectivePolicies,
         executor: deps.executor,
         audit: deps.auditSink,
         newApprovalId: deps.newApprovalId,
@@ -310,7 +363,15 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         {
           catalog: defaultCapabilityCatalog(),
           bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings()],
-          policies: imported.policies,
+          // Same effective policy set the request was checked against when it was
+          // suspended. Without the backfill an action could be authorized, wait
+          // for approval, then be denied at grant time on a Sphere whose seed set
+          // predates the capability — the approval would be unresolvable.
+          policies: withAdminSeedMigration(
+            pending.approval.sphereId,
+            imported.policies,
+            pending.request.capabilityName,
+          ),
           executor: deps.executor,
           audit: deps.auditSink,
           newApprovalId: () => approvalId,
@@ -372,7 +433,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         resource: { type: "capability", capabilityName: "runtime.set_provider", riskLevel: "high" },
         context: { sphereId, time: stamp, execution: "local", correlationId },
       },
-      imported.policies,
+      withAdminSeedMigration(sphereId, imported.policies, "runtime.set_provider"),
     );
     if (decision.effect !== "allow") {
       deps.auditSink.record({
@@ -478,7 +539,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         resource: { type: "capability", capabilityName: "model.set", riskLevel: "medium" },
         context: { sphereId, time: stamp, execution: "local", correlationId },
       },
-      imported.policies,
+      withAdminSeedMigration(sphereId, imported.policies, "model.set"),
     );
     if (decision.effect !== "allow") {
       deps.auditSink.record({
@@ -567,7 +628,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         resource: { type: "integration", id: integrationId, capabilityName, riskLevel: "high" },
         context: { sphereId, time: stamp, execution: "local", correlationId },
       },
-      imported.policies,
+      withAdminSeedMigration(sphereId, imported.policies, capabilityName),
     );
     if (decision.effect !== "allow") {
       return err(403, "forbidden", decision.reason);
@@ -633,7 +694,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         resource: { type: "capability", capabilityName: "package.install", riskLevel: "high" },
         context: { sphereId, time: stamp, execution: "local", correlationId },
       },
-      imported.policies,
+      withAdminSeedMigration(sphereId, imported.policies, "package.install"),
     );
     if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
 
@@ -706,7 +767,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         resource: { type: "capability", capabilityName, riskLevel: "high" },
         context: { sphereId, time: stamp, execution: "local", correlationId },
       },
-      imported.policies,
+      withAdminSeedMigration(sphereId, imported.policies, capabilityName),
     );
     if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
 
@@ -847,6 +908,122 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
   }
 
   // --- RFC-007/ADR-007: preview an agent's governed runtime config projection ---
+  // POST /spheres/:id/agents/:aid/runtime/tui  { subject }
+  // Mint a single-use ticket authorizing a terminal attach to the agent's
+  // governed Harness profile (ADR-008 §6). This endpoint is the authorization
+  // boundary: the Harness-side bridge only redeems, it never decides.
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 6 &&
+    segments[2] === "agents" &&
+    segments[4] === "runtime" &&
+    segments[5] === "tui"
+  ) {
+    if (deps.tuiTickets === undefined || deps.newTuiTicket === undefined || deps.auditSink === undefined) {
+      return err(501, "not_implemented", "The Harness terminal is not enabled on this deployment");
+    }
+    const sphereId = segments[1] as string;
+    const agentId = segments[3] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    if (snap.agents.find((a) => a.id === agentId) === undefined) return err(404, "not_found", "Agent not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: PolicyRequest["subject"];
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    const cap = defaultCapabilityCatalog().get("runtime.session.attach");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "runtime.session.attach is not allowed for this profile");
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "capability", capabilityName: "runtime.session.attach", riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      withAdminSeedMigration(sphereId, importSphere(snap).policies, "runtime.session.attach"),
+    );
+    if (decision.effect !== "allow") {
+      deps.auditSink.record({
+        type: "capability.denied",
+        sphereId,
+        agentId,
+        resourceType: "capability",
+        resourceId: "runtime.session.attach",
+        decision: "deny",
+        reason: decision.reason,
+        correlationId,
+        createdAt: stamp,
+        ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+        ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+        ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+      });
+      return err(403, "forbidden", decision.reason);
+    }
+
+    const ticket = createTuiTicket({
+      value: deps.newTuiTicket(),
+      sphereId,
+      agentId,
+      correlationId,
+      now: stamp,
+    });
+    deps.tuiTickets.issue(ticket);
+    // Security fact only: that an attach was authorized, never the ticket value.
+    deps.auditSink.record({
+      type: "capability.executed",
+      sphereId,
+      agentId,
+      resourceType: "capability",
+      resourceId: "runtime.session.attach",
+      decision: "executed",
+      reason: "harness terminal attach authorized",
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+    });
+    return ok({ status: "executed", ticket: ticket.value, expiresAt: ticket.expiresAt, agentId, correlationId });
+  }
+
+  // POST /tui/redeem  { ticket }
+  // Redeemed by the Harness-side bridge, which presents a ticket and is told
+  // which profile it may open. It receives an agent id, never a filesystem path,
+  // and no authorization is computed here — the decision already happened at
+  // mint time (ADR-008 §5: the Harness is never the governance boundary).
+  if (req.method === "POST" && segments.length === 2 && segments[0] === "tui" && segments[1] === "redeem") {
+    if (deps.tuiTickets === undefined || deps.auditSink === undefined) {
+      return err(501, "not_implemented", "The Harness terminal is not enabled on this deployment");
+    }
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as { ticket?: unknown };
+    if (typeof body.ticket !== "string" || body.ticket === "") {
+      return err(400, "invalid_request", "A ticket is required");
+    }
+    const redeemed = deps.tuiTickets.redeem(body.ticket);
+    // Unknown, expired or replayed all look identical from outside — a refusal
+    // must not tell an attacker which of the three it was.
+    if (redeemed === undefined) return err(403, "forbidden", "Invalid or expired ticket");
+    deps.auditSink.record({
+      type: "runtime.session.attached",
+      sphereId: redeemed.sphereId,
+      agentId: redeemed.agentId,
+      resourceType: "agent",
+      resourceId: redeemed.agentId,
+      decision: "executed",
+      reason: "harness terminal attached",
+      correlationId: redeemed.correlationId,
+      createdAt: (deps.now ?? (() => new Date().toISOString()))(),
+    });
+    return ok({ agentId: redeemed.agentId, sphereId: redeemed.sphereId, correlationId: redeemed.correlationId });
+  }
+
   // POST /spheres/:id/agents/:aid/runtime/projection  { subject }
   // Read/compute only (no mutation, no token minted) — the exact governed config
   // that would be written to the agent's runtime profile. Admin-gated.
@@ -879,6 +1056,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
       return err(403, "forbidden", "runtime.config.project is not allowed for this profile");
     }
+    const effectivePolicies = withAdminSeedMigration(sphereId, importSphere(snap).policies);
     const decision = evaluate(
       {
         subject,
@@ -886,7 +1064,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         resource: { type: "capability", capabilityName: "runtime.config.project", riskLevel: "high" },
         context: { sphereId, time: stamp, execution: "local", correlationId },
       },
-      importSphere(snap).policies,
+      effectivePolicies,
     );
     if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
 
@@ -1079,6 +1257,11 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         })),
       });
     }
+    if (segments.length === 3 && segments[2] === "policies") {
+      const snap = await deps.store.load(segments[1] as string);
+      if (snap === undefined) return err(404, "not_found", "Sphere not found");
+      return ok({ policies: importSphere(snap).policies });
+    }
     if (segments.length === 3 && segments[2] === "runtime") {
       // RFC-004: the resolved inference profile a Sphere would use (no secrets).
       const snap = await deps.store.load(segments[1] as string);
@@ -1098,6 +1281,17 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         cloudInferenceEnabled: runtimeConfig.cloudInferenceEnabled,
         allowedProviders: runtimeConfig.allowedProviders,
         allowed,
+        // Hermes is the sole Harness (ADR-008 §3) — there is nothing to select,
+        // so this reports it rather than reading a harness switch. The
+        // provider/model it runs on are the *governed* ones (RFC-004/009)
+        // projected into its profile, never a Harness-local or env default
+        // (ADR-008 §4); only the address of the Harness itself is deployment.
+        harness: {
+          runtime: "hermes",
+          provider: profile.providerId,
+          model: profile.model,
+          baseUrl: process.env["HERMES_BASE_URL"] ?? "http://hermes:8642/v1",
+        },
       });
     }
   }

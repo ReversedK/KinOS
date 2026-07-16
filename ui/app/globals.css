@@ -10,7 +10,8 @@
 
 :root {
   --font-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-sans: "Avenir Next", Avenir, "Gill Sans", "Segoe UI", sans-serif;
+  --font-display: "Iowan Old Style", Baskerville, "Times New Roman", serif;
 
   /* Warm-neutral light canvas. */
   --paper: #f4f2ee;
@@ -91,7 +92,8 @@ body {
 
 a { color: inherit; text-decoration: none; }
 
-h1, h2, h3, h4 { font-family: var(--font-mono); font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+h1, h2 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.025em; margin: 0; }
+h3, h4 { font-family: var(--font-mono); font-weight: 600; letter-spacing: -0.01em; margin: 0; }
 
 code, kbd, samp, .mono { font-family: var(--font-mono); }
 
@@ -138,7 +140,7 @@ code, kbd, samp, .mono { font-family: var(--font-mono); }
 /* ---- Typography roles ----------------------------------------------------- */
 
 .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
-.title { font-size: 20px; }
+.title { font-size: clamp(28px, 4vw, 44px); line-height: 1.05; }
 .subtle { color: var(--ink-2); }
 .faint { color: var(--ink-3); }
 .help { color: var(--ink-2); font-size: 13px; max-width: 62ch; }
@@ -266,3 +268,153 @@ table.grid-table tr:hover td { background: color-mix(in oklab, var(--panel-2) 60
 .reveal:nth-child(4) { animation-delay: 120ms; }
 @keyframes reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .reveal, .spin { animation: none; } }
+
+/* ---- Sphere administration workspace ----------------------------------- */
+
+.admin-shell {
+  display: grid;
+  grid-template-columns: 212px minmax(0, 1fr);
+  gap: var(--s6);
+  align-items: start;
+}
+
+.admin-rail {
+  position: sticky;
+  top: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.sphere-nav { display: flex; flex-direction: column; gap: 3px; }
+.sphere-nav > .eyebrow { padding: 0 10px 9px; }
+.sphere-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-weight: 550;
+  transition: color 140ms, background 140ms, transform 140ms;
+}
+.sphere-nav a span { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+.sphere-nav a:hover { color: var(--brand); background: var(--panel); transform: translateX(3px); }
+
+.actor-card {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.actor-avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand);
+  color: white;
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+.actor-copy { min-width: 0; }
+.actor-copy .eyebrow { display: block; font-size: 9px; }
+.actor-select {
+  width: 100%;
+  border: 0;
+  padding: 2px 0;
+  background: transparent;
+  color: var(--ink);
+  font: 600 12px var(--font-mono);
+  outline: none;
+}
+.actor-card > .badge { grid-column: 1 / -1; justify-content: center; }
+.rail-note { padding: 14px; border-left: 2px solid var(--brand); color: var(--ink-2); font-size: 12px; }
+.rail-note p { margin: 6px 0 0; }
+.admin-content { min-width: 0; }
+.section-anchor { scroll-margin-top: 76px; }
+.section-intro { margin: 0; color: var(--ink-2); max-width: 72ch; }
+
+.rule-builder {
+  padding: var(--s5);
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--brand) 7%, transparent), transparent 55%),
+    var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 45%, transparent);
+}
+.rule-sentence { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: var(--s4); font: 600 16px var(--font-display); }
+.inline-select { width: auto; min-width: 130px; font-family: var(--font-mono); }
+.effect-select { color: var(--brand); }
+.capability-select { min-width: 230px; }
+.compact-field { max-width: 220px; margin-bottom: var(--s4); }
+
+.policy-list { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.policy-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 5px minmax(0, 1fr) auto;
+  gap: var(--s4);
+  padding: var(--s4);
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+.policy-row:first-child { border-top: 0; }
+.policy-row.is-disabled { opacity: .58; }
+.decision-mark { display: block; width: 5px; height: 100%; min-height: 52px; border-radius: 4px; background: var(--ink-3); }
+.decision-mark.allow { background: var(--allow); }
+.decision-mark.deny { background: var(--deny); }
+.decision-mark.require_approval { background: var(--pending); }
+.policy-main { min-width: 0; }
+.policy-main strong { font-size: 13px; }
+.policy-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 7px 0 3px; color: var(--ink-2); font-size: 12px; }
+.policy-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+
+.runtime-explainer {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: var(--s4);
+  padding: var(--s4);
+  background: var(--panel-2);
+  border-radius: var(--radius);
+}
+.runtime-number { font: 500 22px var(--font-display); color: var(--brand); border-right: 1px solid var(--line-strong); }
+
+@media (max-width: 860px) {
+  .admin-shell { grid-template-columns: 1fr; }
+  .admin-rail { position: static; }
+  .sphere-nav { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
+  .sphere-nav > .eyebrow { display: none; }
+  .sphere-nav a { white-space: nowrap; }
+  .actor-card { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .actor-card > .badge { grid-column: auto; }
+  .rail-note { display: none; }
+}
+
+@media (max-width: 620px) {
+  .container { padding: var(--s5) var(--s3) var(--s7); }
+  .topbar { padding: 0 var(--s3); gap: var(--s2); }
+  .brand small, .topbar .badge { display: none; }
+  .policy-row { grid-template-columns: 4px minmax(0, 1fr); }
+  .policy-actions { grid-column: 2; flex-direction: row; align-items: center; }
+  .runtime-explainer { grid-template-columns: 30px minmax(0, 1fr); }
+}
+
+/* --- Harness terminal (ADR-008 §6) ---------------------------------------- */
+/* The agent's real TUI, so the surface is a terminal rather than a chat log:
+   it renders whatever Hermes draws, unstyled by the console. */
+.tui-host {
+  min-height: 26rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r2, 6px);
+  background: #0b0d10;
+  padding: var(--s3, 12px);
+  overflow: hidden;
+}
+.tui-host:empty { display: none; }

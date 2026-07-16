@@ -44,6 +44,8 @@ export type KinEventType =
   | "runtime.token.revoked"
   | "runtime.session.backed_up"
   | "runtime.session.restored"
+  /** A terminal was attached to an agent's governed Harness profile (ADR-008 §6). */
+  | "runtime.session.attached"
   | "external_transfer.requested"
   | "external_transfer.allowed"
   | "external_transfer.denied";

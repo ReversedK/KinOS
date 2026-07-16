@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { RuntimeConfigProjection } from "@kinos/core";
 import {
+  HERMES_MIN_CONTEXT_LENGTH,
   SPHERE_MCP_TOKEN_ENV,
+  mergeHermesConfig,
+  mergeHermesEnv,
   projectionToHermesConfig,
   toYaml,
   writeHermesProfile,
@@ -43,6 +46,34 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
     expect(yaml).not.toMatch(/sk-[A-Za-z0-9]/);
   });
 
+  it("carries the governed provider/model into the Hermes model block (ADR-008 §4)", () => {
+    const governed: RuntimeConfigProjection = {
+      ...projection,
+      profile: { providerId: "ollama", model: "gemma4-128k", execution: "local", baseUrl: "http://host.docker.internal:11434" },
+    };
+    const cfg = projectionToHermesConfig(governed);
+    expect(cfg.model.default).toBe("gemma4-128k");
+    expect(cfg.model.provider).toBe("ollama");
+    // Hermes' ollama provider speaks /v1; a bare :11434 base_url 404s.
+    expect(cfg.model.base_url).toBe("http://host.docker.internal:11434/v1");
+    // Hermes refuses <64K; a projected profile without it is rejected.
+    expect(cfg.model.context_length).toBe(HERMES_MIN_CONTEXT_LENGTH);
+  });
+
+  it("does not double-suffix a base URL that already ends in /v1", () => {
+    const governed: RuntimeConfigProjection = {
+      ...projection,
+      profile: { providerId: "ollama", model: "m", execution: "local", baseUrl: "http://ollama:11434/v1/" },
+    };
+    expect(projectionToHermesConfig(governed).model.base_url).toBe("http://ollama:11434/v1");
+  });
+
+  it("serializes context_length as a YAML number, not a quoted string", () => {
+    const yaml = toYaml(projectionToHermesConfig(projection));
+    expect(yaml).toContain(`context_length: ${HERMES_MIN_CONTEXT_LENGTH}`);
+    expect(yaml).not.toContain(`context_length: "${HERMES_MIN_CONTEXT_LENGTH}"`);
+  });
+
   it("references a cloud provider key by env var when the profile is cloud", () => {
     const cloud: RuntimeConfigProjection = {
       ...projection,
@@ -57,27 +88,66 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
     const written: Record<string, string> = {};
     const fs: HermesFsPort = {
       async mkdir() {},
+      async readFile() {
+        return undefined;
+      },
       async writeFile(p, c) {
         written[p] = c;
       },
     };
     const path = await writeHermesProfile(projection, { home: "/opt/data/", fs, token: "tok-secret-value" });
-    expect(path).toBe("/opt/data/agt_0/config.yaml");
-    expect(written["/opt/data/agt_0/config.yaml"]).toContain("sphere:");
+    expect(path).toBe("/opt/data/profiles/agt_0/config.yaml");
+    expect(written["/opt/data/profiles/agt_0/config.yaml"]).toContain("sphere:");
     // The token value lands ONLY in the profile .env, never in config.yaml.
-    expect(written["/opt/data/agt_0/.env"]).toBe(`${SPHERE_MCP_TOKEN_ENV}=tok-secret-value\n`);
-    expect(written["/opt/data/agt_0/config.yaml"]).not.toContain("tok-secret-value");
+    expect(written["/opt/data/profiles/agt_0/.env"]).toBe(`${SPHERE_MCP_TOKEN_ENV}=tok-secret-value\n`);
+    expect(written["/opt/data/profiles/agt_0/config.yaml"]).not.toContain("tok-secret-value");
   });
 
   it("a preview (no token) writes config.yaml only — no .env, no secret on disk", async () => {
     const written: Record<string, string> = {};
     const fs: HermesFsPort = {
       async mkdir() {},
+      async readFile() {
+        return undefined;
+      },
       async writeFile(p, c) {
         written[p] = c;
       },
     };
     await writeHermesProfile(projection, { home: "/opt/data", fs });
-    expect(Object.keys(written)).toEqual(["/opt/data/agt_0/config.yaml"]);
+    expect(Object.keys(written)).toEqual(["/opt/data/profiles/agt_0/config.yaml"]);
+  });
+
+  it("merges governed sections into an existing Hermes config without erasing channel settings", () => {
+    const existing = [
+      "platforms:",
+      "  telegram:",
+      "    enabled: true",
+      "telegram:",
+      "  allowed_chats: \"1234\"",
+      "mcp_servers:",
+      "  github:",
+      "    url: https://example.test/mcp",
+      "    enabled: true",
+      "native_tools:",
+      "  allow:",
+      "    - shell",
+      "",
+    ].join("\n");
+    const merged = mergeHermesConfig(existing, projection);
+    expect(merged).toContain("platforms:");
+    expect(merged).toContain("telegram:");
+    expect(merged).toContain('allowed_chats: "1234"');
+    expect(merged).toContain("sphere:");
+    expect(merged).not.toContain("github:");
+  });
+
+  it("merges the Sphere MCP token into an existing .env without dropping Hermes credentials", () => {
+    const merged = mergeHermesEnv("TELEGRAM_BOT_TOKEN=tg-secret\nOPENAI_API_KEY=sk-live\n", {
+      [SPHERE_MCP_TOKEN_ENV]: "tok-secret-value",
+    });
+    expect(merged).toContain("TELEGRAM_BOT_TOKEN=tg-secret\n");
+    expect(merged).toContain("OPENAI_API_KEY=sk-live\n");
+    expect(merged).toContain(`${SPHERE_MCP_TOKEN_ENV}=tok-secret-value\n`);
   });
 });

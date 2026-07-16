@@ -11,8 +11,8 @@ for local-first inference behind KinOS:
     context_length override because Hermes requires >=64K and Ollama may report a
     smaller window than the model's real one;
   * enables the `api_server` gateway platform so `hermes gateway run` exposes the
-    OpenAI-compatible server on :8642 that KinOS' AgentRuntime (OpenAI adapter,
-    KINOS_RUNTIME=hermes) calls. The Bearer key comes from API_SERVER_KEY (env).
+    OpenAI-compatible server on :8642 that KinOS' AgentRuntime (OpenAI adapter)
+    calls. The Bearer key comes from API_SERVER_KEY (env).
 
 Idempotent: safe to re-run. Model backend is overridable via env so a deployment
 can point Hermes at a different Ollama/model without editing this file:
@@ -20,9 +20,12 @@ can point Hermes at a different Ollama/model without editing this file:
   (default http://host.docker.internal:11434/v1), HARNESS_MODEL_CONTEXT (65536,
   Hermes' minimum; higher costs more KV cache and a slower cold start).
 
-This configures the SINGLE default `hermes-agent` profile (Harness-as-inference).
-Per-agent projected profiles + the Sphere-MCP tool callback (the full RFC-007
-governed loop) are layered on top by KinOS' runtime.config.project, not here.
+This configures ONLY the SINGLE default `hermes-agent` profile, so the container
+has a working backend on first boot before any projection exists. It is NOT where
+an agent's provider/model is decided: that is the governed RFC-004/009 choice,
+written into the agent's own profile by KinOS' runtime.config.project (ADR-008
+§4), which also layers on the Sphere-MCP tool callback (the RFC-007 governed
+loop). A per-agent profile always wins over this default.
 """
 import os
 import re

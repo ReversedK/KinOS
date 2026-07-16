@@ -98,7 +98,7 @@ describe("RuntimeProfile (RFC-004)", () => {
         createRuntimeProfile({ providerId: "ollama", model: "mistral", execution: "local" }),
       );
       expect(next.defaultProfile.model).toBe("mistral");
-      expect(config.defaultProfile.model).toBe("llama3.2"); // original unchanged
+      expect(config.defaultProfile.model).toBe("gemma4-128k"); // original unchanged
       expect(next.allowedProviders).toEqual(config.allowedProviders);
     });
 

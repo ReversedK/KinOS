@@ -190,6 +190,14 @@ Restore an agent's runtime working state from a snapshot, overwriting current ru
 
 Risk: high. Admin/owner-only. Approval floor applies.
 
+### runtime.session.attach
+
+Attach an interactive terminal to an agent's governed Harness profile — the real-condition test path (ADR-008 §6, RFC-010). The session runs *as the agent*: on the model KinOS decided and reaching capabilities only through the Sphere MCP, where each call is policy-checked again. Attaching is not authorizing, and it never widens the agent's surface.
+
+Authorization is decided here, before any terminal exists; the Harness only redeems a single-use ticket and is told which agent it may open, never a path. Audit records that an attach was authorized and that one happened — never the ticket value and never session content.
+
+Risk: high. Admin/owner-only, adult-only.
+
 ## Forbidden MVP capabilities for minors by default
 
 These are denied for child profiles by default and require explicit, audited authorization to enable for teens. Absence of an explicit allow keeps them denied.

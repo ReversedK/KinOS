@@ -26,6 +26,7 @@ import {
   pauseAgent,
   type AuditSink,
   type KinEventType,
+  type Policy,
   type Role,
   type SphereExport,
   type SphereStore,
@@ -290,4 +291,56 @@ export async function updateAgentProvision(
   await deps.store.save(reexport(imported, { agents }, at));
   audit(deps, "agent.updated", input.sphereId, agent.id, input.correlationId, at);
   return { agentId: agent.id, enabledCapabilities: agent.enabledCapabilities, state: agent.state };
+}
+
+// --- policy.manage ---------------------------------------------------------
+
+export interface ManagePolicyInput {
+  readonly sphereId?: string;
+  readonly policy?: Policy;
+  readonly correlationId?: string;
+}
+
+export interface ManagePolicyResult {
+  readonly policyId: string;
+  readonly version: number;
+  readonly status: Policy["status"];
+}
+
+/** Persist one complete, versioned policy after the governed admin check. */
+export async function managePolicyProvision(
+  deps: ProvisioningDeps,
+  input: ManagePolicyInput,
+): Promise<ManagePolicyResult> {
+  if (input.sphereId === undefined) throw new Error("sphereId is required");
+  if (input.policy === undefined) throw new Error("A policy is required");
+  if (input.policy.sphereId !== input.sphereId) throw new Error("Policy Sphere does not match the request Sphere");
+  if (input.policy.id.trim() === "" || input.policy.description.trim() === "") {
+    throw new Error("Policy id and description are required");
+  }
+  if (input.policy.action !== "execute" && input.policy.action !== "any") {
+    throw new Error("The admin UI currently manages execute policies only");
+  }
+  if ((input.policy.resourceSelector.capabilityNames?.length ?? 0) === 0) {
+    throw new Error("A managed policy must target at least one capability");
+  }
+  if (input.policy.effect === "require_approval" && (input.policy.approverRoles?.length ?? 0) === 0) {
+    throw new Error("An approval policy requires at least one approver role");
+  }
+
+  const imported = importSphere(await loadOrThrow(deps, input.sphereId));
+  const previous = imported.policies.find((policy) => policy.id === input.policy?.id);
+  if (previous !== undefined && input.policy.version <= previous.version) {
+    throw new Error(`Policy ${input.policy.id} version must be greater than ${previous.version}`);
+  }
+  const policies = previous === undefined
+    ? [...imported.policies, input.policy]
+    : imported.policies.map((policy) => policy.id === input.policy?.id ? input.policy as Policy : policy);
+  const at = nowOf(deps);
+  await deps.store.save(reexport(imported, { policies }, at));
+  const eventType: KinEventType = input.policy.status === "disabled"
+    ? "policy.disabled"
+    : previous === undefined ? "policy.created" : "policy.activated";
+  audit(deps, eventType, input.sphereId, input.policy.id, input.correlationId, at);
+  return { policyId: input.policy.id, version: input.policy.version, status: input.policy.status };
 }

@@ -8,6 +8,7 @@ import {
   createApprovalFromDecision,
   createIntegration,
   createSphere,
+  TuiTicketStore,
   defaultAdminPolicies,
   exportSphere,
   type CapabilityBinding,
@@ -19,6 +20,18 @@ import {
 import { handleApiRequest, type ApiDeps } from "./router.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
+
+/**
+ * The RFC-008 admin_provisioning seed — the lineage marker proving a Sphere was
+ * created by governed provisioning. The admin seed backfill is anchored on it, so
+ * a Sphere that predates a newer seed still gets it while a Sphere with no
+ * policies is left denied by default.
+ */
+function adminProvisioningSeed(sphereId: string): Policy {
+  const seed = defaultAdminPolicies(sphereId).find((p) => p.id === `pol_${sphereId}_admin_provisioning`);
+  if (seed === undefined) throw new Error("admin_provisioning seed not found");
+  return seed;
+}
 
 async function deps(): Promise<ApiDeps & { audit: InMemoryAuditSink; approvals: InMemoryApprovalStore }> {
   const store = new InMemorySphereStore();
@@ -155,6 +168,8 @@ describe("API router (api-contract.md)", () => {
       execution: "local",
       cloudInferenceEnabled: false,
       allowed: true,
+      // Hermes is the sole Harness; the provider/model are the governed ones.
+      harness: { runtime: "hermes", provider: "ollama", model: "gemma4-128k" },
     });
   });
 });
@@ -295,6 +310,20 @@ describe("API router — capability execution (write path)", () => {
     expect(grant.status).toBe(200);
     expect(grant.body).toMatchObject({ capability: "runtime.config.project", status: "executed" });
     expect(calls()).toBe(1); // the runtime.project executor tool ran on grant
+  });
+
+  it("backfills the default admin runtime-governance seed for runtime.config.project execution when missing from the snapshot", async () => {
+    // A Sphere provisioned before the runtime-governance seed existed: it still
+    // carries the admin_provisioning seed, which is the lineage the backfill is
+    // anchored on. A Sphere with no policies at all is never backfilled.
+    const { deps, approvals, calls } = await execDeps([adminProvisioningSeed("sph_1")], []);
+    const begin = await handleApiRequest(
+      { method: "POST", path: execPath("runtime.config.project"), body: { subject: adult, input: { sphereId: "sph_1", agentId: "agt_0" } } },
+      deps,
+    );
+    expect(begin.status).toBe(202);
+    expect(calls()).toBe(0);
+    expect(await approvals.listPending("sph_1")).toHaveLength(1);
   });
 
   it("runtime.session.backup executes directly (no approval floor) and surfaces its output", async () => {
@@ -1026,6 +1055,33 @@ describe("API router — runtime config projection preview (RFC-007/ADR-007)", (
     expect(b.autonomousInstallDisabled).toBe(true);
   });
 
+  it("backfills the default admin runtime-governance seed for projection preview when missing from the snapshot", async () => {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A" });
+    await store.save(
+      exportSphere({
+        sphere,
+        identities: [],
+        agents: [agent],
+        memory: [],
+        policies: [allowSearchForParents, adminProvisioningSeed("sph_1")],
+        bindings: [searchBinding],
+        exportedAt: NOW,
+      }),
+    );
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/agents/agt_0/runtime/projection", body: adult },
+      { store, approvals: new InMemoryApprovalStore(), audit: new InMemoryAuditSink(), newCorrelationId: () => "req_seed" },
+    );
+    expect(res.status).toBe(200);
+  });
+
   it("denies a minor caller (deny by default)", async () => {
     const res = await handleApiRequest(
       { method: "POST", path: "/spheres/sph_1/agents/agt_0/runtime/projection", body: { subject: { role: "child", ageProfile: "child" } } },
@@ -1145,5 +1201,120 @@ describe("API router — set an agent's default model", () => {
     const { deps } = await modelDeps();
     const res = await handleApiRequest({ method: "POST", path: modelPath, body: { subject: adminSubject, model: "  " } }, deps);
     expect(res.status).toBe(400);
+  });
+});
+
+// --- Harness terminal attach (ADR-008 §6) ------------------------------------
+
+describe("API router — Harness terminal attach (ADR-008 §6)", () => {
+  const tuiPath = "/spheres/sph_1/agents/agt_0/runtime/tui";
+  const adminSubject = { memberId: "mbr_p1", role: "parent", ageProfile: "adult" };
+
+  async function tuiDeps(policies: Policy[] = [adminProvisioningSeed("sph_1")]): Promise<
+    ApiDeps & { tickets: TuiTicketStore; audit: InMemoryAuditSink }
+  > {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({
+      id: "sph_1",
+      type: "family",
+      name: "Doe",
+      founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
+    });
+    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A" });
+    await store.save(exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies, exportedAt: NOW }));
+    const audit = new InMemoryAuditSink();
+    const tickets = new TuiTicketStore(() => NOW);
+    let n = 0;
+    let t = 0;
+    return {
+      store,
+      approvals: new InMemoryApprovalStore(),
+      audit,
+      auditSink: audit,
+      tuiTickets: tickets,
+      newTuiTicket: () => `tkt_${++t}`,
+      newCorrelationId: () => `req_${++n}`,
+      now: () => NOW,
+      tickets,
+    };
+  }
+
+  it("mints a single-use ticket for an administrator", async () => {
+    const deps = await tuiDeps();
+    const res = await handleApiRequest({ method: "POST", path: tuiPath, body: { subject: adminSubject } }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "executed", ticket: "tkt_1", agentId: "agt_0" });
+  });
+
+  it("denies a Sphere with no admin seed by default (no policy allows attach)", async () => {
+    const deps = await tuiDeps([]);
+    const res = await handleApiRequest({ method: "POST", path: tuiPath, body: { subject: adminSubject } }, deps);
+    expect(res.status).toBe(403);
+  });
+
+  it("denies a minor by the catalog profile floor, before any policy", async () => {
+    const deps = await tuiDeps();
+    const res = await handleApiRequest(
+      { method: "POST", path: tuiPath, body: { subject: { memberId: "mbr_t1", role: "teenager", ageProfile: "teen" } } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("denies a non-administrator (guest) by default", async () => {
+    const deps = await tuiDeps();
+    const res = await handleApiRequest(
+      { method: "POST", path: tuiPath, body: { subject: { memberId: "mbr_g1", role: "guest", ageProfile: "adult" } } },
+      deps,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("404s for an unknown agent rather than minting a ticket", async () => {
+    const deps = await tuiDeps();
+    const res = await handleApiRequest(
+      { method: "POST", path: "/spheres/sph_1/agents/agt_nope/runtime/tui", body: { subject: adminSubject } },
+      deps,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("audits that an attach was authorized, and never the ticket value", async () => {
+    const deps = await tuiDeps();
+    await handleApiRequest({ method: "POST", path: tuiPath, body: { subject: adminSubject } }, deps);
+    const { events } = deps.audit;
+    const attach = events.find((e) => e.resourceId === "runtime.session.attach");
+    expect(attach).toMatchObject({ decision: "executed" });
+    expect(JSON.stringify(events)).not.toContain("tkt_1");
+  });
+
+  it("redeems a ticket once, returning the agent id and never a path", async () => {
+    const deps = await tuiDeps();
+    await handleApiRequest({ method: "POST", path: tuiPath, body: { subject: adminSubject } }, deps);
+    const res = await handleApiRequest({ method: "POST", path: "/tui/redeem", body: { ticket: "tkt_1" } }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ agentId: "agt_0", sphereId: "sph_1" });
+    expect(JSON.stringify(res.body)).not.toContain("/");
+  });
+
+  it("refuses a replayed ticket (single use)", async () => {
+    const deps = await tuiDeps();
+    await handleApiRequest({ method: "POST", path: tuiPath, body: { subject: adminSubject } }, deps);
+    await handleApiRequest({ method: "POST", path: "/tui/redeem", body: { ticket: "tkt_1" } }, deps);
+    const replay = await handleApiRequest({ method: "POST", path: "/tui/redeem", body: { ticket: "tkt_1" } }, deps);
+    expect(replay.status).toBe(403);
+  });
+
+  it("refuses a ticket that was never issued", async () => {
+    const deps = await tuiDeps();
+    const res = await handleApiRequest({ method: "POST", path: "/tui/redeem", body: { ticket: "tkt_forged" } }, deps);
+    expect(res.status).toBe(403);
+  });
+
+  it("is disabled (501) when no ticket store is wired — deny by default", async () => {
+    const deps = await tuiDeps();
+    const { tuiTickets: _omitted, ...withoutTickets } = deps;
+    const res = await handleApiRequest({ method: "POST", path: tuiPath, body: { subject: adminSubject } }, withoutTickets);
+    expect(res.status).toBe(501);
   });
 });

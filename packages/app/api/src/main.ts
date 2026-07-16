@@ -8,10 +8,10 @@
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chown, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { PROVISIONING_TOOLS, RUNTIME_GOVERNANCE_TOOLS, type AgentRuntime } from "@kinos/core";
+import { PROVISIONING_TOOLS, RUNTIME_GOVERNANCE_TOOLS, TuiTicketStore, type AgentRuntime } from "@kinos/core";
 import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
 import {
   FsEncryptedBlobStore,
@@ -23,7 +23,6 @@ import {
   SqliteSphereStore,
 } from "@kinos/persistence-sqlite";
 import type { HermesFsPort } from "@kinos/runtime-hermes";
-import { OllamaRuntime } from "@kinos/runtime-ollama";
 import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
@@ -40,35 +39,38 @@ import {
   createAgentProvision,
   createSphereProvision,
   inviteMemberProvision,
+  managePolicyProvision,
   updateAgentProvision,
   type CreateAgentInput,
   type CreateSphereInput,
   type InviteMemberInput,
+  type ManagePolicyInput,
   type ProvisioningDeps,
   type UpdateAgentInput,
 } from "./provisioning.js";
 
 /**
- * Select the agent runtime. A "boring" swap (coding principle 9): changing the
- * runtime needs no policy, memory or capability migration. Hermes is opt-in via
- * KINOS_RUNTIME=hermes; the default stays local-first Ollama so dev without a
- * Hermes container keeps working.
+ * The Harness's inference backend. Hermes is the sole Harness (ADR-008 §3): an
+ * agent always executes inside it and never on a bare or alternative runtime, so
+ * there is no harness selection here — the choice would be the one thing ADR-008
+ * says the architecture must not offer.
+ *
+ * This is NOT the provider/model choice. Which provider and model the agent runs
+ * on stays an RFC-004/RFC-009 governance decision, projected into the agent's
+ * Hermes profile (`model:` block) by runtime.config.project — Hermes reaches its
+ * own backend (Ollama local, OpenAI cloud) from that projected profile. The layer
+ * below is only how KinOS talks TO Hermes.
  *
  * Hermes exposes an OpenAI-compatible API server (`/v1/chat/completions`,
  * `/v1/models`, Bearer-authenticated by API_SERVER_KEY — verified against the
- * NousResearch/hermes-agent image), so Hermes-as-inference reuses the OpenAI
- * adapter pointed at it. There is no bespoke Hermes runtime. The request `model`
- * selects the Hermes profile (one profile per agent); set the Sphere's model
- * (RFC-004) to the target profile name.
+ * NousResearch/hermes-agent image), so this reuses the OpenAI adapter pointed at
+ * it. There is no bespoke Hermes runtime.
  */
-function selectRuntime(): AgentRuntime {
-  if ((process.env["KINOS_RUNTIME"] ?? "ollama").toLowerCase() === "hermes") {
-    return new OpenAiRuntime({
-      baseUrl: process.env["HERMES_BASE_URL"] ?? "http://localhost:8642/v1",
-      apiKey: process.env["HERMES_API_KEY"] ?? "",
-    });
-  }
-  return new OllamaRuntime();
+function harnessInference(): AgentRuntime {
+  return new OpenAiRuntime({
+    baseUrl: process.env["HERMES_BASE_URL"] ?? "http://localhost:8642/v1",
+    apiKey: process.env["HERMES_API_KEY"] ?? "",
+  });
 }
 
 function ensureDir(path: string): string {
@@ -94,12 +96,39 @@ const blobs = new FsEncryptedBlobStore({ dir: process.env["KINOS_SNAPSHOT_DIR"] 
 
 // Runtime-governance executor deps (RFC-007/ADR-007). Writes each agent's
 // runtime profile under the Hermes home and provisions its Sphere-MCP token.
+//
+// The profile lands on a volume shared with the Hermes container, which runs as
+// HERMES_UID/GID (10000 by default) while this API writes as its own user. Files
+// it cannot read make Hermes fail to open the profile at all, so ownership is
+// handed over on write. Set KINOS_HARNESS_UID/GID to 0 (or anything else) if the
+// deployment runs Hermes as another user; chown failures are non-fatal because a
+// same-user deployment does not need it.
+const harnessUid = Number(process.env["KINOS_HARNESS_UID"] ?? process.env["HERMES_UID"] ?? "10000");
+const harnessGid = Number(process.env["KINOS_HARNESS_GID"] ?? process.env["HERMES_GID"] ?? "10000");
+const handToHarness = async (path: string): Promise<void> => {
+  if (!Number.isFinite(harnessUid) || !Number.isFinite(harnessGid)) return;
+  try {
+    await chown(path, harnessUid, harnessGid);
+  } catch {
+    // Not permitted / not needed (same user, or a non-root API): leave as-is.
+  }
+};
 const nodeFs: HermesFsPort = {
   mkdir: async (p) => {
     await mkdir(p, { recursive: true });
+    await handToHarness(p);
+  },
+  readFile: async (p) => {
+    try {
+      return await readFile(p, "utf8");
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return undefined;
+      throw error;
+    }
   },
   writeFile: async (p, c) => {
     await writeFile(p, c);
+    await handToHarness(p);
   },
 };
 const mcpPublicUrl = (process.env["KINOS_PUBLIC_URL"] ?? `http://localhost:${process.env["KINOS_API_PORT"] ?? "8787"}`).replace(/\/+$/, "");
@@ -109,6 +138,10 @@ const govDeps: RuntimeGovernanceDeps = {
   home: process.env["HERMES_HOME"] ?? "data/hermes",
   fs: nodeFs,
   gatewayEndpoint: (sphereId) => `${mcpPublicUrl}/spheres/${encodeURIComponent(sphereId)}/mcp`,
+  // Where the Harness reaches a local provider when the Sphere's profile does not
+  // pin one. Deployment detail only — the provider/model choice stays governed.
+  providerBaseUrl: (providerId) =>
+    providerId === "ollama" ? (process.env["HARNESS_OLLAMA_URL"] ?? "http://host.docker.internal:11434/v1") : undefined,
   auditSink: audit,
   snapshots,
   blobs,
@@ -144,8 +177,14 @@ const executor = new LocalCapabilityExecutor(
     [PROVISIONING_TOOLS["member.invite"], async (input) => inviteMemberProvision(provDeps, input as InviteMemberInput)],
     [PROVISIONING_TOOLS["agent.create"], async (input) => createAgentProvision(provDeps, input as CreateAgentInput)],
     [PROVISIONING_TOOLS["agent.update_config"], async (input) => updateAgentProvision(provDeps, input as UpdateAgentInput)],
+    [PROVISIONING_TOOLS["policy.manage"], async (input) => managePolicyProvision(provDeps, input as ManagePolicyInput)],
   ]),
 );
+
+// Attach tickets live in memory: they are redeemed seconds after minting, and
+// forgetting them on restart loses nothing durable (unlike memory or policy).
+const tuiTickets = new TuiTicketStore();
+setInterval(() => tuiTickets.prune(), 60_000).unref();
 
 const port = Number(process.env["KINOS_API_PORT"] ?? "8787");
 const server = createApiServer(
@@ -156,7 +195,11 @@ const server = createApiServer(
     auditSink: audit,
     executor,
     sessions,
-    runtime: selectRuntime(),
+    runtime: harnessInference(),
+    // Harness terminal (ADR-008 §6): tickets are minted only after the Policy
+    // Engine allows runtime.session.attach, and redeemed once by the bridge.
+    tuiTickets,
+    newTuiTicket: () => randomBytes(32).toString("hex"),
     newCorrelationId: () => randomUUID(),
     newApprovalId: () => `apr_${randomUUID()}`,
     newSessionId: () => `ses_${randomUUID()}`,

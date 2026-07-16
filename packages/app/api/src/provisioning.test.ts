@@ -14,6 +14,7 @@ import {
   createAgentProvision,
   createSphereProvision,
   inviteMemberProvision,
+  managePolicyProvision,
   updateAgentProvision,
   type ProvisioningDeps,
 } from "./provisioning.js";
@@ -49,10 +50,24 @@ describe("provisioning side effects (RFC-008)", () => {
     expect(snap.sphere.administrators).toEqual([res.founderMemberId]);
     // Admin seed present so administrators can provision within the Sphere.
     expect(snap.policies.some((p) => p.id === "pol_sph_doe_admin_provisioning")).toBe(true);
+    // RFC-007: administrators may govern Hermes runtime projection/state.
+    const runtimePolicy = snap.policies.find((p) => p.id === "pol_sph_doe_admin_runtime_governance");
+    expect(runtimePolicy?.effect).toBe("allow");
+    expect(runtimePolicy?.resourceSelector.capabilityNames).toEqual([
+      "runtime.config.project",
+      "runtime.session.backup",
+      "runtime.session.restore",
+      // ADR-008 §6: attach a terminal to an agent's governed Harness profile.
+      "runtime.session.attach",
+    ]);
     // RFC-009: administrators (founder/owner) may set an agent's default model.
     const modelPolicy = snap.policies.find((p) => p.id === "pol_sph_doe_admin_model");
     expect(modelPolicy?.effect).toBe("allow");
     expect(modelPolicy?.resourceSelector.capabilityNames).toEqual(["model.set"]);
+    // RFC-004/002: administrators may manage provider/model, connectors, packages.
+    const settingsPolicy = snap.policies.find((p) => p.id === "pol_sph_doe_admin_settings");
+    expect(settingsPolicy?.effect).toBe("allow");
+    expect(settingsPolicy?.resourceSelector.capabilityNames).toContain("runtime.set_provider");
     expect(audit.byCorrelation("cor_1").map((e) => e.type)).toContain("sphere.created");
   });
 
@@ -126,6 +141,7 @@ function apiDeps(store: SphereStore): ApiDeps & { audit: InMemoryAuditSink } {
       [PROVISIONING_TOOLS["member.invite"], async (input) => inviteMemberProvision(pd, input as never)],
       [PROVISIONING_TOOLS["agent.create"], async (input) => createAgentProvision(pd, input as never)],
       [PROVISIONING_TOOLS["agent.update_config"], async (input) => updateAgentProvision(pd, input as never)],
+      [PROVISIONING_TOOLS["policy.manage"], async (input) => managePolicyProvision(pd, input as never)],
     ]),
   );
   let c = 0;
@@ -275,5 +291,39 @@ describe("governed provisioning pipeline (RFC-008)", () => {
       deps,
     );
     expect(pay.status).toBe(403);
+  });
+
+  it("lets an administrator create a versioned permission rule through policy.manage", async () => {
+    const store = new InMemorySphereStore();
+    const deps = apiDeps(store);
+    const created = await handleApiRequest(
+      { method: "POST", path: "/spheres", body: { subject: adult, input: { name: "Fam" } } },
+      deps,
+    );
+    const sphereId = (created.body as { output: { sphereId: string } }).output.sphereId;
+    const policy = {
+      id: "pol_custom_calendar",
+      sphereId,
+      description: "Parents may create calendar events.",
+      subjectSelector: { roles: ["parent"] },
+      action: "execute" as const,
+      resourceSelector: { capabilityNames: ["calendar.create_event"] },
+      effect: "allow" as const,
+      priority: 10,
+      version: 1,
+      status: "active" as const,
+    };
+    const managed = await handleApiRequest(
+      {
+        method: "POST",
+        path: `/spheres/${sphereId}/capabilities/policy.manage/execute`,
+        body: { subject: adult, input: { policy } },
+      },
+      deps,
+    );
+    expect(managed.status).toBe(200);
+    const read = await handleApiRequest({ method: "GET", path: `/spheres/${sphereId}/policies` }, deps);
+    expect(read.status).toBe(200);
+    expect((read.body as { policies: readonly { id: string }[] }).policies.some((item) => item.id === policy.id)).toBe(true);
   });
 });

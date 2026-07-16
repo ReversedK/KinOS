@@ -53,6 +53,7 @@ point.
 | Install / remove a package | `package.install` / `package.uninstall` / `package.disable` (RFC-002) | runs the grant wizard; install ≠ authorization |
 | Select provider / model | RFC-004 capabilities | cloud selection = consent + external-transfer rules |
 | Update Sphere settings | `sphere.update_settings` (api-contract §Sphere) | admin-only |
+| Create, activate or disable a rule | `policy.manage` (api-contract §Policy) | admin-only; policies remain versioned and evaluated by the Policy Engine |
 | Manage members / agents | api-contract §Member, §Agent | role-gated |
 | Chat with an agent | RFC-005 `chat.send` | per-member, session-scoped |
 

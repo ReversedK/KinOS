@@ -30,7 +30,7 @@ import {
   type SnapshotStore,
   type SphereStore,
 } from "@kinos/core";
-import { writeHermesProfile, type HermesFsPort } from "@kinos/runtime-hermes";
+import { hermesProfileDir, writeHermesProfile, type HermesFsPort } from "@kinos/runtime-hermes";
 
 export interface RuntimeProjectInput {
   readonly sphereId?: string;
@@ -46,6 +46,15 @@ export interface RuntimeGovernanceDeps {
   readonly fs: HermesFsPort;
   /** The Sphere MCP endpoint the projected config points the agent's runtime at. */
   readonly gatewayEndpoint: (sphereId: string, agentId: string) => string;
+  /**
+   * Deployment fallback for where a provider is reached, used only when the
+   * Sphere's governed profile (RFC-004) does not pin a baseUrl itself. Without it
+   * a projected profile would send the Harness to the provider's default address
+   * — inside the Hermes container, where nothing is listening. It never overrides
+   * an operator's explicit choice and grants nothing: it is an address, not
+   * authorization.
+   */
+  readonly providerBaseUrl?: (providerId: string) => string | undefined;
   readonly auditSink?: AuditSink;
   readonly now?: () => string;
   /** Session backup/restore (RFC-007). Absent → backup/restore unavailable. */
@@ -55,7 +64,7 @@ export interface RuntimeGovernanceDeps {
 }
 
 function profileDir(home: string, agentId: string): string {
-  return `${home.replace(/\/+$/, "")}/${agentId}`;
+  return hermesProfileDir(home, agentId);
 }
 
 async function loadAgent(deps: RuntimeGovernanceDeps, sphereId: unknown, agentId: unknown): Promise<{ sphereId: string; agentId: string }> {
@@ -107,10 +116,18 @@ export async function projectAgentConfig(
   // rotation; the raw value is written only to the profile `.env` below.
   const provisioned = await deps.tokens.provision(sphereId, agentId);
 
+  // Fill in the provider address only where the governed profile left it open.
+  const governedProfile = imported.runtimeConfig.defaultProfile;
+  const fallbackBaseUrl = governedProfile.baseUrl ?? deps.providerBaseUrl?.(governedProfile.providerId);
+  const runtimeConfig =
+    fallbackBaseUrl === undefined || governedProfile.baseUrl !== undefined
+      ? imported.runtimeConfig
+      : { ...imported.runtimeConfig, defaultProfile: { ...governedProfile, baseUrl: fallbackBaseUrl } };
+
   const projection = projectAgentRuntimeConfig({
     agentId,
     subject,
-    runtimeConfig: imported.runtimeConfig,
+    runtimeConfig,
     // The agent's governed default model (RFC-009) must reach its Hermes profile:
     // Hermes runs on exactly the model KinOS decided, not the Sphere default.
     ...(agent.modelPreference !== undefined ? { agentModelPreference: agent.modelPreference } : {}),
