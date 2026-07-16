@@ -222,6 +222,31 @@ export function packageGrantPolicies(manifest: PackageManifest, sphereId: string
 }
 
 /**
+ * Synthesize Capability Bindings for an integration package's provided
+ * capabilities (RFC-016 inc.2). Each binding is `runtime: "custom"` and names the
+ * Sphere Integration by id in `runtimeToolName` — the integration executor
+ * resolves the configured provider from it. Risk comes from the catalog via
+ * `riskFor`. Bindings are mechanism only; the grant policies authorize.
+ */
+export function packageIntegrationBindings(
+  manifest: PackageManifest,
+  integrationId: string,
+  status: "disabled" | "enabled",
+  riskFor: (capability: string) => RiskLevel,
+): CapabilityBinding[] {
+  if (manifest.integration === undefined) return [];
+  return manifest.providesCapabilities.map((capability) => ({
+    capability,
+    runtime: "custom",
+    runtimeToolName: integrationId,
+    execution: "local",
+    risk: riskFor(capability),
+    requiresApproval: false,
+    status,
+  }));
+}
+
+/**
  * Materialize an integration package's declared integration into a `proposed`
  * Sphere Integration (RFC-016), reusing `createIntegration`. Provider and provided
  * capabilities come from the manifest; no secret yet (configured later, by

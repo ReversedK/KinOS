@@ -2088,3 +2088,26 @@ Runtime adapter → integrations/Packages → UI.
 - **Increment 2 (follow-up, documented in RFC-016):** route a capability call to the
   configured provider's adapter via a provider registry (local = built-in reference;
   Google/CalDAV/Apple = drop-in adapters), denying when unconfigured/disabled.
+
+### Iteration 110 — 2026-07-16 (RFC-016 inc.2: integration executor — capabilities run via the configured provider)
+- Completes RFC-016: a capability call now routes to the **configured external
+  provider's adapter**, not in-process code. `packageIntegrationBindings` synthesizes
+  `runtime: "custom"` bindings naming the Sphere Integration; install creates them
+  disabled; enable flips a package's bindings by its `providesCapabilities` (covers
+  both local RFC-011 and integration bindings).
+- **`IntegrationExecutor`** wraps the local executor: for a custom binding it resolves
+  the Sphere's Integration by id and dispatches to a **provider registry**, deny-by-
+  default at each step — unknown integration, not-enabled, external-provider-without-
+  credentials, or no-registered-adapter all refuse. The built-in **`local` provider**
+  reuses the calendar store (the reference adapter); Google/CalDAV/Apple are drop-in
+  registry entries. Non-custom bindings pass through unchanged.
+- **Verified live, full loop:** install Google Calendar → configure provider `local`
+  → enable integration + package → project agent (surface gains calendar.*). Then via
+  the Sphere MCP: `calendar.create_event` suspends for approval → grant **executes via
+  the integration → local provider** → persists; `calendar.read` returns it. Switching
+  the integration to provider `google` (no adapter) **fails closed** — the call does
+  not execute.
+- **Honest rough edge:** an unregistered provider fails closed but surfaces a generic
+  error to the agent (internals not leaked, which is the safe default) rather than a
+  cleanly-audited "provider not available" — polish for a follow-up. 460 tests,
+  typecheck, next build green.

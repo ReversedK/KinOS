@@ -133,7 +133,9 @@ const CATALOG: readonly PackageManifest[] = [
     providesCapabilities: ["calendar.read", "calendar.create_event"],
     integration: {
       provider: "google",
-      providerChoices: ["google", "caldav", "apple"],
+      // "local" uses KinOS's built-in reference calendar (no external service);
+      // the others are real SaaS connectors (adapters are drop-in registry entries).
+      providerChoices: ["local", "google", "caldav", "apple"],
       scopes: ["calendar.read", "calendar.events.write"],
     },
     defaultPolicies: [

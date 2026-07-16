@@ -28,6 +28,7 @@ import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
 import { buildLocalHandlers } from "./local-handlers.js";
+import { IntegrationExecutor, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 import {
   backupAgentState,
   projectAgentConfig,
@@ -169,7 +170,7 @@ const provDeps: ProvisioningDeps = {
 // profile + provisions its token; session.backup/restore capture/restore the
 // agent's runtime state as an opaque encrypted blob; and the provisioning tools
 // (RFC-008): create Sphere / invite member / create + update agent.
-const executor = new LocalCapabilityExecutor(
+const localExecutor = new LocalCapabilityExecutor(
   new Map<string, CapabilityHandler>([
     // Local handlers behind the store packages' capability bindings
     // (RFC-002/011/012): a real Sphere-scoped calendar + synthetic stubs. Built
@@ -185,6 +186,13 @@ const executor = new LocalCapabilityExecutor(
     [PROVISIONING_TOOLS["policy.manage"], async (input) => managePolicyProvision(provDeps, input as ManagePolicyInput)],
   ]),
 );
+
+// RFC-016 inc.2: route integration-backed capabilities to the configured provider.
+// Built-in "local" provider reuses the calendar store; real Google/CalDAV/Apple
+// adapters are drop-in registry entries. Non-integration bindings fall through to
+// the local executor unchanged.
+const providerRegistry = new Map<string, IntegrationProviderAdapter>([["local", localCalendarProvider(calendarStore)]]);
+const executor = new IntegrationExecutor(localExecutor, { spheres: store, registry: providerRegistry });
 
 // Attach tickets live in memory: they are redeemed seconds after minting, and
 // forgetting them on restart loses nothing durable (unlike memory or policy).

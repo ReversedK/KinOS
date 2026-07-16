@@ -35,6 +35,7 @@ import {
   packageBindings,
   packageGrantPolicies,
   packageIntegration,
+  packageIntegrationBindings,
   type GrantClause,
   projectAgentRuntimeConfig,
   provisioningBindings,
@@ -799,8 +800,15 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     // Sphere's existing bindings so a shared dependency is not double-bound.
     const newPackages = plan.map((m) => installPackage(m, sphereId));
     const boundCaps = new Set(imported.bindings.map((b) => b.capability));
+    const riskFor = (cap: string) => defaultCapabilityCatalog().get(cap)?.risk ?? "medium";
     const newBindings = plan
-      .flatMap((m) => packageBindings(m, "disabled"))
+      .flatMap((m) => [
+        ...packageBindings(m, "disabled"),
+        // Integration packages bind their capabilities to the Integration (RFC-016
+        // inc.2): runtime "custom" → the integration executor dispatches to the
+        // configured provider.
+        ...packageIntegrationBindings(m, `int_${m.id}`, "disabled", riskFor),
+      ])
       .filter((b) => !boundCaps.has(b.capability));
     // RFC-016: an integration package creates a `proposed` Integration (configured
     // + enabled later, via integration.configure and the connectors). Deduped by id
@@ -893,7 +901,9 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     // RFC-011: enable activates this package's bindings and applies its default
     // grant; disable flips them back to disabled (deny-by-default blocks the future).
     // The capability→tool mapping is a mechanism; authorization is the policies only.
-    const pkgCaps = new Set(pkg.manifest.bindings.map((b) => b.capability));
+    // Keyed by every capability the package provides, so both local (RFC-011) and
+    // integration (RFC-016) bindings for this package flip together.
+    const pkgCaps = new Set(pkg.manifest.providesCapabilities);
     const boundStatus = action === "enable" ? ("enabled" as const) : ("disabled" as const);
     const bindings = imported.bindings.map((b) => (pkgCaps.has(b.capability) ? { ...b, status: boundStatus } : b));
 

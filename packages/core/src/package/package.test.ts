@@ -11,6 +11,7 @@ import {
   packageBindings,
   packageGrantPolicies,
   packageIntegration,
+  packageIntegrationBindings,
   uninstallPackage,
 } from "./package.js";
 
@@ -212,5 +213,14 @@ describe("packageIntegration (RFC-016)", () => {
 
   it("returns undefined for a non-integration package", () => {
     expect(packageIntegration(manifest(), "sph_1", "int_x")).toBeUndefined();
+  });
+
+  it("synthesizes custom bindings naming the integration, one per provided capability", () => {
+    const bindings = packageIntegrationBindings(integrationManifest(), "int_google-calendar", "disabled", () => "medium");
+    expect(bindings).toHaveLength(2);
+    expect(bindings[0]).toMatchObject({ capability: "calendar.read", runtime: "custom", runtimeToolName: "int_google-calendar", status: "disabled" });
+    expect(bindings.every((b) => b.runtime === "custom")).toBe(true);
+    // A non-integration package synthesizes none.
+    expect(packageIntegrationBindings(manifest(), "int_x", "enabled", () => "low")).toEqual([]);
   });
 });
