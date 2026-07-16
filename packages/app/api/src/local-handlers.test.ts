@@ -126,6 +126,36 @@ describe("real canonical memory / notes (RFC-013)", () => {
     expect(hit.items.map((i) => i.content)).toEqual(["Dentist Friday"]);
   });
 
+  it("revocation blocks the future, not the past (RFC-015)", async () => {
+    const spheres = await seededSphere();
+    const { h } = env(new InMemoryCalendarStore(), spheres);
+    const cap = (await h.get("local.memory_capture")!({ content: "trip plan" }, binding, ctx("sph_1", "mbr_A"))) as { id: string };
+    await h.get("local.memory_share")!({ itemId: cap.id, memberIds: ["mbr_B"] }, binding, ctx("sph_1", "mbr_A"));
+    // B sees it after sharing.
+    let bSees = (await h.get("local.memory_search")!({}, binding, ctx("sph_1", "mbr_B"))) as { items: unknown[] };
+    expect(bSees.items).toHaveLength(1);
+    // Owner A revokes B's share.
+    await h.get("local.memory_revoke")!({ itemId: cap.id, memberId: "mbr_B" }, binding, ctx("sph_1", "mbr_A"));
+    // Future access is blocked...
+    bSees = (await h.get("local.memory_search")!({}, binding, ctx("sph_1", "mbr_B"))) as { items: unknown[] };
+    expect(bSees.items).toEqual([]);
+    // ...the owner still sees it, and the grant record is retained (revokedAt set).
+    const aSees = (await h.get("local.memory_search")!({}, binding, ctx("sph_1", "mbr_A"))) as { items: unknown[] };
+    expect(aSees.items).toHaveLength(1);
+    const item = (await spheres.load("sph_1"))!.memory.find((m) => m.id === cap.id)!;
+    expect(item.shareGrants?.[0]).toMatchObject({ subjectId: "mbr_B", revokedAt: expect.any(String) });
+  });
+
+  it("only the note owner may revoke a share", async () => {
+    const { h } = env(new InMemoryCalendarStore(), await seededSphere());
+    const cap = (await h.get("local.memory_capture")!({ content: "owned by A" }, binding, ctx("sph_1", "mbr_A"))) as { id: string };
+    await h.get("local.memory_share")!({ itemId: cap.id, memberIds: ["mbr_B"] }, binding, ctx("sph_1", "mbr_A"));
+    // B (not the owner) tries to revoke — refused.
+    await expect(h.get("local.memory_revoke")!({ itemId: cap.id, memberId: "mbr_B" }, binding, ctx("sph_1", "mbr_B"))).rejects.toThrow(
+      /owner may revoke/i,
+    );
+  });
+
   it("capture cannot be forged into another Sphere (scope from context)", async () => {
     const spheres = await seededSphere();
     const other = createSphere({ id: "sph_2", type: "family", name: "Other", founder: { memberId: "mbr_X", identityId: "idy_X", role: "parent" } });

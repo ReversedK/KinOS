@@ -37,6 +37,17 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
   {
+    // RFC-015: withdraw a member's share of a note. Revocation blocks the future,
+    // not the past (invariant 5) — the grant record is retained as an audit fact.
+    // Low-friction safety action (no approval floor); owner-only at the handler.
+    name: "memory.revoke_share",
+    description: "Withdraw a member's share of a note (revocation blocks the future, not the past).",
+    risk: "medium",
+    allowedProfiles: ["adult", "teen"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
     name: "calendar.read",
     description: "Read authorized calendars.",
     risk: "low",

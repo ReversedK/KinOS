@@ -2014,3 +2014,19 @@ Runtime adapter → integrations/Packages → UI.
   from the teen surface, and a teen's direct call is refused by the floor
   ("Profile 'teen' is not allowed for capability payment.execute"). 449 tests
   (+1 skipped), typecheck, next build green.
+
+### Iteration 106 — 2026-07-16 (RFC-015: memory share revocation)
+- **RFC-015** (accepted): completes the notes story with revocation — new
+  `memory.revoke_share` capability (medium risk, adult+teen, no approval floor:
+  a safety action is low-friction). `family-notes` provides capture/search/share/
+  revoke_share.
+- **`local.memory_revoke` handler**, owner-only: reuses the existing `revokeShare`
+  domain fn (sets `revokedAt` on the grant, keeps the record). Only the note owner
+  may revoke; scope + owner identity come from the governed ExecutionContext.
+- **Demonstrates invariant 5 — revocation blocks the future, not the past** —
+  end to end, verified live: A captures a note, shares it with B (approval), B's
+  search returns it; A revokes B's share; B's search is now empty while A's still
+  returns it; the grant record is **retained** with both `grantedAt` and
+  `revokedAt` (who had access and when — never erased), and `hasActiveGrant(B)` is
+  false. A non-owner is refused. 451 tests (+1 skipped), typecheck, next build
+  green.

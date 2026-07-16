@@ -73,17 +73,18 @@ const CATALOG: readonly PackageManifest[] = [
     version: "1.0.0",
     publisher: "kinos",
     ageRating: "all",
-    providesCapabilities: ["memory.capture", "memory.search", "memory.share"],
+    providesCapabilities: ["memory.capture", "memory.search", "memory.share", "memory.revoke_share"],
     bindings: [
       { capability: "memory.capture", runtime: "local", runtimeToolName: "local.memory_capture", execution: "local", risk: "low" },
       { capability: "memory.search", runtime: "local", runtimeToolName: "local.memory_search", execution: "local", risk: "low" },
       { capability: "memory.share", runtime: "local", runtimeToolName: "local.memory_share", execution: "local", risk: "high" },
+      { capability: "memory.revoke_share", runtime: "local", runtimeToolName: "local.memory_revoke", execution: "local", risk: "medium" },
     ],
     defaultPolicies: [
       {
-        description: "Adults may capture and search the family notes (Family Notes package).",
+        description: "Adults may capture, search, and revoke shares of the family notes (Family Notes package).",
         subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["memory.capture", "memory.search"],
+        capabilityNames: ["memory.capture", "memory.search", "memory.revoke_share"],
         effect: "allow",
       },
       {

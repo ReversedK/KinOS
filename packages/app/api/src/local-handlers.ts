@@ -24,6 +24,7 @@ import {
   exportSphere,
   importSphere,
   resolveReadableMemory,
+  revokeShare,
   shareWithMembers,
   type CalendarStore,
   type SphereStore,
@@ -144,6 +145,33 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
         const memory = imported.memory.map((m) => (m.id === item.id ? shared : m));
         await deps.spheres.save(exportSphere({ ...imported, memory, exportedAt: now() }));
         return { shared: true, itemId: item.id, visibility: shared.visibility };
+      },
+    ],
+
+    [
+      "local.memory_revoke",
+      async (input, _binding, context) => {
+        const ctx = requireCtx(context, "memory.revoke_share");
+        const actor = ctx.subject.memberId;
+        if (actor === undefined) throw new Error("memory.revoke_share requires a member subject");
+        const args = (typeof input === "object" && input !== null ? input : {}) as { itemId?: unknown; memberId?: unknown };
+        if (typeof args.itemId !== "string" || typeof args.memberId !== "string") {
+          throw new Error("memory.revoke_share requires an itemId and a memberId");
+        }
+        const snap = await deps.spheres.load(ctx.sphereId);
+        if (snap === undefined) throw new Error(`Sphere ${ctx.sphereId} not found`);
+        const imported = importSphere(snap);
+        const item = imported.memory.find((m) => m.id === args.itemId);
+        if (item === undefined) throw new Error(`Memory item ${args.itemId} not found`);
+        // Owner-only: only the note's owner may withdraw a share of it.
+        if (!(item.ownerType === "member" && item.ownerId === actor)) {
+          throw new Error("Only the note owner may revoke a share");
+        }
+        const revoked = revokeShare(item, { subjectId: args.memberId, now: now() });
+        const memory = imported.memory.map((m) => (m.id === item.id ? revoked : m));
+        await deps.spheres.save(exportSphere({ ...imported, memory, exportedAt: now() }));
+        // Security fact only: the grant record is retained (revokedAt) as audit.
+        return { revoked: true, itemId: item.id, member: args.memberId };
       },
     ],
 
