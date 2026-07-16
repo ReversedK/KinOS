@@ -174,7 +174,7 @@ const executor = new LocalCapabilityExecutor(
     // Local handlers behind the store packages' capability bindings
     // (RFC-002/011/012): a real Sphere-scoped calendar + synthetic stubs. Built
     // from a shared, test-covered factory so every store binding has a handler.
-    ...buildLocalHandlers({ calendar: calendarStore }),
+    ...buildLocalHandlers({ calendar: calendarStore, spheres: store }),
     [RUNTIME_GOVERNANCE_TOOLS["runtime.config.project"], async (input) => projectAgentConfig(govDeps, input as RuntimeProjectInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.backup"], async (input) => backupAgentState(govDeps, input as RuntimeBackupInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.restore"], async (input) => restoreAgentState(govDeps, input as RuntimeRestoreInput)],

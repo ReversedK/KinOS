@@ -1970,3 +1970,25 @@ Runtime adapter → integrations/Packages → UI.
   a real event** (sphereId from the governed context, createdBy from the subject);
   `calendar.read` → returns the persisted event. 439 tests (+1 skipped),
   typecheck, next build green.
+
+### Iteration 104 — 2026-07-16 (RFC-013: real canonical memory — policy-scoped notes)
+- **RFC-013** (accepted): makes the `family-notes` package real by wiring its
+  capabilities to KinOS's existing canonical memory (the `MemoryItem` model, the
+  ADR-002 `resolveReadableMemory` rule, and the Sphere snapshot where memory
+  already persists) rather than inventing a parallel store.
+- **New capability `memory.capture`** (low risk, adult+teen): append a **private**
+  MemoryItem owned by the acting subject (private by default, ADR-002).
+  `family-notes` now provides capture + search + share.
+- **Three real handlers** (factory gains a `SphereStore` dep): `local.memory_capture`
+  (load-append-save), `local.memory_search` (load → `resolveReadableMemory` →
+  substring filter), `local.memory_share` (load → `shareWithMembers` → save). All
+  take Sphere + subject from the governed ExecutionContext, never agent input.
+- **Headline property — memory retrieval is policy-scoped per item** — enforced by
+  the existing resolver, not re-implemented: an agent sees only its owner's memory
+  and memory shared to it; a deny/require_approval policy still dominates.
+- **Verified LIVE:** A captures a private note, B captures a private note; the
+  agent (owned by A) `memory.search` via the Sphere MCP returns **only A's** note,
+  B's direct search returns **only B's**; A shares its note with B
+  (require_approval → grant → `shared_with_members`), after which B's search
+  returns **both**. Capture/search/share cannot be forged into another Sphere
+  (scope from context). 442 tests (+1 skipped), typecheck, next build green.

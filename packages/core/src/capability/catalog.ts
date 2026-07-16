@@ -27,6 +27,16 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "resourceClass", "decision", "correlationId"],
   },
   {
+    // RFC-013: record a note into canonical memory. Private by default (ADR-002);
+    // a scope is never widened by silence. Audit records the fact, never content.
+    name: "memory.capture",
+    description: "Record a note into canonical memory (private by default).",
+    risk: "low",
+    allowedProfiles: ["adult", "teen"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
     name: "calendar.read",
     description: "Read authorized calendars.",
     risk: "low",
