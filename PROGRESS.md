@@ -2030,3 +2030,20 @@ Runtime adapter → integrations/Packages → UI.
   `revokedAt` (who had access and when — never erased), and `hasActiveGrant(B)` is
   false. A non-owner is refused. 451 tests (+1 skipped), typecheck, next build
   green.
+
+### Iteration 107 — 2026-07-16 (Operator console: Notes panel — real features become human-usable)
+- First UI surface for the real adapters: a **Notes panel** on the Sphere page lets
+  an operator capture and search canonical memory **as the acting member**, through
+  the governed capability endpoints (`memory.capture` / `memory.search`) via the
+  same-origin API proxy. The console decides nothing (RFC-003) — it triggers the
+  governed action and shows the outcome (allow / approval / deny).
+- Search is **policy-scoped** by the core resolver, so the panel only ever shows
+  notes the acting member may read; a denial (Family Notes not enabled/granted)
+  surfaces as a governed message. New `Notes.tsx` + a `#notes` nav item; matches the
+  existing console design system.
+- **Verified live:** the panel renders (title, nav item, capture/search fields); the
+  UI→API proxy path works — `memory.search` as member A via `/api/kinos/...` returns
+  A's note. next build green; 451 tests (+1 skipped), typecheck green.
+- Closes the loop from "backend real" to "a person can use it": notes were already
+  reachable by agents through the Sphere MCP (RFC-013/015); they are now reachable
+  by a human in the console too.

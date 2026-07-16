@@ -5,6 +5,7 @@ const ITEMS = [
   ["permissions", "Permissions", "04"],
   ["runtime", "Runtime", "05"],
   ["connectors", "Connectors", "06"],
+  ["notes", "Notes", "07"],
 ] as const;
 
 export function SphereNav() {

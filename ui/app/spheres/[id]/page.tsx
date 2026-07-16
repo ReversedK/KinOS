@@ -2,6 +2,7 @@ import { AgentConfig } from "../../../components/AgentConfig";
 import { DevActorSwitcher } from "../../../components/DevActorSwitcher";
 import { DeployAgent } from "../../../components/DeployAgent";
 import { InviteMember } from "../../../components/InviteMember";
+import { Notes } from "../../../components/Notes";
 import { PolicyManager } from "../../../components/PolicyManager";
 import { SphereNav } from "../../../components/SphereNav";
 import {
@@ -269,6 +270,17 @@ export default async function SpherePage({ params, searchParams }: { params: { i
             </div>
             <div className="panel-body">
               <Connectors sphereId={id} actor={admin} integrations={integrations} />
+            </div>
+          </div>
+
+          {/* Notes — real canonical memory (RFC-013/015) */}
+          <div id="notes" className="panel section-anchor">
+            <div className="panel-head">
+              <h3>Notes</h3>
+              <span className="faint" style={{ fontSize: 12 }}>canonical memory · policy-scoped</span>
+            </div>
+            <div className="panel-body">
+              <Notes sphereId={id} actor={admin} />
             </div>
           </div>
 
