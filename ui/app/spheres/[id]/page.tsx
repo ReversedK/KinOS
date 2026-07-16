@@ -1,4 +1,5 @@
 import { AgentConfig } from "../../../components/AgentConfig";
+import { Calendar } from "../../../components/Calendar";
 import { DevActorSwitcher } from "../../../components/DevActorSwitcher";
 import { DeployAgent } from "../../../components/DeployAgent";
 import { InviteMember } from "../../../components/InviteMember";
@@ -270,6 +271,17 @@ export default async function SpherePage({ params, searchParams }: { params: { i
             </div>
             <div className="panel-body">
               <Connectors sphereId={id} actor={admin} integrations={integrations} />
+            </div>
+          </div>
+
+          {/* Calendar — real Sphere-scoped calendar (RFC-012) */}
+          <div id="calendar" className="panel section-anchor">
+            <div className="panel-head">
+              <h3>Calendar</h3>
+              <span className="faint" style={{ fontSize: 12 }}>local-first · Sphere-scoped</span>
+            </div>
+            <div className="panel-body">
+              <Calendar sphereId={id} actor={admin} />
             </div>
           </div>
 

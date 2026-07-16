@@ -2047,3 +2047,17 @@ Runtime adapter → integrations/Packages → UI.
 - Closes the loop from "backend real" to "a person can use it": notes were already
   reachable by agents through the Sphere MCP (RFC-013/015); they are now reachable
   by a human in the console too.
+
+### Iteration 108 — 2026-07-16 (Operator console: Calendar panel — both real adapters now human-usable)
+- Symmetric to the Notes panel: a **Calendar panel** on the Sphere page lists the
+  Sphere's events (`calendar.read`) and proposes a new one (`calendar.create_event`)
+  through the governed capability endpoints via the API proxy. Governed outcomes
+  surface as-is — a proposal shows "approval required, routed to the inbox" per the
+  Family Calendar grant, not an immediate write.
+- New `Calendar.tsx` + a `#calendar` nav item; matches the console design system.
+- **Verified live:** the panel renders; the UI→API proxy path works — `calendar.read`
+  returns the Sphere's "Piano lesson" event, and `calendar.create_event` returns
+  `pending_approval` (routed for a parent's approval). next build green.
+- Both real adapters (RFC-012 calendar, RFC-013/015 notes) are now usable by a human
+  in the console with the same governance agents get via the Sphere MCP — the
+  "backend real → product usable" arc is complete for both.
