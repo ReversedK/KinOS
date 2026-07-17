@@ -56,12 +56,20 @@ interface AuthBroker {
 
 ### 3. The real `BetterAuthBroker`
 
-`betterAuth({ baseURL, basePath, secret, database: memoryAdapter, socialProviders:
+`betterAuth({ baseURL, basePath, secret, database, socialProviders:
 { google, apple } })`; `nodeHandler = toNodeHandler(auth)` mounted at `/api/auth/*`
 by the KinOS server; `beginConnect → auth.api.signInSocial`; `resolveConnection →
 auth.api.getSession` (via `fromNodeHeaders`); `getAccessToken → auth.api.getAccessToken`
 (auto-refresh). Selected in `main.ts` when `BETTER_AUTH_SECRET` + `GOOGLE_CLIENT_ID`
 + `GOOGLE_CLIENT_SECRET` are set, else the `FakeAuthBroker`.
+
+`database` is a durable `better-sqlite3` handle by default (`BETTER_AUTH_DB`,
+Better Auth's built-in Kysely adapter), so connected accounts and their refresh
+tokens survive an API restart — an OAuth connector must not silently disconnect on
+redeploy (revocable/durable-by-default). `BetterAuthBroker.migrate()` runs at
+startup and creates/upgrades the schema (`user`/`account`/`session`/`verification`)
+via `getMigrations().runMigrations()` — idempotent, no CLI step. Tests omit the file
+and fall back to the in-memory adapter.
 
 ### 4. Server plumbing
 
@@ -95,8 +103,8 @@ the entity is unchanged.
 
 ## Open questions
 
-- Durable Better Auth account store (memory adapter → SQLite/Postgres) for
-  multi-process / restart durability.
+- Multi-process durability beyond a single SQLite file (Postgres). The account
+  store is now durable SQLite (restart-safe); horizontal scale is future work.
 - Per-member vs per-Sphere connected accounts.
 - Apple's signed-JWT client secret (a provider-config detail).
 - Live Google/Apple consent requires real client credentials + a browser — the one

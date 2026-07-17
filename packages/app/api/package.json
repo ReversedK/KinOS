@@ -15,7 +15,11 @@
     "@kinos/persistence-sqlite": "*",
     "@kinos/runtime-hermes": "*",
     "@kinos/runtime-openai": "*",
-    "better-auth": "^1.6.23"
+    "better-auth": "^1.6.23",
+    "better-sqlite3": "^11.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11"
   },
   "scripts": {
     "serve": "tsx src/main.ts",

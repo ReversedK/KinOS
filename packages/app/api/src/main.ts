@@ -205,6 +205,8 @@ function buildAuthBroker(): AuthBroker {
     return new BetterAuthBroker({
       baseURL: process.env["BETTER_AUTH_URL"] ?? mcpPublicUrl,
       secret,
+      // Durable account store: connected accounts + refresh tokens survive restart.
+      databaseFile: ensureDir(process.env["BETTER_AUTH_DB"] ?? "data/auth.sqlite"),
       google: { clientId: googleId, clientSecret: googleSecret },
     });
   }
@@ -263,4 +265,11 @@ const server = createApiServer(
     newCorrelationId: () => randomUUID(),
   },
 );
-server.listen(port, () => console.log(`KinOS API listening on :${port}`));
+// Create the Better Auth account schema before serving (durable store only);
+// a live provider callback must find its tables. No-op for the fake/in-memory
+// broker. Startup fails loudly if migration cannot run, rather than 500ing later.
+async function start(): Promise<void> {
+  if (authBroker instanceof BetterAuthBroker) await authBroker.migrate();
+  server.listen(port, () => console.log(`KinOS API listening on :${port}`));
+}
+void start();
