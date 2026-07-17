@@ -28,7 +28,7 @@ import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
 import { buildLocalHandlers } from "./local-handlers.js";
-import { IntegrationExecutor, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { IntegrationExecutor, caldavCalendarProvider, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 import { FakeAuthBroker, PendingOAuthStore, type AuthBroker } from "./oauth.js";
 import { BetterAuthBroker } from "./better-auth-broker.js";
 import { secretStoreFromEnv } from "./secret-store.js";
@@ -222,6 +222,10 @@ const providerRegistry = new Map<string, IntegrationProviderAdapter>([
   // Google/Apple resolve a fresh token via the broker (RFC-017) and call the real
   // Calendar API. Wire real client credentials into the broker to use live.
   ["google", googleCalendarProvider(authBroker)],
+  // CalDAV (RFC-019): Basic auth via the secret store — Apple iCloud, Nextcloud,
+  // Fastmail. Configure a KINOS_SECRETS entry with {kind:"basic",username,password,
+  // endpoint} for the integration's secretRef.
+  ["caldav", caldavCalendarProvider()],
 ]);
 // Secret store (RFC-019): resolves non-OAuth integration secretRefs to credentials
 // at execution time. Dev seed from KINOS_SECRETS; a deployment swaps its real

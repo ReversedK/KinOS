@@ -124,6 +124,98 @@ export function googleCalendarProvider(
   };
 }
 
+/** ISO-8601 → iCalendar UTC basic form: 2026-07-20T09:00:00Z → 20260720T090000Z. */
+function toICalDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+/**
+ * CalDAV provider (RFC-019) — the first real non-OAuth connector. Resolves Basic
+ * credentials + the collection endpoint from the secret store, then speaks CalDAV to
+ * the configured calendar. One adapter covers Apple iCloud, Nextcloud and Fastmail,
+ * which all use CalDAV with an app-specific password. Deny-by-default: unresolved
+ * credentials (or a missing endpoint) refuse the call — it never runs unauthenticated.
+ *
+ * `fetchImpl` is injectable so the auth + protocol wiring is testable without a live
+ * CalDAV server. The HTTP calls are the only provider-specific code.
+ */
+export function caldavCalendarProvider(fetchImpl: typeof fetch = fetch): IntegrationProviderAdapter {
+  return async (capability, input, ctx) => {
+    const material = await ctx.secret();
+    if (material === undefined || material.kind !== "basic") {
+      throw new Error("CalDAV integration is not configured (no basic credentials resolved)");
+    }
+    const endpoint = material.endpoint;
+    if (endpoint === undefined || endpoint === "") throw new Error("CalDAV integration has no collection endpoint");
+    const base = endpoint.replace(/\/+$/, "");
+    const authHeader = `Basic ${Buffer.from(`${material.username}:${material.password}`).toString("base64")}`;
+
+    if (capability === "calendar.create_event") {
+      const args = (typeof input === "object" && input !== null ? input : {}) as { title?: unknown; start?: unknown };
+      const title = typeof args.title === "string" ? args.title : "";
+      const start = typeof args.start === "string" ? args.start : ctx.now();
+      const uid = ctx.newId();
+      const ics = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//KinOS//CalDAV//EN",
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        `DTSTAMP:${toICalDate(ctx.now())}`,
+        `DTSTART:${toICalDate(start)}`,
+        `DTEND:${toICalDate(start)}`,
+        `SUMMARY:${title.replace(/([,;\\])/g, "\\$1").replace(/\r?\n/g, "\\n")}`,
+        "END:VEVENT",
+        "END:VCALENDAR",
+      ].join("\r\n");
+      const res = await fetchImpl(`${base}/${encodeURIComponent(uid)}.ics`, {
+        method: "PUT",
+        headers: { Authorization: authHeader, "content-type": "text/calendar; charset=utf-8" },
+        body: ics,
+      });
+      if (!res.ok) throw new Error(`CalDAV create failed: ${res.status}`);
+      return { created: true, event: { id: uid, title, start } };
+    }
+
+    if (capability === "calendar.read") {
+      const body =
+        '<?xml version="1.0" encoding="utf-8"?>' +
+        '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
+        "<d:prop><d:getetag/><c:calendar-data/></d:prop>" +
+        '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"/></c:comp-filter></c:filter>' +
+        "</c:calendar-query>";
+      const res = await fetchImpl(base, {
+        method: "REPORT",
+        headers: { Authorization: authHeader, Depth: "1", "content-type": "application/xml; charset=utf-8" },
+        body,
+      });
+      if (!res.ok) throw new Error(`CalDAV read failed: ${res.status}`);
+      const text = await res.text();
+      return { events: parseVEvents(text) };
+    }
+
+    throw new Error(`The CalDAV provider does not implement '${capability}'`);
+  };
+}
+
+/** Pull id/title/start from each VEVENT in a CalDAV multistatus body (reference-grade). */
+function parseVEvents(multistatus: string): Array<{ id: string; title: string; start: string }> {
+  const events: Array<{ id: string; title: string; start: string }> = [];
+  const blocks = multistatus.split("BEGIN:VEVENT").slice(1);
+  for (const block of blocks) {
+    const vevent = block.split("END:VEVENT")[0] ?? "";
+    const field = (name: string): string => {
+      // Match a property line, ignoring iCal parameters after the property name.
+      const m = vevent.match(new RegExp(`\\n${name}(?:;[^:\\n]*)?:([^\\r\\n]*)`, "i"));
+      return m?.[1]?.trim() ?? "";
+    };
+    events.push({ id: field("UID"), title: field("SUMMARY") || "(no title)", start: field("DTSTART") });
+  }
+  return events;
+}
+
 export interface IntegrationExecutorDeps {
   readonly spheres: SphereStore;
   /** provider id -> adapter. Built-in "local" + drop-in external providers. */

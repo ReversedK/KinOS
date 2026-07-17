@@ -14,10 +14,18 @@
  * with empty credentials.
  */
 
-/** Sealed credential material for a non-OAuth provider. Never persisted by KinOS. */
+/**
+ * Sealed connection material for a non-OAuth provider. Never persisted by KinOS.
+ *
+ * For connection-oriented services (CalDAV, IMAP, self-hosted APIs) the account's
+ * `endpoint` travels with the credentials as one bundle — that is how a real secret
+ * manager stores a service credential (host + user + password together), and it
+ * keeps the collection URL out of the `Integration` entity and every read surface.
+ * The endpoint is used only inside the execution boundary, never surfaced.
+ */
 export type SecretMaterial =
-  | { readonly kind: "basic"; readonly username: string; readonly password: string }
-  | { readonly kind: "apiKey"; readonly key: string }
+  | { readonly kind: "basic"; readonly username: string; readonly password: string; readonly endpoint?: string }
+  | { readonly kind: "apiKey"; readonly key: string; readonly endpoint?: string }
   | { readonly kind: "raw"; readonly value: string };
 
 export interface SecretStore {

@@ -156,6 +156,42 @@ const CATALOG: readonly PackageManifest[] = [
     ],
   }),
   createManifest({
+    // RFC-019: the first non-OAuth integration package. A CalDAV calendar (Apple
+    // iCloud, Nextcloud, Fastmail) authenticates with an app-specific password held
+    // by reference in the secret store — no OAuth broker. Installing creates a
+    // proposed Integration; configuring supplies the credentials reference; enabling
+    // backs calendar.* via CalDAV.
+    id: "caldav-calendar",
+    type: "mcp",
+    title: "CalDAV Calendar (Apple / self-hosted)",
+    description: "Connect an Apple iCloud, Nextcloud or Fastmail calendar over CalDAV using an app-specific password.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "all",
+    providesCapabilities: ["calendar.read", "calendar.create_event"],
+    integration: {
+      provider: "caldav",
+      providerChoices: ["caldav", "apple"],
+      scopes: ["calendar.read", "calendar.events.write"],
+      auth: "apikey",
+    },
+    defaultPolicies: [
+      {
+        description: "Adults may read the connected CalDAV calendar (CalDAV Calendar integration).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["calendar.read"],
+        effect: "allow",
+      },
+      {
+        description: "Adults may propose events on the connected CalDAV calendar, subject to approval.",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["calendar.create_event"],
+        effect: "require_approval",
+        approverRoles: ["parent"],
+      },
+    ],
+  }),
+  createManifest({
     id: "household-payments",
     type: "skill",
     title: "Household Payments",

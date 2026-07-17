@@ -13,8 +13,8 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { FakeAuthBroker } from "./oauth.js";
-import { MapSecretStore } from "./secret-store.js";
-import { IntegrationExecutor, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { MapSecretStore, type SecretMaterial } from "./secret-store.js";
+import { IntegrationExecutor, caldavCalendarProvider, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 
 const NOW = "2026-07-16T10:00:00.000Z";
 const ctx: ExecutionContext = {
@@ -158,5 +158,67 @@ describe("googleCalendarProvider (RFC-017)", () => {
     await expect(
       provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secret: async () => undefined, scopes: [], now: () => "", newId: () => "" }),
     ).rejects.toThrow(/not connected/i);
+  });
+});
+
+describe("caldavCalendarProvider (RFC-019)", () => {
+  const material: SecretMaterial = { kind: "basic", username: "alice", password: "app-pw", endpoint: "https://caldav.example/cal/alice/" };
+  const ctxWith = (secret: () => Promise<SecretMaterial | undefined>) => ({
+    sphereId: "sph_1",
+    subject: { role: "parent" as const, ageProfile: "adult" as const },
+    secret,
+    scopes: [],
+    now: () => "2026-07-17T08:00:00.000Z",
+    newId: () => "uid_1",
+  });
+
+  it("PUTs an iCalendar event with Basic auth to the collection endpoint", async () => {
+    let seen: { url: string; init?: RequestInit } | undefined;
+    const fakeFetch = (async (url: string, init?: RequestInit) => {
+      seen = { url, init };
+      return { ok: true, status: 201, text: async () => "" } as Response;
+    }) as unknown as typeof fetch;
+
+    const provider = caldavCalendarProvider(fakeFetch);
+    const out = (await provider("calendar.create_event", { title: "Dentist", start: "2026-07-20T09:00:00Z" }, ctxWith(async () => material))) as {
+      created: boolean;
+      event: { id: string; title: string };
+    };
+    expect(out.event).toMatchObject({ id: "uid_1", title: "Dentist" });
+    expect(seen?.url).toBe("https://caldav.example/cal/alice/uid_1.ics");
+    expect(seen?.init?.method).toBe("PUT");
+    const headers = seen?.init?.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe(`Basic ${Buffer.from("alice:app-pw").toString("base64")}`);
+    expect(String(seen?.init?.body)).toContain("DTSTART:20260720T090000Z");
+    expect(String(seen?.init?.body)).toContain("SUMMARY:Dentist");
+  });
+
+  it("parses events from a CalDAV multistatus REPORT", async () => {
+    const multistatus = [
+      '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:propstat><d:prop><c:calendar-data>',
+      "BEGIN:VCALENDAR",
+      "BEGIN:VEVENT",
+      "UID:evt-42",
+      "DTSTART;TZID=Europe/Paris:20260720T110000",
+      "SUMMARY:Standup",
+      "END:VEVENT",
+      "END:VCALENDAR",
+      "</c:calendar-data></d:prop></d:propstat></d:response></d:multistatus>",
+    ].join("\r\n");
+    const fakeFetch = (async () => ({ ok: true, status: 207, text: async () => multistatus }) as Response) as unknown as typeof fetch;
+
+    const out = (await caldavCalendarProvider(fakeFetch)("calendar.read", {}, ctxWith(async () => material))) as {
+      events: Array<{ id: string; title: string; start: string }>;
+    };
+    expect(out.events).toEqual([{ id: "evt-42", title: "Standup", start: "20260720T110000" }]);
+  });
+
+  it("refuses (deny-by-default) when credentials do not resolve", async () => {
+    await expect(caldavCalendarProvider()("calendar.read", {}, ctxWith(async () => undefined))).rejects.toThrow(/not configured/i);
+  });
+
+  it("refuses when the resolved material has no endpoint", async () => {
+    const noEndpoint: SecretMaterial = { kind: "basic", username: "a", password: "b" };
+    await expect(caldavCalendarProvider()("calendar.read", {}, ctxWith(async () => noEndpoint))).rejects.toThrow(/no collection endpoint/i);
   });
 });
