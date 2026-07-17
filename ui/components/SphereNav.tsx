@@ -2,11 +2,12 @@ const ITEMS = [
   ["overview", "Overview", "01"],
   ["members", "Members", "02"],
   ["agents", "Agents", "03"],
-  ["permissions", "Permissions", "04"],
-  ["runtime", "Runtime", "05"],
-  ["connectors", "Connectors", "06"],
-  ["calendar", "Calendar", "07"],
-  ["notes", "Notes", "08"],
+  ["approvals", "Approvals", "04"],
+  ["permissions", "Permissions", "05"],
+  ["runtime", "Runtime", "06"],
+  ["connectors", "Connectors", "07"],
+  ["calendar", "Calendar", "08"],
+  ["notes", "Notes", "09"],
 ] as const;
 
 export function SphereNav() {

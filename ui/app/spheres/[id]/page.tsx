@@ -13,11 +13,13 @@ import {
   getCapabilities,
   getIntegrations,
   getMembers,
+  getPendingApprovals,
   getPolicies,
   getRuntime,
   getSphere,
   type ActingSubject,
 } from "../../../lib/api";
+import { ApprovalActions } from "../../approvals/ApprovalActions";
 import { Connectors } from "./Connectors";
 import { RunCapability } from "./RunCapability";
 import { SetRuntime } from "./SetRuntime";
@@ -30,7 +32,7 @@ export default async function SpherePage({ params, searchParams }: { params: { i
   const base = apiBaseUrl();
   const id = params.id;
   try {
-    const [sphere, members, agents, runtime, integrations, capabilities, policies] = await Promise.all([
+    const [sphere, members, agents, runtime, integrations, capabilities, policies, pendingApprovals] = await Promise.all([
       getSphere(base, id),
       getMembers(base, id),
       getAgents(base, id),
@@ -38,6 +40,7 @@ export default async function SpherePage({ params, searchParams }: { params: { i
       getIntegrations(base, id),
       getCapabilities(base).catch(() => []),
       getPolicies(base, id),
+      getPendingApprovals(base, id).catch(() => []),
     ]);
 
     // The administrator acting in the console (dev: the founder/first parent;
@@ -56,6 +59,7 @@ export default async function SpherePage({ params, searchParams }: { params: { i
       { label: "harness", value: runtime.harness.runtime, sub: runtime.harness.model },
       { label: "connectors", value: String(integrations.filter((i) => i.status === "enabled").length) },
       { label: "active rules", value: String(policies.filter((policy) => policy.status === "active").length) },
+      { label: "pending approvals", value: String(pendingApprovals.length) },
     ];
 
     return (
@@ -176,6 +180,65 @@ export default async function SpherePage({ params, searchParams }: { params: { i
                           </div>
                         </div>
                         <AgentConfig sphereId={id} admin={admin} agent={a} capabilities={capabilities} />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Approvals — sensitive actions the Policy Engine routed for a human
+              decision (RFC-003). In-context here; the global inbox is at /approvals.
+              Granting/denying is governed (quorum, minor-safety, no self-approval);
+              this screen only triggers and never shows private payload content (§18). */}
+          <div id="approvals" className="panel section-anchor">
+            <div className="panel-head">
+              <div>
+                <span className="eyebrow">Human-in-the-loop</span>
+                <h3>Approvals · {pendingApprovals.length}</h3>
+              </div>
+              <a className="btn sm ghost" href="/approvals">All spheres →</a>
+            </div>
+            <div className="panel-body">
+              {pendingApprovals.length === 0 ? (
+                <div className="empty">
+                  Nothing awaiting approval. Approval-gated actions (e.g. proposing a calendar event) appear here for a parent to decide.
+                </div>
+              ) : (
+                <div className="stack">
+                  {pendingApprovals.map((p) => {
+                    const eligible = members
+                      .filter((m) => p.approverRoles.includes(m.role))
+                      .map((m) => ({ memberId: m.id, role: m.role }));
+                    return (
+                      <div key={p.id} className="card stack tight">
+                        <div className="row between">
+                          <code style={{ fontSize: 14, fontWeight: 600 }}>{p.capability}</code>
+                          <span className="row" style={{ gap: "var(--s2)" }}>
+                            {p.risk ? <span className={`badge ${p.risk === "critical" || p.risk === "high" ? "deny" : ""}`}>{p.risk} risk</span> : null}
+                            <span className="badge pending"><span className="dot" />{p.state}</span>
+                          </span>
+                        </div>
+                        {p.summary ? <div style={{ fontSize: 13 }}>{p.summary}</div> : null}
+                        <div className="row" style={{ gap: "var(--s4)", flexWrap: "wrap" }}>
+                          {p.requestedByAgent ? (
+                            <span className="faint" style={{ fontSize: 12 }}>
+                              requested by <code>{p.requestedByAgent}</code>
+                              {p.onBehalfOf ? <> · on behalf of <code>{p.onBehalfOf}</code></> : null}
+                            </span>
+                          ) : null}
+                          {p.expiresAt ? (
+                            <span className="faint" style={{ fontSize: 12 }}>expires <time dateTime={p.expiresAt}>{p.expiresAt.slice(0, 16).replace("T", " ")}</time></span>
+                          ) : null}
+                        </div>
+                        {eligible.length === 0 ? (
+                          <span className="faint" style={{ fontSize: 12 }}>
+                            No eligible approver in this Sphere ({p.approverRoles.join(", ")}).
+                          </span>
+                        ) : (
+                          <ApprovalActions approvalId={p.id} approvers={eligible} />
+                        )}
                       </div>
                     );
                   })}
