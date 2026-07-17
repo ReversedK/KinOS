@@ -75,6 +75,7 @@ describe("provisioningBindings (RFC-008)", () => {
       "agent.update_config",
       "member.invite",
       "policy.manage",
+      "sphere.archive",
       "sphere.create",
       "sphere.export",
       "sphere.restore",

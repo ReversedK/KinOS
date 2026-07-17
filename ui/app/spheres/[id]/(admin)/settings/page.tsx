@@ -1,7 +1,8 @@
+import { ArchiveSphere } from "../../../../../components/ArchiveSphere";
 import { ExportSphere } from "../../../../../components/ExportSphere";
 import { Connectors } from "../../Connectors";
 import { SetRuntime } from "../../SetRuntime";
-import { apiBaseUrl, getIntegrations, getMembers, getRuntime, resolveActingAdmin } from "../../../../../lib/api";
+import { apiBaseUrl, getIntegrations, getMembers, getRuntime, getSphere, resolveActingAdmin } from "../../../../../lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,11 @@ export default async function SettingsSection({
 }) {
   const base = apiBaseUrl();
   const id = params.id;
-  const [members, runtime, integrations] = await Promise.all([
+  const [members, runtime, integrations, sphere] = await Promise.all([
     getMembers(base, id).catch(() => []),
     getRuntime(base, id),
     getIntegrations(base, id).catch(() => []),
+    getSphere(base, id).catch(() => undefined),
   ]);
   const { admin } = resolveActingAdmin(members, searchParams.actor);
 
@@ -101,6 +103,19 @@ export default async function SettingsSection({
             to whoever grants — no single administrator takes it alone.
           </p>
           <ExportSphere sphereId={id} admin={admin} />
+        </div>
+      </div>
+
+      {/* Lifecycle (RFC-024): archive/restore — reversible, governed. */}
+      <div className="panel">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">Lifecycle</span>
+            <h3>Archive</h3>
+          </div>
+        </div>
+        <div className="panel-body">
+          <ArchiveSphere sphereId={id} admin={admin} status={sphere?.status ?? "active"} />
         </div>
       </div>
     </>

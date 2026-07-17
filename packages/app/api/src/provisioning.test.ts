@@ -11,6 +11,7 @@ import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor
 
 import { handleApiRequest, type ApiDeps } from "./router.js";
 import {
+  archiveSphereProvision,
   createAgentProvision,
   createSphereProvision,
   exportSphereProvision,
@@ -146,6 +147,7 @@ function apiDeps(store: SphereStore): ApiDeps & { audit: InMemoryAuditSink } {
       [PROVISIONING_TOOLS["policy.manage"], async (input) => managePolicyProvision(pd, input as never)],
       [PROVISIONING_TOOLS["sphere.export"], async (input) => exportSphereProvision(pd, input as never)],
       [PROVISIONING_TOOLS["sphere.restore"], async (input) => restoreSphereProvision(pd, input as never)],
+      [PROVISIONING_TOOLS["sphere.archive"], async (input) => archiveSphereProvision(pd, input as never)],
     ]),
   );
   let c = 0;
@@ -547,5 +549,57 @@ describe("sphere.restore — never overwrites (RFC-022)", () => {
     const deps = apiDeps(new InMemorySphereStore());
     await handleApiRequest({ method: "POST", path: "/spheres/restore", body: { subject: adult, snapshot } }, deps);
     expect(JSON.stringify(deps.audit.events)).not.toContain("kinos.sphere.export");
+  });
+});
+
+// --- sphere.archive (RFC-024) -------------------------------------------------
+
+describe("sphere.archive — reversible, governed (RFC-024)", () => {
+  async function bootstrapped(): Promise<{ deps: ReturnType<typeof apiDeps>; store: InMemorySphereStore; sphereId: string }> {
+    const store = new InMemorySphereStore();
+    const deps = apiDeps(store);
+    const created = await handleApiRequest(
+      { method: "POST", path: "/spheres", body: { subject: adult, input: { name: "To Retire" } } },
+      deps,
+    );
+    return { deps, store, sphereId: (created.body as { output: { sphereId: string } }).output.sphereId };
+  }
+  const archivePath = (id: string) => `/spheres/${id}/capabilities/sphere.archive/execute`;
+  const status = async (store: InMemorySphereStore, id: string) => importSphere((await store.load(id))!).sphere.status;
+
+  it("an admin archives a Sphere and restores it (round-trip), with an audit fact", async () => {
+    const { deps, store, sphereId } = await bootstrapped();
+    const arch = await handleApiRequest({ method: "POST", path: archivePath(sphereId), body: { subject: adult, input: { archived: true } } }, deps);
+    expect(arch.status).toBe(200);
+    expect(await status(store, sphereId)).toBe("archived");
+    expect(deps.audit.events.some((e) => e.type === "sphere.archived" && e.resourceId === sphereId && /archived/i.test(e.reason ?? ""))).toBe(true);
+
+    const restore = await handleApiRequest({ method: "POST", path: archivePath(sphereId), body: { subject: adult, input: { archived: false } } }, deps);
+    expect(restore.status).toBe(200);
+    expect(await status(store, sphereId)).toBe("active");
+    expect(deps.audit.events.some((e) => e.type === "sphere.archived" && /restored/i.test(e.reason ?? ""))).toBe(true);
+  });
+
+  it("defaults to archiving when 'archived' is omitted", async () => {
+    const { deps, store, sphereId } = await bootstrapped();
+    const res = await handleApiRequest({ method: "POST", path: archivePath(sphereId), body: { subject: adult } }, deps);
+    expect(res.status).toBe(200);
+    expect(await status(store, sphereId)).toBe("archived");
+  });
+
+  it("a child is denied by the catalog profile floor (403)", async () => {
+    const { deps, sphereId } = await bootstrapped();
+    const res = await handleApiRequest({ method: "POST", path: archivePath(sphereId), body: { subject: child, input: { archived: true } } }, deps);
+    expect(res.status).toBe(403);
+  });
+
+  it("preserves data — archiving keeps members and policies intact", async () => {
+    const { deps, store, sphereId } = await bootstrapped();
+    const before = importSphere((await store.load(sphereId))!);
+    await handleApiRequest({ method: "POST", path: archivePath(sphereId), body: { subject: adult, input: { archived: true } } }, deps);
+    const after = importSphere((await store.load(sphereId))!);
+    expect(after.sphere.members.length).toBe(before.sphere.members.length);
+    expect(after.policies.length).toBe(before.policies.length);
+    expect(after.sphere.administrators).toEqual(before.sphere.administrators);
   });
 });

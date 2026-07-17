@@ -32,6 +32,7 @@ export const PROVISIONING_TOOLS = {
   "policy.manage": "provisioning.manage_policy",
   "sphere.export": "provisioning.export_sphere",
   "sphere.restore": "provisioning.restore_sphere",
+  "sphere.archive": "provisioning.archive_sphere",
 } as const;
 
 export type ProvisioningCapability = keyof typeof PROVISIONING_TOOLS;
@@ -86,6 +87,8 @@ export const IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES = [
   // no-self-approval rule means one administrator can never unilaterally export a
   // Sphere containing another member's private memory.
   "sphere.export",
+  // RFC-024: archiving/restoring the Sphere — a reversible admin lifecycle action.
+  "sphere.archive",
 ] as const;
 
 /** The default administrator roles that the admin seed grants provisioning to. */

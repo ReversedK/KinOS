@@ -49,6 +49,7 @@ All carry the same `correlationId`; each carries the deciding policy id/version 
 
 - sphere.created
 - sphere.restored *(RFC-022; a Sphere was recreated from an export snapshot — records the Sphere id, never the snapshot. An auditor must be able to tell a Sphere created empty from one whose members, policies and memory arrived from a file.)*
+- sphere.archived *(RFC-024; a Sphere's archival status changed — records the Sphere id and a user-safe reason distinguishing archive from restore. A reversible lifecycle fact, never content.)*
 - member.invited
 - member.joined
 - member.removed

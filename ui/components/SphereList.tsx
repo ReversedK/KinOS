@@ -14,18 +14,22 @@ const TYPE_GLYPH: Record<string, string> = { family: "⌂", person: "○", team:
 export function SphereList({ spheres }: { spheres: readonly SphereSummary[] }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState<string>("all");
+  const [showArchived, setShowArchived] = useState(false);
 
   // Only offer type chips that actually occur, plus "all".
   const types = useMemo(() => ["all", ...Array.from(new Set(spheres.map((s) => s.type))).sort()], [spheres]);
+  const archivedCount = useMemo(() => spheres.filter((s) => s.status === "archived").length, [spheres]);
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return spheres.filter((s) => {
+      // Archived Spheres are hidden by default (RFC-024) — retired from view.
+      if (s.status === "archived" && !showArchived) return false;
       if (type !== "all" && s.type !== type) return false;
       if (needle === "") return true;
       return s.name.toLowerCase().includes(needle) || s.id.toLowerCase().includes(needle);
     });
-  }, [spheres, q, type]);
+  }, [spheres, q, type, showArchived]);
 
   const filtering = q.trim() !== "" || type !== "all";
 
@@ -55,8 +59,13 @@ export function SphereList({ spheres }: { spheres: readonly SphereSummary[] }) {
             ))}
           </div>
         ) : null}
-        <span className="faint mono" style={{ fontSize: 12, marginLeft: "auto" }}>
-          {filtering ? `${shown.length} of ${spheres.length}` : `${spheres.length} sphere${spheres.length === 1 ? "" : "s"}`}
+        {archivedCount > 0 ? (
+          <button className={`chip${showArchived ? " active" : ""}`} onClick={() => setShowArchived((v) => !v)} aria-pressed={showArchived}>
+            {showArchived ? "hide" : "show"} archived · {archivedCount}
+          </button>
+        ) : null}
+        <span className="faint mono" style={{ fontSize: 12, marginLeft: archivedCount > 0 ? 0 : "auto" }}>
+          {filtering ? `${shown.length} of ${spheres.length}` : `${shown.length} sphere${shown.length === 1 ? "" : "s"}`}
         </span>
       </div>
 

@@ -94,3 +94,23 @@ export function addMember(sphere: Sphere, input: MemberInput): Sphere {
 export function listMembers(sphere: Sphere): readonly Member[] {
   return sphere.members;
 }
+
+/**
+ * Archive a Sphere (RFC-024): a soft, reversible status flip — no data or audit is
+ * destroyed. A `deleted` Sphere cannot be archived (fail closed on an invalid
+ * transition). Idempotent on an already-archived Sphere.
+ */
+export function archiveSphere(sphere: Sphere): Sphere {
+  if (sphere.status === "deleted" || sphere.status === "deletion_requested") {
+    throw new Error(`Sphere ${sphere.id} is ${sphere.status} and cannot be archived`);
+  }
+  return { ...sphere, status: "archived" };
+}
+
+/** Restore an archived Sphere to active (RFC-024). Only an archived Sphere restores. */
+export function unarchiveSphere(sphere: Sphere): Sphere {
+  if (sphere.status !== "archived") {
+    throw new Error(`Sphere ${sphere.id} is ${sphere.status}, not archived; nothing to restore`);
+  }
+  return { ...sphere, status: "active" };
+}

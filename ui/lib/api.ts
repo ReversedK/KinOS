@@ -898,6 +898,20 @@ export async function restoreSphere(
   throw new Error(`restore failed: ${status}`);
 }
 
+/**
+ * Archive a Sphere, or restore it to active (RFC-024). Reversible; governed and
+ * admin-only. A denial (403) is returned, not thrown.
+ */
+export function setSphereArchived(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  archived: boolean,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "sphere.archive", subject, { archived }, fetchImpl);
+}
+
 /** Governed export of the whole Sphere (RFC-021). Always approval-floored. */
 export function requestSphereExport(
   baseUrl: string,

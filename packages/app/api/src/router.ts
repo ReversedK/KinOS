@@ -189,6 +189,22 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           : policy,
       );
     }
+    // RFC-024: same lineage-anchored, version-guarded backfill for sphere.archive on
+    // the admin-settings seed of Spheres created before the capability existed.
+    if (capabilityName === "sphere.archive") {
+      const id = `pol_${sphereId}_admin_settings`;
+      migrated = migrated.map((policy) =>
+        policy.id === id && policy.version === 1 && !policy.resourceSelector.capabilityNames?.includes("sphere.archive")
+          ? {
+              ...policy,
+              resourceSelector: {
+                ...policy.resourceSelector,
+                capabilityNames: [...(policy.resourceSelector.capabilityNames ?? []), "sphere.archive"],
+              },
+            }
+          : policy,
+      );
+    }
     return migrated;
   };
 
@@ -357,7 +373,10 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
 
     const imported = importSphere(snap);
     const effectivePolicies =
-      capabilityName === "runtime.config.project" || capabilityName === "policy.manage" || capabilityName === "sphere.export"
+      capabilityName === "runtime.config.project" ||
+      capabilityName === "policy.manage" ||
+      capabilityName === "sphere.export" ||
+      capabilityName === "sphere.archive"
         ? withAdminSeedMigration(sphereId, imported.policies, capabilityName)
         : imported.policies;
     const request: CapabilityExecutionRequest = {

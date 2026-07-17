@@ -110,6 +110,17 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
   {
+    // RFC-024: retire a Sphere from view (or restore it). Soft and reversible — a
+    // status flip that destroys no data or audit — so no approval floor, unlike
+    // export/restore. Admin-only via the admin-settings seed; deny-by-default else.
+    name: "sphere.archive",
+    description: "Archive a Sphere (or restore it to active). Reversible; hides it from the list.",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
     name: "runtime.set_provider",
     description: "Change the Sphere's inference provider/model (admin settings).",
     risk: "high",

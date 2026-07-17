@@ -42,6 +42,7 @@ import {
   type RuntimeRestoreInput,
 } from "./runtime-governance.js";
 import {
+  archiveSphereProvision,
   createAgentProvision,
   createSphereProvision,
   exportSphereProvision,
@@ -49,6 +50,7 @@ import {
   managePolicyProvision,
   restoreSphereProvision,
   updateAgentProvision,
+  type ArchiveSphereInput,
   type CreateAgentInput,
   type CreateSphereInput,
   type ExportSphereInput,
@@ -195,6 +197,8 @@ const localExecutor = new LocalCapabilityExecutor(
     [PROVISIONING_TOOLS["sphere.export"], async (input) => exportSphereProvision(provDeps, input as ExportSphereInput)],
     // RFC-022: recreate a Sphere from a snapshot; never overwrites an existing one.
     [PROVISIONING_TOOLS["sphere.restore"], async (input) => restoreSphereProvision(provDeps, input as RestoreSphereInput)],
+    // RFC-024: archive/restore a Sphere — a reversible, governed lifecycle flip.
+    [PROVISIONING_TOOLS["sphere.archive"], async (input) => archiveSphereProvision(provDeps, input as ArchiveSphereInput)],
   ]),
 );
 

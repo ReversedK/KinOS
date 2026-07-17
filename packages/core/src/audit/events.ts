@@ -14,6 +14,8 @@ export type KinEventType =
   | "sphere.created"
   /** A Sphere was recreated from an export snapshot (RFC-022) — imported origin. */
   | "sphere.restored"
+  /** A Sphere's archival status changed (RFC-024): archived or restored to active. */
+  | "sphere.archived"
   | "identity.impersonated"
   | "member.invited"
   | "member.joined"

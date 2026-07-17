@@ -16,6 +16,7 @@
 import {
   activateAgent,
   addMember,
+  archiveSphere,
   createAgent,
   createIdentity,
   createSphere,
@@ -24,6 +25,7 @@ import {
   exportSphere,
   importSphere,
   pauseAgent,
+  unarchiveSphere,
   type AuditSink,
   type KinEventType,
   type Policy,
@@ -380,6 +382,52 @@ export async function exportSphereProvision(
   const imported = importSphere(await loadOrThrow(deps, input.sphereId));
   // Re-stamp exportedAt: this snapshot is being exported now, not at last write.
   return exportSphere({ ...imported, exportedAt: nowOf(deps) });
+}
+
+// --- sphere.archive (RFC-024) ----------------------------------------------
+
+export interface ArchiveSphereInput {
+  readonly sphereId?: string;
+  /** true archives (default); false restores an archived Sphere to active. */
+  readonly archived?: boolean;
+  readonly correlationId?: string;
+}
+
+export interface ArchiveSphereResult {
+  readonly sphereId: string;
+  readonly status: string;
+}
+
+/**
+ * Archive or restore a Sphere (RFC-024). A soft, reversible status flip: no data or
+ * audit is destroyed, and it is undone by restoring. A binding target, not an
+ * authorization point — it runs only after the pipeline authorized `sphere.archive`
+ * (adult-only, admin via the settings seed). The status transition itself is guarded
+ * in the domain (`archiveSphere`/`unarchiveSphere`).
+ */
+export async function archiveSphereProvision(
+  deps: ProvisioningDeps,
+  input: ArchiveSphereInput,
+): Promise<ArchiveSphereResult> {
+  if (input.sphereId === undefined) throw new Error("sphereId is required");
+  const imported = importSphere(await loadOrThrow(deps, input.sphereId));
+  const archive = input.archived ?? true;
+  const sphere = archive ? archiveSphere(imported.sphere) : unarchiveSphere(imported.sphere);
+  const at = nowOf(deps);
+  await deps.store.save(reexport(imported, { sphere }, at));
+  // Audit the lifecycle fact; the reason disambiguates direction (user-safe, no content).
+  if (deps.auditSink !== undefined && input.correlationId !== undefined) {
+    deps.auditSink.record({
+      type: "sphere.archived",
+      sphereId: input.sphereId,
+      resourceType: "sphere",
+      resourceId: input.sphereId,
+      reason: archive ? "Sphere archived" : "Sphere restored to active",
+      correlationId: input.correlationId,
+      createdAt: at,
+    });
+  }
+  return { sphereId: input.sphereId, status: sphere.status };
 }
 
 // --- sphere.restore (RFC-022) ----------------------------------------------
