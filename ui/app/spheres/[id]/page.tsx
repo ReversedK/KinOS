@@ -3,6 +3,7 @@ import { AgentConfig } from "../../../components/AgentConfig";
 import { Calendar } from "../../../components/Calendar";
 import { DevActorSwitcher } from "../../../components/DevActorSwitcher";
 import { DeployAgent } from "../../../components/DeployAgent";
+import { ExportSphere } from "../../../components/ExportSphere";
 import { InviteMember } from "../../../components/InviteMember";
 import { Notes } from "../../../components/Notes";
 import { PolicyManager } from "../../../components/PolicyManager";
@@ -93,6 +94,8 @@ export default async function SpherePage({ params, searchParams }: { params: { i
               </div>
             </div>
             <div className="row">
+              {/* Portability (RFC-021): governed, approval-floored, adult-only. */}
+              <ExportSphere sphereId={id} admin={admin} />
               <a className="btn" href={`/spheres/${encodeURIComponent(id)}/store`}>
                 Store
               </a>

@@ -30,12 +30,26 @@ function request(
 describe("provisioning catalog entries (RFC-008)", () => {
   const catalog = defaultCapabilityCatalog();
 
-  it.each(Object.keys(PROVISIONING_TOOLS))("declares %s as admin-only/high-risk, no approval floor", (name) => {
+  // sphere.export is a deliberate exception (RFC-021): it hands over every
+  // member's memory, so it is critical + approval-floored rather than high/no-floor.
+  const PROVISIONING_ONLY = Object.keys(PROVISIONING_TOOLS).filter((name) => name !== "sphere.export");
+
+  it.each(PROVISIONING_ONLY)("declares %s as admin-only/high-risk, no approval floor", (name) => {
     const cap = catalog.get(name);
     expect(cap).toBeDefined();
     expect(cap!.risk).toBe("high");
     expect(cap!.allowedProfiles).toEqual(["adult"]);
     expect(cap!.approvalFloor).toBe(false);
+  });
+
+  it("declares sphere.export as adult-only, critical, and approval-floored (RFC-021)", () => {
+    const cap = catalog.get("sphere.export");
+    expect(cap).toBeDefined();
+    expect(cap!.risk).toBe("critical");
+    expect(cap!.allowedProfiles).toEqual(["adult"]); // a minor can never export
+    // The floor is what stops one administrator exporting another member's
+    // private memory unilaterally: it forces a second human's approval.
+    expect(cap!.approvalFloor).toBe(true);
   });
 });
 
@@ -48,8 +62,12 @@ describe("provisioningBindings (RFC-008)", () => {
       "member.invite",
       "policy.manage",
       "sphere.create",
+      "sphere.export",
     ]);
-    for (const b of bindings) {
+    // sphere.export carries the catalog's critical risk (RFC-021) so a policy
+    // selecting on riskLevels sees the same risk the catalog states.
+    expect(bindings.find((b) => b.capability === "sphere.export")?.risk).toBe("critical");
+    for (const b of bindings.filter((b) => b.capability !== "sphere.export")) {
       expect(b.status).toBe("enabled");
       expect(b.runtime).toBe("local");
       expect(b.execution).toBe("local");

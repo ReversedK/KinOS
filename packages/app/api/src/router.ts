@@ -167,6 +167,26 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           : policy,
       );
     }
+    // RFC-021: same lineage-anchored backfill for `sphere.export` on the admin
+    // settings seed, whose id already exists on older Spheres (so the "missing
+    // seed" pass above never reaches it) but whose capability list predates the
+    // export capability. Version-guarded like policy.manage above: an admin who
+    // deliberately edited this policy (version > 1) is never overwritten, and an
+    // unseeded Sphere stays denied by default.
+    if (capabilityName === "sphere.export") {
+      const id = `pol_${sphereId}_admin_settings`;
+      migrated = migrated.map((policy) =>
+        policy.id === id && policy.version === 1 && !policy.resourceSelector.capabilityNames?.includes("sphere.export")
+          ? {
+              ...policy,
+              resourceSelector: {
+                ...policy.resourceSelector,
+                capabilityNames: [...(policy.resourceSelector.capabilityNames ?? []), "sphere.export"],
+              },
+            }
+          : policy,
+      );
+    }
     return migrated;
   };
 
@@ -274,9 +294,10 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     }
 
     const imported = importSphere(snap);
-    const effectivePolicies = capabilityName === "runtime.config.project" || capabilityName === "policy.manage"
-      ? withAdminSeedMigration(sphereId, imported.policies, capabilityName)
-      : imported.policies;
+    const effectivePolicies =
+      capabilityName === "runtime.config.project" || capabilityName === "policy.manage" || capabilityName === "sphere.export"
+        ? withAdminSeedMigration(sphereId, imported.policies, capabilityName)
+        : imported.policies;
     const request: CapabilityExecutionRequest = {
       subject,
       capabilityName,

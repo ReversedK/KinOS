@@ -848,6 +848,22 @@ export interface ApprovalOutcome {
   readonly capability: string;
   readonly status: string;
   readonly reason?: string;
+  /**
+   * The executed action's result, present once a grant authorizes it. For
+   * `sphere.export` this is the snapshot itself (RFC-021) — an approval-gated
+   * payload is delivered to the approver who releases it, not to the requester.
+   */
+  readonly output?: unknown;
+}
+
+/** Governed export of the whole Sphere (RFC-021). Always approval-floored. */
+export function requestSphereExport(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "sphere.export", subject, undefined, fetchImpl);
 }
 
 async function resolveApprovalAction(

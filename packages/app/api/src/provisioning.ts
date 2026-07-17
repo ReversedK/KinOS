@@ -344,3 +344,40 @@ export async function managePolicyProvision(
   audit(deps, eventType, input.sphereId, input.policy.id, input.correlationId, at);
   return { policyId: input.policy.id, version: input.policy.version, status: input.policy.status };
 }
+
+// --- sphere.export (RFC-021) -----------------------------------------------
+
+export interface ExportSphereInput {
+  readonly sphereId?: string;
+  readonly correlationId?: string;
+}
+
+/**
+ * Return the Sphere's complete snapshot for backup/restore (RFC-021,
+ * results-contract §17/§19). Full fidelity by decision: it includes every
+ * member's memory, private items included, because a snapshot that omits them
+ * cannot restore the Sphere. Embeddings are excluded by the format (derived and
+ * regenerable).
+ *
+ * This is a binding target, not an authorization point. It runs only after the
+ * governed pipeline authorized `sphere.export` — adult-only by the catalog
+ * profile floor, and always approval-floored, so the core's no-self-approval rule
+ * prevents one administrator from unilaterally exporting a Sphere that holds
+ * another member's private memory.
+ *
+ * The pipeline itself audits the call (`capability.requested/allowed/executed`
+ * carry actor, capability, decision, policy and correlation id), so nothing is
+ * recorded here — and the snapshot must never enter audit (audit minimality).
+ *
+ * A local backup only: returning the payload to the authorized caller is not an
+ * external transfer, which stays a separate, stricter decision (RFC-021).
+ */
+export async function exportSphereProvision(
+  deps: ProvisioningDeps,
+  input: ExportSphereInput,
+): Promise<SphereExport> {
+  if (input.sphereId === undefined) throw new Error("sphereId is required");
+  const imported = importSphere(await loadOrThrow(deps, input.sphereId));
+  // Re-stamp exportedAt: this snapshot is being exported now, not at last write.
+  return exportSphere({ ...imported, exportedAt: nowOf(deps) });
+}

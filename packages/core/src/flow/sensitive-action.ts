@@ -21,6 +21,7 @@ import {
   createApprovalFromDecision,
   isAuthorized,
   recordApprovalDecision,
+  UNIDENTIFIED_AGENT,
   type ApprovalRequest,
   type Approver,
 } from "../approval/approval.js";
@@ -87,13 +88,37 @@ export async function beginSensitiveAction(
   if (decision === undefined) {
     return { status: "denied", correlationId, reason: "require_approval without a decision" };
   }
+
+  // Deny by default: an approval-gated action needs an identified requester.
+  // Separation of duties (no self-approval) is enforced at grant time by matching
+  // the approver against `requestedBy.onBehalfOf`; a subject carrying neither a
+  // memberId nor an agentId is anonymous, so that check silently cannot fire and
+  // the requester could answer their own request. Uncertainty is a denial, not a
+  // permission (invariant: deny by default).
+  if (request.subject.memberId === undefined && request.subject.agentId === undefined) {
+    const reason = "An approval-gated action requires an identified requester (separation of duties cannot be enforced for an anonymous subject).";
+    deps.audit?.record({
+      type: "capability.denied",
+      sphereId: request.context.sphereId,
+      resourceType: "capability",
+      resourceId: request.capabilityName,
+      decision: "deny",
+      reason,
+      ...(decision.matchedPolicyId !== undefined ? { policyId: decision.matchedPolicyId } : {}),
+      ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
+      correlationId,
+      createdAt: request.context.time,
+    });
+    return { status: "denied", correlationId, reason };
+  }
+
   const risk = deps.catalog.get(request.capabilityName)?.risk ?? "high";
   const approval = createApprovalFromDecision({
     id: deps.newApprovalId(),
     sphereId: request.context.sphereId,
     decision,
     requestedBy: {
-      agentId: request.subject.agentId ?? "unknown",
+      agentId: request.subject.agentId ?? UNIDENTIFIED_AGENT,
       ...(request.subject.memberId !== undefined ? { onBehalfOf: request.subject.memberId } : {}),
     },
     action: {

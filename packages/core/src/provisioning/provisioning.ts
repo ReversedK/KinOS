@@ -30,9 +30,20 @@ export const PROVISIONING_TOOLS = {
   "agent.create": "provisioning.create_agent",
   "agent.update_config": "provisioning.update_agent",
   "policy.manage": "provisioning.manage_policy",
+  "sphere.export": "provisioning.export_sphere",
 } as const;
 
 export type ProvisioningCapability = keyof typeof PROVISIONING_TOOLS;
+
+/**
+ * Per-capability binding risk. Provisioning is `high` by default; `sphere.export`
+ * is `critical` to match its catalog entry (RFC-021), so a policy selecting on
+ * `riskLevels` sees the same risk the catalog states. The catalog's approval floor
+ * is what forces approval — this only keeps the two descriptions honest.
+ */
+const PROVISIONING_RISK: Partial<Record<ProvisioningCapability, CapabilityBinding["risk"]>> = {
+  "sphere.export": "critical",
+};
 
 /** The in-Sphere provisioning capabilities (everything except bootstrap create). */
 export const IN_SPHERE_PROVISIONING_CAPABILITIES: readonly ProvisioningCapability[] = [
@@ -68,6 +79,11 @@ export const IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES = [
   "package.install",
   "package.enable",
   "package.disable",
+  // RFC-021: exporting the Sphere for backup/restore. The allow granted here is
+  // raised to require_approval by the catalog's approval floor, and the core's
+  // no-self-approval rule means one administrator can never unilaterally export a
+  // Sphere containing another member's private memory.
+  "sphere.export",
 ] as const;
 
 /** The default administrator roles that the admin seed grants provisioning to. */
@@ -81,8 +97,8 @@ export function provisioningBindings(): CapabilityBinding[] {
       runtime: "local",
       runtimeToolName,
       execution: "local",
-      risk: "high",
-      requiresApproval: false, // policy governs; provisioning has no catalog floor
+      risk: PROVISIONING_RISK[capability] ?? "high",
+      requiresApproval: false, // policy governs; the catalog carries any floor
       status: "enabled",
     }),
   );

@@ -80,6 +80,20 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "riskLevel", "decision", "correlationId"],
   },
   {
+    // RFC-021: the full-fidelity Sphere snapshot for backup/restore (results-contract
+    // §17/§19). It contains every member's memory, private items included — a backup
+    // that drops them cannot restore the Sphere. The approval floor plus the core's
+    // no-self-approval rule mean a lone adult can never unilaterally export another
+    // member's private memory; a minor cannot export at all. This is a local backup,
+    // never an external transfer (see RFC-021 §Security).
+    name: "sphere.export",
+    description: "Export the Sphere as a complete snapshot for backup and restore.",
+    risk: "critical",
+    allowedProfiles: ["adult"],
+    approvalFloor: true,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
     name: "runtime.set_provider",
     description: "Change the Sphere's inference provider/model (admin settings).",
     risk: "high",

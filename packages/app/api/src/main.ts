@@ -44,11 +44,13 @@ import {
 import {
   createAgentProvision,
   createSphereProvision,
+  exportSphereProvision,
   inviteMemberProvision,
   managePolicyProvision,
   updateAgentProvision,
   type CreateAgentInput,
   type CreateSphereInput,
+  type ExportSphereInput,
   type InviteMemberInput,
   type ManagePolicyInput,
   type ProvisioningDeps,
@@ -187,6 +189,8 @@ const localExecutor = new LocalCapabilityExecutor(
     [PROVISIONING_TOOLS["agent.create"], async (input) => createAgentProvision(provDeps, input as CreateAgentInput)],
     [PROVISIONING_TOOLS["agent.update_config"], async (input) => updateAgentProvision(provDeps, input as UpdateAgentInput)],
     [PROVISIONING_TOOLS["policy.manage"], async (input) => managePolicyProvision(provDeps, input as ManagePolicyInput)],
+    // RFC-021: the full-fidelity Sphere snapshot (adult-only + approval-floored).
+    [PROVISIONING_TOOLS["sphere.export"], async (input) => exportSphereProvision(provDeps, input as ExportSphereInput)],
   ]),
 );
 

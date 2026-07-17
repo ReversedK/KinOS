@@ -6,6 +6,7 @@ import {
   expireIfDue,
   isAuthorized,
   recordApprovalDecision,
+  UNIDENTIFIED_AGENT,
   type Approver,
 } from "./approval.js";
 import type { PolicyDecision } from "../policy/types.js";
@@ -98,6 +99,35 @@ describe("Who may approve (separation of duties; minors excluded)", () => {
     expect(() =>
       recordApprovalDecision(selfReq, { approver: parentA, decision: "grant", at: CREATED }),
     ).toThrow(/own request|separation/i);
+  });
+
+  // Regression: with no identified requester the self-approval check above cannot
+  // fire, so the requester could answer their own request. An unverifiable
+  // separation of duties is a denial, not a permission.
+  it("rejects a grant when the requester is unidentified (no onBehalfOf, no agent)", () => {
+    const anonymous = createApprovalFromDecision({
+      id: "apr_anon",
+      sphereId: "sph_1",
+      decision: approvalDecision(),
+      requestedBy: { agentId: UNIDENTIFIED_AGENT },
+      action: { capabilityName: "payment.execute", riskLevel: "critical", summary: "s" },
+      createdAt: CREATED,
+    });
+    expect(() =>
+      recordApprovalDecision(anonymous, { approver: parentA, decision: "grant", at: CREATED }),
+    ).toThrow(/unidentified|separation/i);
+  });
+
+  it("still allows a grant for an agent-initiated request (identified by its agent)", () => {
+    const byAgent = createApprovalFromDecision({
+      id: "apr_agent",
+      sphereId: "sph_1",
+      decision: approvalDecision(),
+      requestedBy: { agentId: "agt_sphere" },
+      action: { capabilityName: "payment.execute", riskLevel: "critical", summary: "s" },
+      createdAt: CREATED,
+    });
+    expect(recordApprovalDecision(byAgent, { approver: parentA, decision: "grant", at: CREATED }).state).toBe("granted");
   });
 
   it("rejects a minor approving", () => {

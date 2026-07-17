@@ -13,6 +13,7 @@ import { handleApiRequest, type ApiDeps } from "./router.js";
 import {
   createAgentProvision,
   createSphereProvision,
+  exportSphereProvision,
   inviteMemberProvision,
   managePolicyProvision,
   updateAgentProvision,
@@ -142,6 +143,7 @@ function apiDeps(store: SphereStore): ApiDeps & { audit: InMemoryAuditSink } {
       [PROVISIONING_TOOLS["agent.create"], async (input) => createAgentProvision(pd, input as never)],
       [PROVISIONING_TOOLS["agent.update_config"], async (input) => updateAgentProvision(pd, input as never)],
       [PROVISIONING_TOOLS["policy.manage"], async (input) => managePolicyProvision(pd, input as never)],
+      [PROVISIONING_TOOLS["sphere.export"], async (input) => exportSphereProvision(pd, input as never)],
     ]),
   );
   let c = 0;
@@ -325,5 +327,97 @@ describe("governed provisioning pipeline (RFC-008)", () => {
     const read = await handleApiRequest({ method: "GET", path: `/spheres/${sphereId}/policies` }, deps);
     expect(read.status).toBe(200);
     expect((read.body as { policies: readonly { id: string }[] }).policies.some((item) => item.id === policy.id)).toBe(true);
+  });
+});
+
+// --- sphere.export (RFC-021) --------------------------------------------------
+
+describe("sphere.export — full-fidelity, admin-gated (RFC-021)", () => {
+  async function bootstrapped(): Promise<{ deps: ReturnType<typeof apiDeps>; store: InMemorySphereStore; sphereId: string }> {
+    const store = new InMemorySphereStore();
+    const deps = apiDeps(store);
+    const created = await handleApiRequest(
+      { method: "POST", path: "/spheres", body: { subject: adult, input: { name: "Doe Family" } } },
+      deps,
+    );
+    return { deps, store, sphereId: (created.body as { output: { sphereId: string } }).output.sphereId };
+  }
+
+  const exportPath = (sphereId: string) => `/spheres/${sphereId}/capabilities/sphere.export/execute`;
+
+  it("an identified adult cannot export unilaterally — the approval floor suspends it", async () => {
+    const { deps, store, sphereId } = await bootstrapped();
+    const founder = importSphere((await store.load(sphereId))!).sphere.administrators[0]!;
+    const res = await handleApiRequest(
+      { method: "POST", path: exportPath(sphereId), body: { subject: { ...adult, memberId: founder } } },
+      deps,
+    );
+    expect(res.status).toBe(202);
+    expect(res.code).toBe("approval_required");
+    // The snapshot must not be handed over with the pending response.
+    expect(JSON.stringify(res.body)).not.toContain("kinos.sphere.export");
+  });
+
+  // Regression: an anonymous subject (no memberId, no agentId) made the core's
+  // no-self-approval check silently unfirable, so one caller could raise an export
+  // and then grant it themselves — walking away with every member's private
+  // memory. An approval-gated action now requires an identified requester.
+  it("refuses an approval-gated export from an anonymous subject (separation of duties)", async () => {
+    const { deps, sphereId } = await bootstrapped();
+    const res = await handleApiRequest({ method: "POST", path: exportPath(sphereId), body: { subject: adult } }, deps);
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(res.body)).toMatch(/identified requester/i);
+    expect(JSON.stringify(res.body)).not.toContain("kinos.sphere.export");
+  });
+
+  it("a child is denied by the catalog profile floor (403)", async () => {
+    const { deps, sphereId } = await bootstrapped();
+    const res = await handleApiRequest({ method: "POST", path: exportPath(sphereId), body: { subject: child } }, deps);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns the full snapshot once a second adult grants, and it round-trips through importSphere", async () => {
+    const { deps, store, sphereId } = await bootstrapped();
+    // A second adult, so an approver other than the requester exists.
+    await handleApiRequest(
+      {
+        method: "POST",
+        path: `/spheres/${sphereId}/capabilities/member.invite/execute`,
+        body: { subject: adult, input: { role: "parent", displayName: "Second Parent" } },
+      },
+      deps,
+    );
+    const snapBefore = importSphere((await store.load(sphereId))!);
+    const approver = snapBefore.sphere.members.find((m) => m.role === "parent" && m.id !== snapBefore.sphere.administrators[0])!;
+
+    const pending = await handleApiRequest(
+      { method: "POST", path: exportPath(sphereId), body: { subject: { ...adult, memberId: snapBefore.sphere.administrators[0] } } },
+      deps,
+    );
+    const approvalId = (pending.body as { approvalId: string }).approvalId;
+
+    const granted = await handleApiRequest(
+      { method: "POST", path: `/approvals/${approvalId}/grant`, body: { approver: { memberId: approver.id, role: "parent" } } },
+      deps,
+    );
+    expect(granted.status).toBe(200);
+    const output = (granted.body as { output?: unknown }).output;
+
+    // Fidelity: the payload is a valid export snapshot that imports unchanged.
+    const reimported = importSphere(output);
+    expect(reimported.sphere.id).toBe(sphereId);
+    expect(reimported.sphere.members.length).toBe(snapBefore.sphere.members.length);
+    expect(reimported.policies.length).toBe(snapBefore.policies.length);
+    expect((output as { format: string }).format).toBe("kinos.sphere.export");
+  });
+
+  it("the snapshot never enters the audit log (audit minimality)", async () => {
+    const { deps, sphereId } = await bootstrapped();
+    await handleApiRequest({ method: "POST", path: exportPath(sphereId), body: { subject: adult } }, deps);
+    // Every recorded event is a security fact; none carries the export payload.
+    const recorded = JSON.stringify(deps.audit.events);
+    expect(recorded).not.toContain("kinos.sphere.export");
+    // The governed pipeline still audits the attempt itself.
+    expect(deps.audit.events.some((e) => e.resourceId === "sphere.export")).toBe(true);
   });
 });

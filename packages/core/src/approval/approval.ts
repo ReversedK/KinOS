@@ -21,6 +21,13 @@ export interface ApprovalDecisionRecord {
   readonly reason?: string;
 }
 
+/**
+ * Placeholder `agentId` for an action a member initiated directly (no agent). Such
+ * a request is still identified — by `onBehalfOf`. A request carrying this AND no
+ * `onBehalfOf` has an unidentifiable requester and can never be granted.
+ */
+export const UNIDENTIFIED_AGENT = "unknown";
+
 export interface ApprovalRequest {
   readonly id: string;
   readonly sphereId: string;
@@ -177,6 +184,12 @@ function assertEligible(request: ApprovalRequest, approver: Approver): void {
     approver.memberId === request.requestedBy.onBehalfOf
   ) {
     throw new Error("The requester cannot approve their own request (separation of duties)");
+  }
+  // Defence in depth: with no identified requester the check above silently cannot
+  // fire, so the requester could answer their own request. Refuse rather than
+  // approve on an unverifiable separation of duties (deny by default).
+  if (request.requestedBy.onBehalfOf === undefined && request.requestedBy.agentId === UNIDENTIFIED_AGENT) {
+    throw new Error("The requester is unidentified; separation of duties cannot be verified");
   }
   if (!approver.roles.some((r) => request.approverRoles.includes(r))) {
     throw new Error("Approver does not hold a required approver role");
