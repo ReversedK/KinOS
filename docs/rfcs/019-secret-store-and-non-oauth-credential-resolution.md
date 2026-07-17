@@ -118,4 +118,7 @@ authorizes the capability call before the executor resolves any secret.
 - No secret value appears on the `Integration` entity, any read endpoint, or audit
   — asserted by a test.
 - The port is consumed by at least one real non-OAuth provider (CalDAV) in a
-  follow-up increment, validated with an injected transport.
+  follow-up increment, validated with an injected transport — and, beyond the unit
+  tests, end-to-end against a live third-party CalDAV server (Radicale): `create`
+  PUTs a VEVENT and `read`'s REPORT round-trips it back, with Basic auth enforced
+  (unauthenticated request → 401).
