@@ -115,6 +115,10 @@ export interface ApiResponse {
   readonly code?: string;
 }
 
+/** Sphere activity tail bounds (RFC-020): a read must never drain the audit log. */
+const AUDIT_DEFAULT_LIMIT = 50;
+const AUDIT_MAX_LIMIT = 200;
+
 export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<ApiResponse> {
   const correlationId = deps.newCorrelationId();
   const ok = (body: unknown): ApiResponse => ({ status: 200, correlationId, body });
@@ -1585,6 +1589,8 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         id: p.approval.id,
         sphereId: p.approval.sphereId,
         capability: p.approval.action.capabilityName,
+        // Threads this approval to its audit chain (RFC-020).
+        correlationId: p.approval.correlationId,
         // User-safe description only (never private payload content, §18).
         summary: p.approval.action.summary,
         risk: p.approval.action.riskLevel,
@@ -1598,8 +1604,22 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     });
   }
 
+  // --- Audit APIs (RFC-020, api-contract §Audit APIs) ---
+  // Reads return events exactly as recorded: audit minimality is a record-time
+  // invariant (event-model §"What an event may and may not carry"), not something
+  // these projections filter. Bounded: an audit read must never drain the log.
   if (segments[0] === "audit" && segments.length === 2) {
     return ok({ events: deps.audit.byCorrelation(segments[1] as string) });
+  }
+
+  // GET /spheres/:id/audit?limit= — recent Sphere activity, newest first.
+  if (req.method === "GET" && segments[0] === "spheres" && segments.length === 3 && segments[2] === "audit") {
+    const sphereId = segments[1] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const requested = Number(req.query?.["limit"] ?? AUDIT_DEFAULT_LIMIT);
+    const limit = Number.isFinite(requested) && requested > 0 ? Math.min(requested, AUDIT_MAX_LIMIT) : AUDIT_DEFAULT_LIMIT;
+    return ok({ events: deps.audit.recentBySphere(sphereId, limit) });
   }
 
   return err(404, "not_found", "Unknown route");

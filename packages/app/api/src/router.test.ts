@@ -121,6 +121,7 @@ describe("API router (api-contract.md)", () => {
           id: "apr_1",
           sphereId: "sph_1",
           capability: "payment.execute",
+          correlationId: "cor_y",
           summary: "pay",
           risk: "critical",
           requestedByAgent: "agt_0",
@@ -138,6 +139,43 @@ describe("API router (api-contract.md)", () => {
     const res = await handleApiRequest({ method: "GET", path: "/audit/cor_x" }, await deps());
     expect(res.status).toBe(200);
     expect((res.body as { events: unknown[] }).events).toHaveLength(1);
+  });
+
+  // RFC-020: the Sphere activity tail.
+  describe("GET /spheres/:id/audit", () => {
+    it("returns the Sphere's recent events, newest first", async () => {
+      const d = await deps();
+      d.audit.record({ type: "capability.executed", sphereId: "sph_1", decision: "executed", correlationId: "cor_z", createdAt: NOW });
+      const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/audit" }, d);
+      expect(res.status).toBe(200);
+      expect((res.body as { events: { type: string }[] }).events.map((e) => e.type)).toEqual([
+        "capability.executed",
+        "sphere.created",
+      ]);
+    });
+
+    it("honours limit and caps it (an audit read must not drain the log)", async () => {
+      const d = await deps();
+      for (let i = 0; i < 5; i += 1) {
+        d.audit.record({ type: "capability.executed", sphereId: "sph_1", correlationId: `cor_${i}`, createdAt: NOW });
+      }
+      const limited = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/audit", query: { limit: "2" } }, d);
+      expect((limited.body as { events: unknown[] }).events).toHaveLength(2);
+
+      // Over the cap: served, but never more than AUDIT_MAX_LIMIT (200).
+      const huge = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/audit", query: { limit: "100000" } }, d);
+      expect((huge.body as { events: unknown[] }).events.length).toBeLessThanOrEqual(200);
+
+      // Garbage falls back to the default rather than returning nothing.
+      const junk = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/audit", query: { limit: "abc" } }, d);
+      expect((junk.body as { events: unknown[] }).events).toHaveLength(6);
+    });
+
+    it("returns not_found for an unknown Sphere", async () => {
+      const res = await handleApiRequest({ method: "GET", path: "/spheres/nope/audit" }, await deps());
+      expect(res.status).toBe(404);
+      expect(res.code).toBe("not_found");
+    });
   });
 
   it("rejects a non-GET method on a read-only route", async () => {

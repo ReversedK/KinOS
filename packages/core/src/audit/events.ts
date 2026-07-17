@@ -88,6 +88,11 @@ export interface AuditSink {
 /** Read side of the audit log: reconstruct a single action's event chain. */
 export interface AuditReader {
   byCorrelation(correlationId: string): readonly KinEvent[];
+  /**
+   * Most recent events for one Sphere, newest first (RFC-020). Bounded by `limit`:
+   * an audit log grows without limit, so a read must never be able to drain it.
+   */
+  recentBySphere(sphereId: string, limit: number): readonly KinEvent[];
 }
 
 export class InMemoryAuditSink implements AuditSink, AuditReader {
@@ -101,5 +106,11 @@ export class InMemoryAuditSink implements AuditSink, AuditReader {
 
   byCorrelation(correlationId: string): readonly KinEvent[] {
     return this.events.filter((e) => e.correlationId === correlationId);
+  }
+
+  recentBySphere(sphereId: string, limit: number): readonly KinEvent[] {
+    if (limit <= 0) return [];
+    // Insertion order is chronological; newest first, then bound.
+    return this.events.filter((e) => e.sphereId === sphereId).reverse().slice(0, limit);
   }
 }

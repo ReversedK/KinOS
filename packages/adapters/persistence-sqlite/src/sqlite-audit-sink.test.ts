@@ -50,6 +50,24 @@ describe("SqliteAuditSink — durable AuditSink", () => {
     expect(chain[1]?.policyVersion).toBe(4);
   });
 
+  // RFC-020: the Sphere activity tail — scoped, newest first, bounded.
+  it("recentBySphere returns the Sphere's own events newest first, bounded by the limit", () => {
+    sink.record({ type: "sphere.created", sphereId: "sph_1", correlationId: "a", createdAt: "t1" });
+    sink.record({ type: "agent.created", sphereId: "sph_2", correlationId: "b", createdAt: "t2" });
+    sink.record({ type: "capability.requested", sphereId: "sph_1", correlationId: "c", createdAt: "t3" });
+    sink.record({ type: "capability.executed", sphereId: "sph_1", correlationId: "c", createdAt: "t4" });
+
+    expect(sink.recentBySphere("sph_1", 10).map((e) => e.type)).toEqual([
+      "capability.executed",
+      "capability.requested",
+      "sphere.created",
+    ]);
+    // Bounded: the newest are kept, and another Sphere's events never appear.
+    expect(sink.recentBySphere("sph_1", 2).map((e) => e.type)).toEqual(["capability.executed", "capability.requested"]);
+    expect(sink.recentBySphere("sph_1", 0)).toEqual([]);
+    expect(sink.recentBySphere("sph_nope", 10)).toEqual([]);
+  });
+
   it("persists across a reopen of the same database file (durability)", () => {
     sink.record({ type: "sphere.created", sphereId: "sph_1", correlationId: "cor_d", createdAt: "t" });
     sink.close();

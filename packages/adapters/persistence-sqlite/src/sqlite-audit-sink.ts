@@ -8,7 +8,7 @@
  */
 
 import Database from "better-sqlite3";
-import type { AuditSink, EventDecision, KinEvent, KinEventDraft, KinEventType } from "@kinos/core";
+import type { AuditReader, AuditSink, EventDecision, KinEvent, KinEventDraft, KinEventType } from "@kinos/core";
 
 interface AuditRow {
   readonly seq: number;
@@ -26,7 +26,7 @@ interface AuditRow {
   readonly created_at: string;
 }
 
-export class SqliteAuditSink implements AuditSink {
+export class SqliteAuditSink implements AuditSink, AuditReader {
   private readonly db: Database.Database;
 
   constructor(filename: string) {
@@ -49,6 +49,9 @@ export class SqliteAuditSink implements AuditSink {
          created_at TEXT NOT NULL
        )`,
     );
+    // Read paths: the Sphere activity tail (RFC-020) and the correlation chain.
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_audit_sphere_seq ON audit_events (sphere_id, seq DESC)");
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_audit_correlation ON audit_events (correlation_id)");
   }
 
   record(event: KinEventDraft): void {
@@ -79,6 +82,18 @@ export class SqliteAuditSink implements AuditSink {
     const rows = this.db
       .prepare("SELECT * FROM audit_events WHERE correlation_id = ? ORDER BY seq")
       .all(correlationId) as AuditRow[];
+    return rows.map(toEvent);
+  }
+
+  /**
+   * Most recent events for one Sphere, newest first (RFC-020). Bounded by `limit`
+   * so an audit read can never drain the log.
+   */
+  recentBySphere(sphereId: string, limit: number): readonly KinEvent[] {
+    if (limit <= 0) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM audit_events WHERE sphere_id = ? ORDER BY seq DESC LIMIT ?")
+      .all(sphereId, limit) as AuditRow[];
     return rows.map(toEvent);
   }
 

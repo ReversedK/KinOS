@@ -92,6 +92,18 @@ A `require_approval` outcome is not an error and not a success — it is a disti
 - update scopes;
 - disconnect integration credentials.
 
+### Audit APIs
+
+Read-only inspection of the governance chain (RFC-020). Reads return events exactly
+as recorded; audit minimality is guaranteed at record time by `event-model.md`, not
+by these projections. Events must be safe to inspect by authorized administrators.
+
+- list recent Sphere activity (newest first; bounded — the caller may request a
+  `limit`, which the server caps; an audit read must never drain the log);
+- get the event chain for a correlation id (reconstructs one sensitive action: who
+  asked, which policy version decided, whether approval was required and by whom it
+  was answered, what executed and through which integration).
+
 ## Error model
 
 Every denied request should return an error code, a user-safe message, a policy reason when safe and a correlation id.

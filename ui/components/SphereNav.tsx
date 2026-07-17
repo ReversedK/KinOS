@@ -8,6 +8,7 @@ const ITEMS = [
   ["connectors", "Connectors", "07"],
   ["calendar", "Calendar", "08"],
   ["notes", "Notes", "09"],
+  ["activity", "Activity", "10"],
 ] as const;
 
 export function SphereNav() {

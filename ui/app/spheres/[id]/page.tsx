@@ -1,3 +1,4 @@
+import { Activity } from "../../../components/Activity";
 import { AgentConfig } from "../../../components/AgentConfig";
 import { Calendar } from "../../../components/Calendar";
 import { DevActorSwitcher } from "../../../components/DevActorSwitcher";
@@ -17,6 +18,7 @@ import {
   getPolicies,
   getRuntime,
   getSphere,
+  getSphereAudit,
   type ActingSubject,
 } from "../../../lib/api";
 import { ApprovalActions } from "../../approvals/ApprovalActions";
@@ -32,7 +34,7 @@ export default async function SpherePage({ params, searchParams }: { params: { i
   const base = apiBaseUrl();
   const id = params.id;
   try {
-    const [sphere, members, agents, runtime, integrations, capabilities, policies, pendingApprovals] = await Promise.all([
+    const [sphere, members, agents, runtime, integrations, capabilities, policies, pendingApprovals, activity] = await Promise.all([
       getSphere(base, id),
       getMembers(base, id),
       getAgents(base, id),
@@ -41,6 +43,7 @@ export default async function SpherePage({ params, searchParams }: { params: { i
       getCapabilities(base).catch(() => []),
       getPolicies(base, id),
       getPendingApprovals(base, id).catch(() => []),
+      getSphereAudit(base, id, 40).catch(() => []),
     ]);
 
     // The administrator acting in the console (dev: the founder/first parent;
@@ -231,6 +234,12 @@ export default async function SpherePage({ params, searchParams }: { params: { i
                           {p.expiresAt ? (
                             <span className="faint" style={{ fontSize: 12 }}>expires <time dateTime={p.expiresAt}>{p.expiresAt.slice(0, 16).replace("T", " ")}</time></span>
                           ) : null}
+                          {/* The id that threads this approval to its audit chain (RFC-020). */}
+                          {p.correlationId ? (
+                            <a className="faint" style={{ fontSize: 12 }} href="#activity">
+                              chain <code>{p.correlationId}</code>
+                            </a>
+                          ) : null}
                         </div>
                         {eligible.length === 0 ? (
                           <span className="faint" style={{ fontSize: 12 }}>
@@ -356,6 +365,24 @@ export default async function SpherePage({ params, searchParams }: { params: { i
             </div>
             <div className="panel-body">
               <Notes sphereId={id} actor={admin} />
+            </div>
+          </div>
+
+          {/* Activity — the governance chain made visible (RFC-020) */}
+          <div id="activity" className="panel section-anchor">
+            <div className="panel-head">
+              <div>
+                <span className="eyebrow">Audit</span>
+                <h3>Activity</h3>
+              </div>
+              <span className="faint" style={{ fontSize: 12 }}>security facts · never content</span>
+            </div>
+            <div className="panel-body">
+              <p className="section-intro">
+                Every governed action, grouped by correlation id: who asked, which policy version decided, whether approval was required, and
+                what executed. Records carry no conversation, memory content, or credentials.
+              </p>
+              <Activity events={activity} />
             </div>
           </div>
 

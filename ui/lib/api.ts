@@ -19,6 +19,8 @@ export interface PendingApproval {
   readonly id: string;
   readonly sphereId: string;
   readonly capability: string;
+  /** Threads this approval to its audit chain (RFC-020). */
+  readonly correlationId?: string;
   /** User-safe description of the requested action (never private content). */
   readonly summary?: string;
   readonly risk?: string;
@@ -155,6 +157,59 @@ export async function getPendingApprovals(
   const path = sphereId === undefined ? "/approvals" : `/approvals?sphereId=${encodeURIComponent(sphereId)}`;
   const body = await getJson<{ pending: readonly PendingApproval[] }>(baseUrl, path, fetchImpl);
   return body.pending;
+}
+
+// --- Audit APIs (RFC-020, api-contract §Audit APIs) ---
+
+/**
+ * A recorded security fact. Audit minimality is guaranteed at record time
+ * (event-model): these carry ids, decision class, deciding policy and a
+ * correlation id — never conversation text, memory content, or credentials.
+ */
+export interface AuditEvent {
+  readonly id: string;
+  readonly type: string;
+  readonly sphereId: string;
+  readonly actorId?: string;
+  readonly agentId?: string;
+  readonly resourceType?: string;
+  readonly resourceId?: string;
+  readonly decision?: string;
+  readonly reason?: string;
+  readonly policyId?: string;
+  readonly policyVersion?: number;
+  readonly correlationId: string;
+  readonly createdAt: string;
+}
+
+/** Recent activity for a Sphere, newest first. The server caps `limit`. */
+export async function getSphereAudit(
+  baseUrl: string,
+  sphereId: string,
+  limit?: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly AuditEvent[]> {
+  const q = limit === undefined ? "" : `?limit=${encodeURIComponent(String(limit))}`;
+  const body = await getJson<{ events: readonly AuditEvent[] }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/audit${q}`,
+    fetchImpl,
+  );
+  return body.events;
+}
+
+/** The event chain for one sensitive action (policy → approval → execution). */
+export async function getAuditChain(
+  baseUrl: string,
+  correlationId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly AuditEvent[]> {
+  const body = await getJson<{ events: readonly AuditEvent[] }>(
+    baseUrl,
+    `/audit/${encodeURIComponent(correlationId)}`,
+    fetchImpl,
+  );
+  return body.events;
 }
 
 export async function getMembers(
