@@ -19,8 +19,15 @@ export interface PendingApproval {
   readonly id: string;
   readonly sphereId: string;
   readonly capability: string;
+  /** User-safe description of the requested action (never private content). */
+  readonly summary?: string;
+  readonly risk?: string;
+  readonly requestedByAgent?: string;
+  readonly onBehalfOf?: string;
   readonly state: string;
   readonly approverRoles: readonly string[];
+  readonly createdAt?: string;
+  readonly expiresAt?: string;
 }
 
 export interface MemberSummary {
@@ -142,9 +149,11 @@ export async function getSphere(
 
 export async function getPendingApprovals(
   baseUrl: string,
+  sphereId?: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<readonly PendingApproval[]> {
-  const body = await getJson<{ pending: readonly PendingApproval[] }>(baseUrl, "/approvals", fetchImpl);
+  const path = sphereId === undefined ? "/approvals" : `/approvals?sphereId=${encodeURIComponent(sphereId)}`;
+  const body = await getJson<{ pending: readonly PendingApproval[] }>(baseUrl, path, fetchImpl);
   return body.pending;
 }
 

@@ -117,7 +117,19 @@ describe("API router (api-contract.md)", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       pending: [
-        { id: "apr_1", sphereId: "sph_1", capability: "payment.execute", state: "pending", approverRoles: ["parent"] },
+        {
+          id: "apr_1",
+          sphereId: "sph_1",
+          capability: "payment.execute",
+          summary: "pay",
+          risk: "critical",
+          requestedByAgent: "agt_0",
+          onBehalfOf: "mbr_p1",
+          state: "pending",
+          approverRoles: ["parent"],
+          createdAt: NOW,
+          expiresAt: "2026-06-25T11:00:00.000Z",
+        },
       ],
     });
   });

@@ -1585,8 +1585,15 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         id: p.approval.id,
         sphereId: p.approval.sphereId,
         capability: p.approval.action.capabilityName,
+        // User-safe description only (never private payload content, §18).
+        summary: p.approval.action.summary,
+        risk: p.approval.action.riskLevel,
+        requestedByAgent: p.approval.requestedBy.agentId,
+        onBehalfOf: p.approval.requestedBy.onBehalfOf,
         state: p.approval.state,
         approverRoles: p.approval.approverRoles,
+        createdAt: p.approval.createdAt,
+        expiresAt: p.approval.expiresAt,
       })),
     });
   }

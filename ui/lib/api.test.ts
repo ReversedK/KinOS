@@ -62,6 +62,7 @@ describe("UI API client", () => {
   it("getPendingApprovals returns the list", async () => {
     const out = await getPendingApprovals(
       "http://x",
+      undefined,
       fakeFetch({ pending: [{ id: "apr_1", sphereId: "sph_1", capability: "payment.execute", state: "pending", approverRoles: ["parent"] }] }),
     );
     expect(out).toHaveLength(1);

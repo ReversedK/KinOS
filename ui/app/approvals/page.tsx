@@ -54,15 +54,26 @@ export default async function ApprovalsPage() {
                 <div className="panel-body stack tight">
                   <div className="row between">
                     <code style={{ fontSize: 15, fontWeight: 600 }}>{p.capability}</code>
-                    <span className="badge pending">
-                      <span className="dot" />
-                      {p.state}
+                    <span className="row" style={{ gap: "var(--s2)" }}>
+                      {p.risk ? <span className={`badge ${p.risk === "critical" || p.risk === "high" ? "deny" : ""}`}>{p.risk} risk</span> : null}
+                      <span className="badge pending">
+                        <span className="dot" />
+                        {p.state}
+                      </span>
                     </span>
                   </div>
-                  <div className="row" style={{ gap: "var(--s4)" }}>
+                  {/* User-safe description of the requested action (never private payload, §18). */}
+                  {p.summary ? <div style={{ fontSize: 14 }}>{p.summary}</div> : null}
+                  <div className="row" style={{ gap: "var(--s4)", flexWrap: "wrap" }}>
                     <span className="faint">
                       sphere <code>{p.sphereId}</code>
                     </span>
+                    {p.requestedByAgent ? (
+                      <span className="faint">
+                        requested by <code>{p.requestedByAgent}</code>
+                        {p.onBehalfOf ? <> · on behalf of <code>{p.onBehalfOf}</code></> : null}
+                      </span>
+                    ) : null}
                     <span className="faint">
                       approvers {p.approverRoles.map((r) => (
                         <span key={r} className="pill" style={{ marginLeft: 4 }}>
@@ -70,6 +81,11 @@ export default async function ApprovalsPage() {
                         </span>
                       ))}
                     </span>
+                    {p.expiresAt ? (
+                      <span className="faint">
+                        expires <time dateTime={p.expiresAt}>{p.expiresAt.slice(0, 16).replace("T", " ")}</time>
+                      </span>
+                    ) : null}
                     <span className="faint">
                       <code>{p.id}</code>
                     </span>
