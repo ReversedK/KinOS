@@ -111,6 +111,25 @@ export function ageProfileForRole(role: string): "adult" | "teen" | "child" {
   return "adult";
 }
 
+/**
+ * The administrator acting in the console (dev: the selected identity, else the
+ * first parent, else the first member). Anticipates real auth / RFC-006
+ * impersonation — being "admin in the UI" grants nothing; the Policy Engine still
+ * decides. Shared by the workspace sections so each derives the same acting
+ * subject from `?actor=`.
+ */
+export function resolveActingAdmin(
+  members: readonly MemberSummary[],
+  actorId?: string,
+): { adminMember?: MemberSummary; admin: ActingSubject } {
+  const adminMember =
+    members.find((m) => m.id === actorId) ?? members.find((m) => m.role === "parent") ?? members[0];
+  const admin: ActingSubject = adminMember
+    ? { memberId: adminMember.id, role: adminMember.role, ageProfile: ageProfileForRole(adminMember.role) }
+    : { role: "parent", ageProfile: "adult" };
+  return { adminMember, admin };
+}
+
 export interface CatalogCapability {
   readonly name: string;
   readonly description: string;

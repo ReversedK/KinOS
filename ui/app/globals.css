@@ -300,6 +300,13 @@ table.grid-table tr:hover td { background: color-mix(in oklab, var(--panel-2) 60
 }
 .sphere-nav a span { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
 .sphere-nav a:hover { color: var(--brand); background: var(--panel); transform: translateX(3px); }
+.sphere-nav a.active {
+  color: var(--brand);
+  background: var(--panel);
+  box-shadow: inset 2px 0 0 var(--brand);
+  font-weight: 650;
+}
+.sphere-nav a.active span { color: var(--brand); }
 
 .actor-card {
   display: grid;
