@@ -62,6 +62,8 @@ import {
 } from "@kinos/core";
 
 import { OAUTH_STATE_TTL_SECONDS, type AuthBroker, type PendingOAuthStore } from "./oauth.js";
+// Restore refuses to overwrite (RFC-022); the collision is a 409, not a 422.
+import { SphereAlreadyExistsError } from "./provisioning.js";
 
 export interface ApiDeps {
   readonly store: SphereStore;
@@ -189,6 +191,66 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     }
     return migrated;
   };
+
+  // --- Governed provisioning: restore a Sphere from a snapshot (RFC-022) ---
+  // POST /spheres/restore  { subject, snapshot }
+  //
+  // Instance-scoped bootstrap like POST /spheres: there is no Sphere to key a
+  // policy to yet, so `sphere.restore` is evaluated against the fixed bootstrap
+  // set. It never overwrites — an existing Sphere id is refused (409), which is
+  // what keeps a crafted snapshot from rewriting a live Sphere's policies or
+  // destroying its memory. Declared before the execute route below so
+  // "restore" is not read as a Sphere id.
+  if (req.method === "POST" && segments[0] === "spheres" && segments.length === 2 && segments[1] === "restore") {
+    if (deps.executor === undefined || deps.auditSink === undefined || deps.newApprovalId === undefined) {
+      return err(501, "invalid_request", "Provisioning is not enabled on this server");
+    }
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
+      subject?: CapabilityExecutionRequest["subject"];
+      snapshot?: unknown;
+    };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    if (body.snapshot === undefined) {
+      return err(400, "invalid_request", "A snapshot is required");
+    }
+    const request: CapabilityExecutionRequest = {
+      subject,
+      capabilityName: "sphere.restore",
+      input: { snapshot: body.snapshot, correlationId },
+      context: {
+        sphereId: "__instance__",
+        time: (deps.now ?? (() => new Date().toISOString()))(),
+        execution: "local",
+        correlationId,
+      },
+    };
+    let result;
+    try {
+      result = await beginSensitiveAction(request, {
+        catalog: defaultCapabilityCatalog(),
+        bindings: provisioningBindings(),
+        policies: bootstrapPolicies(),
+        executor: deps.executor,
+        audit: deps.auditSink,
+        newApprovalId: deps.newApprovalId,
+      });
+    } catch (e) {
+      // Never overwrite: an id collision is a conflict, not a bad request.
+      if (e instanceof SphereAlreadyExistsError) {
+        return err(409, "conflict", e.message);
+      }
+      return err(422, "execution_failed", (e as Error).message);
+    }
+    if (result.status === "denied") return err(403, "forbidden", result.reason);
+    return ok({
+      status: result.status,
+      reason: result.reason,
+      ...(result.output !== undefined ? { output: result.output } : {}),
+    });
+  }
 
   // --- Governed provisioning: create a Sphere (RFC-008, api-contract §Sphere) ---
   // POST /spheres  { subject, input: { name, type?, founderName?, founderRole? } }

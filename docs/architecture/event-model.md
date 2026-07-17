@@ -48,6 +48,7 @@ All carry the same `correlationId`; each carries the deciding policy id/version 
 ## Initial event types
 
 - sphere.created
+- sphere.restored *(RFC-022; a Sphere was recreated from an export snapshot — records the Sphere id, never the snapshot. An auditor must be able to tell a Sphere created empty from one whose members, policies and memory arrived from a file.)*
 - member.invited
 - member.joined
 - member.removed

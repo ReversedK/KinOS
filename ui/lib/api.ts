@@ -856,6 +856,29 @@ export interface ApprovalOutcome {
   readonly output?: unknown;
 }
 
+export interface RestoreOutcome {
+  readonly status?: string;
+  readonly output?: { readonly sphereId?: string; readonly name?: string; readonly members?: number };
+  readonly code?: string;
+  readonly message?: string;
+}
+
+/**
+ * Restore a Sphere from an export snapshot (RFC-022). Never overwrites: an id that
+ * already exists is refused (409). A denial (403), a conflict (409) and a rejected
+ * snapshot (422/400) are governed outcomes and are returned, not thrown.
+ */
+export async function restoreSphere(
+  baseUrl: string,
+  subject: ActingSubject,
+  snapshot: unknown,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RestoreOutcome> {
+  const { status, body } = await postJson<RestoreOutcome>(baseUrl, "/spheres/restore", { subject, snapshot }, fetchImpl);
+  if ([200, 400, 403, 409, 422].includes(status)) return body;
+  throw new Error(`restore failed: ${status}`);
+}
+
 /** Governed export of the whole Sphere (RFC-021). Always approval-floored. */
 export function requestSphereExport(
   baseUrl: string,

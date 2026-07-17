@@ -16,6 +16,7 @@ import {
   exportSphereProvision,
   inviteMemberProvision,
   managePolicyProvision,
+  restoreSphereProvision,
   updateAgentProvision,
   type ProvisioningDeps,
 } from "./provisioning.js";
@@ -144,6 +145,7 @@ function apiDeps(store: SphereStore): ApiDeps & { audit: InMemoryAuditSink } {
       [PROVISIONING_TOOLS["agent.update_config"], async (input) => updateAgentProvision(pd, input as never)],
       [PROVISIONING_TOOLS["policy.manage"], async (input) => managePolicyProvision(pd, input as never)],
       [PROVISIONING_TOOLS["sphere.export"], async (input) => exportSphereProvision(pd, input as never)],
+      [PROVISIONING_TOOLS["sphere.restore"], async (input) => restoreSphereProvision(pd, input as never)],
     ]),
   );
   let c = 0;
@@ -419,5 +421,131 @@ describe("sphere.export — full-fidelity, admin-gated (RFC-021)", () => {
     expect(recorded).not.toContain("kinos.sphere.export");
     // The governed pipeline still audits the attempt itself.
     expect(deps.audit.events.some((e) => e.resourceId === "sphere.export")).toBe(true);
+  });
+});
+
+// --- sphere.restore (RFC-022) -------------------------------------------------
+
+describe("sphere.restore — never overwrites (RFC-022)", () => {
+  /** Export a Sphere the governed way and return its snapshot. */
+  async function exportedSnapshot(): Promise<{ snapshot: unknown; sphereId: string }> {
+    const store = new InMemorySphereStore();
+    const deps = apiDeps(store);
+    const created = await handleApiRequest(
+      { method: "POST", path: "/spheres", body: { subject: adult, input: { name: "Origin Family" } } },
+      deps,
+    );
+    const sphereId = (created.body as { output: { sphereId: string } }).output.sphereId;
+    const founder = importSphere((await store.load(sphereId))!).sphere.administrators[0]!;
+    await handleApiRequest(
+      {
+        method: "POST",
+        path: `/spheres/${sphereId}/capabilities/member.invite/execute`,
+        body: { subject: { ...adult, memberId: founder }, input: { role: "parent", displayName: "Parent Two" } },
+      },
+      deps,
+    );
+    const snap = importSphere((await store.load(sphereId))!);
+    const approver = snap.sphere.members.find((m) => m.role === "parent" && m.id !== founder)!;
+    const pending = await handleApiRequest(
+      { method: "POST", path: `/spheres/${sphereId}/capabilities/sphere.export/execute`, body: { subject: { ...adult, memberId: founder } } },
+      deps,
+    );
+    const granted = await handleApiRequest(
+      {
+        method: "POST",
+        path: `/approvals/${(pending.body as { approvalId: string }).approvalId}/grant`,
+        body: { approver: { memberId: approver.id, role: "parent" } },
+      },
+      deps,
+    );
+    return { snapshot: (granted.body as { output: unknown }).output, sphereId };
+  }
+
+  it("restores a Sphere onto a fresh instance, faithfully (export → restore round-trip)", async () => {
+    const { snapshot, sphereId } = await exportedSnapshot();
+    const target = new InMemorySphereStore(); // a different, empty instance
+    const deps = apiDeps(target);
+
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/restore", body: { subject: adult, snapshot } }, deps);
+    expect(res.status).toBe(200);
+    expect((res.body as { output: { sphereId: string; restored: boolean } }).output).toMatchObject({ sphereId, restored: true });
+
+    const restored = importSphere((await target.load(sphereId))!);
+    const original = importSphere(snapshot);
+    expect(restored.sphere.id).toBe(original.sphere.id);
+    expect(restored.sphere.name).toBe(original.sphere.name);
+    expect(restored.sphere.members.length).toBe(original.sphere.members.length);
+    expect(restored.sphere.administrators).toEqual(original.sphere.administrators);
+    expect(restored.policies.length).toBe(original.policies.length);
+    expect(deps.audit.events.some((e) => e.type === "sphere.restored" && e.resourceId === sphereId)).toBe(true);
+  });
+
+  it("refuses to overwrite an existing Sphere (409) and leaves it untouched", async () => {
+    const { snapshot, sphereId } = await exportedSnapshot();
+    const target = new InMemorySphereStore();
+    const deps = apiDeps(target);
+    await handleApiRequest({ method: "POST", path: "/spheres/restore", body: { subject: adult, snapshot } }, deps);
+
+    // A hostile second snapshot: same id, policies granting everything to everyone.
+    const injected = {
+      ...(snapshot as Record<string, unknown>),
+      policies: [
+        {
+          id: "pol_injected",
+          sphereId,
+          description: "Everything to everyone",
+          subjectSelector: {},
+          action: "execute",
+          resourceSelector: { capabilityNames: ["payment.execute"] },
+          effect: "allow",
+          priority: 0,
+          version: 99,
+          status: "active",
+        },
+      ],
+    };
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/restore", body: { subject: adult, snapshot: injected } }, deps);
+    expect(res.status).toBe(409);
+    expect(res.code).toBe("conflict");
+
+    // The live Sphere's policies were NOT rewritten — the injection did not land.
+    const after = importSphere((await target.load(sphereId))!);
+    expect(after.policies.some((p) => p.id === "pol_injected")).toBe(false);
+  });
+
+  it("denies a child (403) and refuses a malformed snapshot (422)", async () => {
+    const deps = apiDeps(new InMemorySphereStore());
+    const denied = await handleApiRequest(
+      { method: "POST", path: "/spheres/restore", body: { subject: child, snapshot: { format: "kinos.sphere.export" } } },
+      deps,
+    );
+    expect(denied.status).toBe(403);
+
+    const malformed = await handleApiRequest(
+      { method: "POST", path: "/spheres/restore", body: { subject: adult, snapshot: { format: "evil", version: 1 } } },
+      deps,
+    );
+    expect(malformed.status).toBe(422);
+
+    const missing = await handleApiRequest({ method: "POST", path: "/spheres/restore", body: { subject: adult } }, deps);
+    expect(missing.status).toBe(400);
+  });
+
+  it("the restored Sphere keeps its own administrators — importing does not grant control", async () => {
+    const { snapshot } = await exportedSnapshot();
+    const target = new InMemorySphereStore();
+    const deps = apiDeps(target);
+    await handleApiRequest({ method: "POST", path: "/spheres/restore", body: { subject: adult, snapshot } }, deps);
+    const restored = importSphere((await target.load(importSphere(snapshot).sphere.id))!);
+    // The importer (an anonymous adult operator) is not an administrator.
+    expect(restored.sphere.administrators).toEqual(importSphere(snapshot).sphere.administrators);
+  });
+
+  it("the snapshot never enters the audit log (audit minimality)", async () => {
+    const { snapshot } = await exportedSnapshot();
+    const deps = apiDeps(new InMemorySphereStore());
+    await handleApiRequest({ method: "POST", path: "/spheres/restore", body: { subject: adult, snapshot } }, deps);
+    expect(JSON.stringify(deps.audit.events)).not.toContain("kinos.sphere.export");
   });
 });

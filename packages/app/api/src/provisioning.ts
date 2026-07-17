@@ -381,3 +381,74 @@ export async function exportSphereProvision(
   // Re-stamp exportedAt: this snapshot is being exported now, not at last write.
   return exportSphere({ ...imported, exportedAt: nowOf(deps) });
 }
+
+// --- sphere.restore (RFC-022) ----------------------------------------------
+
+export interface RestoreSphereInput {
+  readonly snapshot?: unknown;
+  readonly correlationId?: string;
+}
+
+export interface RestoreSphereResult {
+  readonly sphereId: string;
+  readonly name: string;
+  readonly members: number;
+  readonly restored: true;
+}
+
+/** Signals an id collision so the router can answer 409 rather than 422. */
+export class SphereAlreadyExistsError extends Error {
+  constructor(readonly sphereId: string) {
+    super(`Sphere ${sphereId} already exists on this instance; restore never overwrites`);
+    this.name = "SphereAlreadyExistsError";
+  }
+}
+
+/**
+ * Recreate a Sphere from an export snapshot (RFC-022, results-contract §17).
+ *
+ * **Never overwrites.** An existing Sphere id is refused, not merged. That single
+ * rule removes the two threats that make import dangerous: policy injection (a
+ * crafted snapshot rewriting a live Sphere's rules) and destruction (silently
+ * replacing its memory). A restored Sphere is a new Sphere on this instance.
+ *
+ * The restored Sphere keeps the snapshot's own administrators and policies, so
+ * importing a Sphere never makes the importer its administrator — governance
+ * travels with the data.
+ *
+ * Validation is `importSphere`'s: a non-object payload, unknown format,
+ * unsupported version or missing sections are refused rather than guessed. This
+ * is a binding target, not an authorization point — it runs only after the
+ * bootstrap policy set authorized `sphere.restore` for an adult subject.
+ *
+ * Embeddings are absent from the format by design (derived and regenerable from
+ * canonical memory — ADR-002); nothing is reconstructed here.
+ */
+export async function restoreSphereProvision(
+  deps: ProvisioningDeps,
+  input: RestoreSphereInput,
+): Promise<RestoreSphereResult> {
+  if (input.snapshot === undefined) throw new Error("A snapshot is required");
+  // Fails closed on a malformed/unknown/unsupported payload.
+  const imported = importSphere(input.snapshot);
+  const sphereId = imported.sphere.id;
+  if (typeof sphereId !== "string" || sphereId.trim() === "") {
+    throw new Error("Malformed export snapshot: the Sphere has no id");
+  }
+  if ((await deps.store.load(sphereId)) !== undefined) {
+    throw new SphereAlreadyExistsError(sphereId);
+  }
+
+  const at = nowOf(deps);
+  await deps.store.save(exportSphere({ ...imported, exportedAt: at }));
+  // Provenance is a security fact: an auditor must be able to tell a Sphere
+  // created empty from one whose members, policies and memory came from a file.
+  // The snapshot itself is never audited (audit minimality).
+  audit(deps, "sphere.restored", sphereId, sphereId, input.correlationId, at);
+  return {
+    sphereId,
+    name: imported.sphere.name,
+    members: imported.sphere.members.length,
+    restored: true,
+  };
+}

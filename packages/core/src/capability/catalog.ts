@@ -94,6 +94,22 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
   {
+    // RFC-022: recreate a Sphere from an export snapshot. No approval floor —
+    // deliberately, and unlike sphere.export: at restore time the Sphere does not
+    // exist on this instance, so neither do its members, and an approval could
+    // never be resolved by anyone. It is bootstrap-trusted like sphere.create (the
+    // adult local operator is the root of trust for an empty instance) and grants
+    // no more: restore never overwrites an existing Sphere, and the restored
+    // Sphere keeps its own administrators and policies, so importing a Sphere does
+    // not make the importer its admin.
+    name: "sphere.restore",
+    description: "Restore a Sphere from an export snapshot (never overwrites an existing Sphere).",
+    risk: "critical",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
     name: "runtime.set_provider",
     description: "Change the Sphere's inference provider/model (admin settings).",
     risk: "high",

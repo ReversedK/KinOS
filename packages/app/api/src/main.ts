@@ -47,6 +47,7 @@ import {
   exportSphereProvision,
   inviteMemberProvision,
   managePolicyProvision,
+  restoreSphereProvision,
   updateAgentProvision,
   type CreateAgentInput,
   type CreateSphereInput,
@@ -54,6 +55,7 @@ import {
   type InviteMemberInput,
   type ManagePolicyInput,
   type ProvisioningDeps,
+  type RestoreSphereInput,
   type UpdateAgentInput,
 } from "./provisioning.js";
 
@@ -191,6 +193,8 @@ const localExecutor = new LocalCapabilityExecutor(
     [PROVISIONING_TOOLS["policy.manage"], async (input) => managePolicyProvision(provDeps, input as ManagePolicyInput)],
     // RFC-021: the full-fidelity Sphere snapshot (adult-only + approval-floored).
     [PROVISIONING_TOOLS["sphere.export"], async (input) => exportSphereProvision(provDeps, input as ExportSphereInput)],
+    // RFC-022: recreate a Sphere from a snapshot; never overwrites an existing one.
+    [PROVISIONING_TOOLS["sphere.restore"], async (input) => restoreSphereProvision(provDeps, input as RestoreSphereInput)],
   ]),
 );
 

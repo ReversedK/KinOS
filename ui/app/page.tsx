@@ -1,4 +1,5 @@
 import { CreateSphere } from "../components/CreateSphere";
+import { RestoreSphere } from "../components/RestoreSphere";
 import { apiBaseUrl, getSphere, getSpheres, type SphereSummary } from "../lib/api";
 
 // Renders against the live read API on every request (never prerendered stale).
@@ -29,7 +30,12 @@ export default async function Home() {
               deploy permissioned agents, and test them under the same policy pipeline that governs production.
             </p>
           </div>
-          <CreateSphere />
+          <div className="row" style={{ gap: "var(--s2)" }}>
+            {/* Portability (RFC-022): recreate a Sphere from an export snapshot.
+                Bootstrap-trusted like creating one, and it never overwrites. */}
+            <RestoreSphere operator={{ role: "parent", ageProfile: "adult" }} />
+            <CreateSphere />
+          </div>
         </div>
 
         {error !== undefined ? (
@@ -43,7 +49,8 @@ export default async function Home() {
           <div className="empty">
             No Spheres yet.
             <div className="faint" style={{ marginTop: 8 }}>
-              Create your first with <span className="mono">＋ New Sphere</span> above — you become its first administrator.
+              Create your first with <span className="mono">＋ New Sphere</span> above — you become its first administrator. Rebuilding after a
+              loss? <span className="mono">Restore from file</span> recreates a Sphere from an export, governance and all.
             </div>
           </div>
         ) : (

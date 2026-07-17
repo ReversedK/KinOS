@@ -30,9 +30,11 @@ function request(
 describe("provisioning catalog entries (RFC-008)", () => {
   const catalog = defaultCapabilityCatalog();
 
-  // sphere.export is a deliberate exception (RFC-021): it hands over every
-  // member's memory, so it is critical + approval-floored rather than high/no-floor.
-  const PROVISIONING_ONLY = Object.keys(PROVISIONING_TOOLS).filter((name) => name !== "sphere.export");
+  // Deliberate exceptions to "high risk, no floor": sphere.export hands over every
+  // member's memory (RFC-021) and sphere.restore brings a whole Sphere into
+  // existence from a file (RFC-022). Both are critical; they differ on the floor.
+  const PORTABILITY = ["sphere.export", "sphere.restore"];
+  const PROVISIONING_ONLY = Object.keys(PROVISIONING_TOOLS).filter((name) => !PORTABILITY.includes(name));
 
   it.each(PROVISIONING_ONLY)("declares %s as admin-only/high-risk, no approval floor", (name) => {
     const cap = catalog.get(name);
@@ -51,6 +53,18 @@ describe("provisioning catalog entries (RFC-008)", () => {
     // private memory unilaterally: it forces a second human's approval.
     expect(cap!.approvalFloor).toBe(true);
   });
+
+  it("declares sphere.restore as adult-only, critical, and NOT approval-floored (RFC-022)", () => {
+    const cap = catalog.get("sphere.restore");
+    expect(cap).toBeDefined();
+    expect(cap!.risk).toBe("critical");
+    expect(cap!.allowedProfiles).toEqual(["adult"]); // a minor can never restore
+    // Deliberately no floor, unlike sphere.export: at restore time the Sphere does
+    // not exist on this instance, so neither do its members — an approval could
+    // never be resolved by anyone and the feature would be dead, not safe. Restore
+    // is bootstrap-trusted like sphere.create; its safety is "never overwrite".
+    expect(cap!.approvalFloor).toBe(false);
+  });
 });
 
 describe("provisioningBindings (RFC-008)", () => {
@@ -63,11 +77,13 @@ describe("provisioningBindings (RFC-008)", () => {
       "policy.manage",
       "sphere.create",
       "sphere.export",
+      "sphere.restore",
     ]);
-    // sphere.export carries the catalog's critical risk (RFC-021) so a policy
-    // selecting on riskLevels sees the same risk the catalog states.
+    // The portability capabilities carry the catalog's critical risk (RFC-021/022)
+    // so a policy selecting on riskLevels sees the same risk the catalog states.
     expect(bindings.find((b) => b.capability === "sphere.export")?.risk).toBe("critical");
-    for (const b of bindings.filter((b) => b.capability !== "sphere.export")) {
+    expect(bindings.find((b) => b.capability === "sphere.restore")?.risk).toBe("critical");
+    for (const b of bindings.filter((b) => !["sphere.export", "sphere.restore"].includes(b.capability))) {
       expect(b.status).toBe("enabled");
       expect(b.runtime).toBe("local");
       expect(b.execution).toBe("local");
@@ -78,7 +94,7 @@ describe("provisioningBindings (RFC-008)", () => {
   });
 });
 
-describe("bootstrapPolicies (RFC-008)", () => {
+describe("bootstrapPolicies (RFC-008/RFC-022)", () => {
   const policies = bootstrapPolicies();
 
   it("allows an adult to create a Sphere", () => {
@@ -86,15 +102,28 @@ describe("bootstrapPolicies (RFC-008)", () => {
     expect(d.effect).toBe("allow");
   });
 
+  // RFC-022: restore is bootstrap-trusted like create — an empty instance has no
+  // Sphere to key a policy to. It grants no more: it never overwrites, and the
+  // restored Sphere keeps its own administrators.
+  it("allows an adult to restore a Sphere from a snapshot", () => {
+    const d = evaluate(request("sphere.restore", { role: "parent", ageProfile: "adult" }), policies);
+    expect(d.effect).toBe("allow");
+  });
+
   it("denies a non-adult (deny-by-default)", () => {
-    for (const ageProfile of ["teen", "child"] as const) {
-      const d = evaluate(request("sphere.create", { role: "guest", ageProfile }), policies);
-      expect(d.effect).toBe("deny");
+    for (const name of ["sphere.create", "sphere.restore"]) {
+      for (const ageProfile of ["teen", "child"] as const) {
+        const d = evaluate(request(name, { role: "guest", ageProfile }), policies);
+        expect(d.effect).toBe("deny");
+      }
     }
   });
 
-  it("grants nothing but sphere.create — every other capability is denied", () => {
-    for (const name of ["member.invite", "agent.create", "payment.execute", "memory.search"]) {
+  it("grants nothing but sphere.create/sphere.restore — every other capability is denied", () => {
+    // The whole of bootstrap trust: bring a Sphere into existence, or recreate one.
+    const granted = policies.flatMap((p) => p.resourceSelector.capabilityNames ?? []).sort();
+    expect(granted).toEqual(["sphere.create", "sphere.restore"]);
+    for (const name of ["member.invite", "agent.create", "payment.execute", "memory.search", "sphere.export"]) {
       const d = evaluate(request(name, { role: "parent", ageProfile: "adult" }), policies);
       expect(d.effect).toBe("deny");
     }

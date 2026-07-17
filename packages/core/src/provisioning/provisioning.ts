@@ -31,6 +31,7 @@ export const PROVISIONING_TOOLS = {
   "agent.update_config": "provisioning.update_agent",
   "policy.manage": "provisioning.manage_policy",
   "sphere.export": "provisioning.export_sphere",
+  "sphere.restore": "provisioning.restore_sphere",
 } as const;
 
 export type ProvisioningCapability = keyof typeof PROVISIONING_TOOLS;
@@ -43,6 +44,7 @@ export type ProvisioningCapability = keyof typeof PROVISIONING_TOOLS;
  */
 const PROVISIONING_RISK: Partial<Record<ProvisioningCapability, CapabilityBinding["risk"]>> = {
   "sphere.export": "critical",
+  "sphere.restore": "critical",
 };
 
 /** The in-Sphere provisioning capabilities (everything except bootstrap create). */
@@ -105,11 +107,14 @@ export function provisioningBindings(): CapabilityBinding[] {
 }
 
 /**
- * The instance **bootstrap** policy set: authorizes exactly `sphere.create` for
- * an adult subject, and nothing else. `sphere.create` is instance-scoped (there
- * is no Sphere to key a policy to yet), so the execute path evaluates it against
- * this set rather than a Sphere's policies. Deny-by-default is preserved — the
- * only thing bootstrap trust can do is bring a Sphere into existence.
+ * The instance **bootstrap** policy set: authorizes exactly `sphere.create` and
+ * `sphere.restore` for an adult subject, and nothing else. Both are
+ * instance-scoped (there is no Sphere to key a policy to yet), so the execute
+ * path evaluates them against this set rather than a Sphere's policies.
+ * Deny-by-default is preserved — the only thing bootstrap trust can do is bring a
+ * Sphere into existence, or recreate one from a snapshot (RFC-022), which grants
+ * no more: restore never overwrites an existing Sphere, and the restored Sphere
+ * keeps its own administrators and policies.
  *
  * `sphereId` is a synthetic instance scope tag; the engine does not key on it
  * for this evaluation (there is no Sphere resource yet).
@@ -123,6 +128,18 @@ export function bootstrapPolicies(sphereId = "__instance__"): Policy[] {
       subjectSelector: { ageProfiles: ["adult"] },
       action: "execute",
       resourceSelector: { capabilityNames: ["sphere.create"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    },
+    {
+      id: "pol_bootstrap_sphere_restore",
+      sphereId,
+      description: "An adult local operator may restore a Sphere from a snapshot (bootstrap).",
+      subjectSelector: { ageProfiles: ["adult"] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["sphere.restore"] },
       effect: "allow",
       priority: 0,
       version: 1,
