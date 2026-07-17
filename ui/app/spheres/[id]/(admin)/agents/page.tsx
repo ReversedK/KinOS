@@ -1,5 +1,5 @@
 import { AgentConfig } from "../../../../../components/AgentConfig";
-import { DeployAgent } from "../../../../../components/DeployAgent";
+import { AgentWizard } from "../../../../../components/AgentWizard";
 import { apiBaseUrl, getAgents, getCapabilities, getMembers, resolveActingAdmin } from "../../../../../lib/api";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export default async function AgentsSection({
     <div className="panel">
       <div className="panel-head">
         <h3>Agents · {agents.length}</h3>
-        <DeployAgent sphereId={id} admin={admin} members={members} capabilities={capabilities} />
+        <AgentWizard sphereId={id} admin={admin} members={members} capabilities={capabilities} />
       </div>
       <div className="panel-body">
         {agents.length === 0 ? (

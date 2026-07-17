@@ -197,6 +197,22 @@ a.card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-lift);
 .chip:hover { color: var(--ink); border-color: var(--line-strong); }
 .chip.active { background: var(--brand); color: var(--brand-ink); border-color: transparent; }
 
+/* A pill flagged as not-yet-authorized (wizard: requested vs. granted). */
+.pill.deny { color: var(--deny); border-color: color-mix(in oklab, var(--deny) 40%, var(--line)); background: var(--deny-bg); }
+
+/* Wizard stepper — the guided path made legible. */
+.stepper { display: flex; flex-wrap: wrap; gap: var(--s3); list-style: none; padding: 0; margin: 0 0 var(--s2); }
+.stepper li { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-3); font-weight: 550; }
+.stepper li .step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 999px; font-family: var(--font-mono); font-size: 11px;
+  border: 1px solid var(--line-strong); color: var(--ink-3); background: var(--panel-2);
+}
+.stepper li.active { color: var(--ink); }
+.stepper li.active .step-num { border-color: transparent; background: var(--brand); color: var(--brand-ink); }
+.stepper li.done { color: var(--ink-2); }
+.stepper li.done .step-num { border-color: transparent; background: var(--allow-bg); color: var(--allow); }
+
 /* ---- Buttons -------------------------------------------------------------- */
 
 .btn {
