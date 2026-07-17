@@ -13,6 +13,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { FakeAuthBroker } from "./oauth.js";
+import { MapSecretStore } from "./secret-store.js";
 import { IntegrationExecutor, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 
 const NOW = "2026-07-16T10:00:00.000Z";
@@ -102,6 +103,36 @@ describe("IntegrationExecutor (RFC-016 inc.2)", () => {
     const e = exec(await storeWith(enableIntegration(localIntegration())));
     await expect(e.execute({ ...customBinding("calendar.read"), runtimeToolName: "int_missing" }, {}, ctx)).rejects.toThrow(/not found/i);
   });
+
+  // RFC-019: a non-OAuth provider resolves its secretRef via the secret store. This
+  // asserts the wiring (executor supplies a working `secret()`) and deny-by-default:
+  // an unresolvable reference yields undefined so the adapter refuses.
+  it("resolves a non-OAuth provider's credentials via the secret store, and denies an unknown ref", async () => {
+    const configured = enableIntegration({ ...localIntegration(), provider: "caldav", secretRef: "secret://caldav/sph_1" });
+    let seen: unknown;
+    const probe: IntegrationProviderAdapter = async (_cap, _in, c) => {
+      const material = await c.secret();
+      if (material === undefined) throw new Error("caldav is not configured (no credentials resolved)");
+      seen = material;
+      return { ok: true };
+    };
+    const registry = new Map<string, IntegrationProviderAdapter>([["caldav", probe]]);
+
+    const resolved = new IntegrationExecutor(throwingFallback, {
+      spheres: await storeWith(configured),
+      registry,
+      secrets: new MapSecretStore({ "secret://caldav/sph_1": { kind: "basic", username: "u", password: "p" } }),
+    });
+    expect(await resolved.execute(customBinding("calendar.read"), {}, ctx)).toEqual({ ok: true });
+    expect(seen).toEqual({ kind: "basic", username: "u", password: "p" });
+
+    const unresolved = new IntegrationExecutor(throwingFallback, {
+      spheres: await storeWith(configured),
+      registry,
+      secrets: new MapSecretStore({}), // ref not present
+    });
+    await expect(unresolved.execute(customBinding("calendar.read"), {}, ctx)).rejects.toThrow(/not configured/i);
+  });
 });
 
 describe("googleCalendarProvider (RFC-017)", () => {
@@ -115,7 +146,7 @@ describe("googleCalendarProvider (RFC-017)", () => {
 
     const provider = googleCalendarProvider(broker, fakeFetch);
     // secretRef is the account reference the /oauth/connected handler stored.
-    const out = (await provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secretRef: "google::broker://fake/alice", scopes: [], now: () => "", newId: () => "" })) as {
+    const out = (await provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secretRef: "google::broker://fake/alice", secret: async () => undefined, scopes: [], now: () => "", newId: () => "" })) as {
       events: { title: string }[];
     };
     expect(seenAuth).toBe("Bearer tok_alice"); // token came from the broker
@@ -125,7 +156,7 @@ describe("googleCalendarProvider (RFC-017)", () => {
   it("refuses when the integration is not connected (no account reference)", async () => {
     const provider = googleCalendarProvider(new FakeAuthBroker());
     await expect(
-      provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, scopes: [], now: () => "", newId: () => "" }),
+      provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secret: async () => undefined, scopes: [], now: () => "", newId: () => "" }),
     ).rejects.toThrow(/not connected/i);
   });
 });

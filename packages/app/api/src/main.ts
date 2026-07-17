@@ -31,6 +31,7 @@ import { buildLocalHandlers } from "./local-handlers.js";
 import { IntegrationExecutor, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 import { FakeAuthBroker, PendingOAuthStore, type AuthBroker } from "./oauth.js";
 import { BetterAuthBroker } from "./better-auth-broker.js";
+import { secretStoreFromEnv } from "./secret-store.js";
 import {
   backupAgentState,
   projectAgentConfig,
@@ -222,7 +223,11 @@ const providerRegistry = new Map<string, IntegrationProviderAdapter>([
   // Calendar API. Wire real client credentials into the broker to use live.
   ["google", googleCalendarProvider(authBroker)],
 ]);
-const executor = new IntegrationExecutor(localExecutor, { spheres: store, registry: providerRegistry });
+// Secret store (RFC-019): resolves non-OAuth integration secretRefs to credentials
+// at execution time. Dev seed from KINOS_SECRETS; a deployment swaps its real
+// secret manager behind the same port. OAuth providers ignore it (broker instead).
+const secrets = secretStoreFromEnv(process.env["KINOS_SECRETS"]);
+const executor = new IntegrationExecutor(localExecutor, { spheres: store, registry: providerRegistry, secrets });
 
 // Attach tickets live in memory: they are redeemed seconds after minting, and
 // forgetting them on restart loses nothing durable (unlike memory or policy).

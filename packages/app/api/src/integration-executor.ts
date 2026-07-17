@@ -33,11 +33,20 @@ import {
   type SphereStore,
 } from "@kinos/core";
 
+import type { SecretMaterial, SecretStore } from "./secret-store.js";
+
 export interface IntegrationProviderCtx {
   readonly sphereId: string;
   readonly subject: ExecutionContext["subject"];
   /** Credentials secret-store reference for the configured provider (never a value). */
   readonly secretRef?: string;
+  /**
+   * Lazily resolve `secretRef` to real credential material via the secret store
+   * (RFC-019), for non-OAuth providers. Returns `undefined` when there is no
+   * reference, no store, or the reference is unknown — the adapter refuses on
+   * `undefined` (deny-by-default). OAuth adapters ignore this and use the broker.
+   */
+  readonly secret: () => Promise<SecretMaterial | undefined>;
   readonly scopes: readonly string[];
   readonly now: () => string;
   readonly newId: () => string;
@@ -119,6 +128,8 @@ export interface IntegrationExecutorDeps {
   readonly spheres: SphereStore;
   /** provider id -> adapter. Built-in "local" + drop-in external providers. */
   readonly registry: ReadonlyMap<string, IntegrationProviderAdapter>;
+  /** Resolves non-OAuth `secretRef`s (RFC-019). Absent → no material resolves. */
+  readonly secrets?: SecretStore;
   readonly now?: () => string;
   readonly newId?: () => string;
 }
@@ -149,10 +160,15 @@ export class IntegrationExecutor implements CapabilityExecutor {
     if (adapter === undefined) {
       throw new Error(`No adapter installed for provider '${integration.provider}'`);
     }
+    const secretRef = integration.secretRef;
+    const secrets = this.deps.secrets;
     return adapter(binding.capability, input, {
       sphereId: context.sphereId,
       subject: context.subject,
-      ...(integration.secretRef !== undefined ? { secretRef: integration.secretRef } : {}),
+      ...(secretRef !== undefined ? { secretRef } : {}),
+      // Lazy: only a non-OAuth adapter that authenticates pays the lookup, and the
+      // material is fetched at use and not retained on the context.
+      secret: async () => (secretRef !== undefined && secrets !== undefined ? secrets.get(secretRef) : undefined),
       scopes: integration.scopes,
       now: this.deps.now ?? (() => new Date().toISOString()),
       newId: this.deps.newId ?? (() => `evt_${crypto.randomUUID()}`),
