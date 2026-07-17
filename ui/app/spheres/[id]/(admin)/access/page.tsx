@@ -50,6 +50,7 @@ export default async function AccessSection({
         <div className="panel-body">
           {pendingApprovals.length === 0 ? (
             <div className="empty">
+              <span className="empty-glyph">✓</span>
               Nothing awaiting approval. Approval-gated actions (e.g. proposing a calendar event) appear here for a parent to decide.
             </div>
           ) : (

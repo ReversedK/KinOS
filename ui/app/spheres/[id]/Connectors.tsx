@@ -84,7 +84,7 @@ export function Connectors({
   }
 
   if (rows.length === 0) {
-    return <div className="empty">No connectors installed. Install a connector package from the store.</div>;
+    return <div className="empty"><span className="empty-glyph">⇄</span>No connectors installed. Add one from the store to give agents a real calendar, notes, or other service.</div>;
   }
 
   return (

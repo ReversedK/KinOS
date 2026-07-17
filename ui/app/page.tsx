@@ -1,11 +1,10 @@
 import { CreateSphere } from "../components/CreateSphere";
 import { RestoreSphere } from "../components/RestoreSphere";
+import { SphereList } from "../components/SphereList";
 import { apiBaseUrl, getSphere, getSpheres, type SphereSummary } from "../lib/api";
 
 // Renders against the live read API on every request (never prerendered stale).
 export const dynamic = "force-dynamic";
-
-const TYPE_GLYPH: Record<string, string> = { family: "⌂", person: "○", team: "◇", organization: "▤" };
 
 export default async function Home() {
   const base = apiBaseUrl();
@@ -47,6 +46,7 @@ export default async function Home() {
           </div>
         ) : summaries.length === 0 ? (
           <div className="empty">
+            <span className="empty-glyph">◈</span>
             No Spheres yet.
             <div className="faint" style={{ marginTop: 8 }}>
               Create your first with <span className="mono">＋ New Sphere</span> above — you become its first administrator. Rebuilding after a
@@ -54,36 +54,7 @@ export default async function Home() {
             </div>
           </div>
         ) : (
-          <div className="grid cols-2">
-            {summaries.map((s) => (
-              <a key={s.id} href={`/spheres/${encodeURIComponent(s.id)}`} className="card reveal">
-                <div className="row between">
-                  <div className="row" style={{ gap: "var(--s3)" }}>
-                    <span className="glyph" style={{ background: "var(--panel-2)", color: "var(--brand)", boxShadow: "inset 0 0 0 1px var(--line)" }}>
-                      {TYPE_GLYPH[s.type] ?? "◈"}
-                    </span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 15 }}>{s.name}</div>
-                      <div className="faint mono" style={{ fontSize: 12 }}>
-                        {s.id}
-                      </div>
-                    </div>
-                  </div>
-                  <span className={`badge ${s.status === "active" ? "allow" : ""}`}>
-                    <span className="dot" />
-                    {s.status}
-                  </span>
-                </div>
-                <hr className="hairline" />
-                <div className="row" style={{ gap: "var(--s5)" }}>
-                  <span className="faint">
-                    <strong style={{ color: "var(--ink)" }}>{s.members}</strong> member{s.members === 1 ? "" : "s"}
-                  </span>
-                  <span className="pill">{s.type}</span>
-                </div>
-              </a>
-            ))}
-          </div>
+          <SphereList spheres={summaries} />
         )}
       </div>
     </div>

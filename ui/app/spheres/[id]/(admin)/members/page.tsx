@@ -23,7 +23,7 @@ export default async function MembersSection({
       </div>
       <div className="panel-body flush">
         {members.length === 0 ? (
-          <div className="empty" style={{ margin: "var(--s5)" }}>No members yet. Invite the first — you become a Sphere of people the agents represent.</div>
+          <div className="empty" style={{ margin: "var(--s5)" }}><span className="empty-glyph">☺</span>No members yet. Invite the first — a Sphere is the people its agents represent.</div>
         ) : (
           <div className="tablewrap">
             <table className="grid-table">

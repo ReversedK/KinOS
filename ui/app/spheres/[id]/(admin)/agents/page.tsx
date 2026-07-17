@@ -29,6 +29,7 @@ export default async function AgentsSection({
       <div className="panel-body">
         {agents.length === 0 ? (
           <div className="empty">
+            <span className="empty-glyph">◈</span>
             No agents yet. Deploy one for a member with a capability scope — it can then be tested under the governed pipeline.
           </div>
         ) : (

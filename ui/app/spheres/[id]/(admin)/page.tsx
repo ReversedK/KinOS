@@ -69,7 +69,7 @@ export default async function SphereOverview({ params }: { params: { id: string 
         </div>
         <div className="panel-body">
           {pendingApprovals.length === 0 ? (
-            <div className="empty">Nothing awaiting a decision. Approval-gated actions appear here for review.</div>
+            <div className="empty"><span className="empty-glyph">✓</span>Nothing awaiting a decision. Approval-gated actions appear here for review.</div>
           ) : (
             <div className="stack tight">
               {pendingApprovals.slice(0, 5).map((p) => (

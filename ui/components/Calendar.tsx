@@ -90,7 +90,7 @@ export function Calendar({ sphereId, actor }: { sphereId: string; actor: ActingS
       {note ? <div className={`note ${note.tone}`}>{note.text}</div> : null}
       {events !== undefined ? (
         events.length === 0 ? (
-          <div className="empty">No events in this Sphere yet.</div>
+          <div className="empty"><span className="empty-glyph">◷</span>No events yet. Add one above, or an agent can propose one for approval.</div>
         ) : (
           <ul className="stack tight" style={{ listStyle: "none", padding: 0, margin: 0 }}>
             {events.map((e) => (

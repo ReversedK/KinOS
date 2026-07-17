@@ -102,7 +102,7 @@ export function Notes({ sphereId, actor }: { sphereId: string; actor: ActingSubj
       {note ? <div className={`note ${note.tone}`}>{note.text}</div> : null}
       {hits !== undefined ? (
         hits.length === 0 ? (
-          <div className="empty">No notes visible to this member.</div>
+          <div className="empty"><span className="empty-glyph">✎</span>No notes visible to this member. Only memory this identity is authorized to read appears here.</div>
         ) : (
           <ul className="stack tight" style={{ listStyle: "none", padding: 0, margin: 0 }}>
             {hits.map((h) => (
