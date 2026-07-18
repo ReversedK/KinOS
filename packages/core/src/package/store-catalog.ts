@@ -192,6 +192,101 @@ const CATALOG: readonly PackageManifest[] = [
     ],
   }),
   createManifest({
+    // RFC-025: govern one of the Harness's OWN native toolsets. Installing grants
+    // `native.web` — projected into the Harness's enabled_toolsets, a channel
+    // distinct from the Sphere MCP. KinOS does not re-implement web search (the
+    // Harness has it); it governs whether this agent may use it. Read-only, adults.
+    id: "hermes-web",
+    type: "skill",
+    title: "Web Search (Harness)",
+    description: "Let your agent search and read the web using the Harness's built-in tools. Read-only; adults only.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "adult",
+    providesCapabilities: ["native.web"],
+    bindings: [
+      { capability: "native.web", runtime: "hermes", runtimeToolName: "web", execution: "local", risk: "medium" },
+    ],
+    defaultPolicies: [
+      {
+        description: "Adults may use the Harness's native web search (Web Search package).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["native.web"],
+        effect: "allow",
+      },
+    ],
+  }),
+  createManifest({
+    // RFC-025: grant the Harness's native cron. Actions a scheduled job triggers
+    // still run as policy-checked capability calls through the Sphere MCP (RFC-007),
+    // so scheduling itself is safe to grant.
+    id: "hermes-automation",
+    type: "skill",
+    title: "Automation / Cron (Harness)",
+    description: "Let your agent schedule recurring tasks with the Harness's native cron. Triggered actions stay policy-checked.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "adult",
+    providesCapabilities: ["native.cron"],
+    bindings: [
+      { capability: "native.cron", runtime: "hermes", runtimeToolName: "cron", execution: "local", risk: "medium" },
+    ],
+    defaultPolicies: [
+      {
+        description: "Adults may schedule Harness cron jobs (Automation package).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["native.cron"],
+        effect: "allow",
+      },
+    ],
+  }),
+  createManifest({
+    // RFC-025: grant the Harness's native media tools (vision, image gen, TTS).
+    id: "hermes-media",
+    type: "skill",
+    title: "Media (Harness)",
+    description: "Let your agent use the Harness's native media tools: image understanding, image generation, and text-to-speech.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "adult",
+    providesCapabilities: ["native.media"],
+    bindings: [
+      { capability: "native.media", runtime: "hermes", runtimeToolName: "media", execution: "local", risk: "medium" },
+    ],
+    defaultPolicies: [
+      {
+        description: "Adults may use the Harness's native media tools (Media package).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["native.media"],
+        effect: "allow",
+      },
+    ],
+  }),
+  createManifest({
+    // RFC-025: grant the Harness's native browser. It ACTS on the web, so the
+    // capability carries an approval floor — even this allow is raised to
+    // require_approval per use.
+    id: "hermes-browser",
+    type: "skill",
+    title: "Browser (Harness)",
+    description: "Let your agent drive the Harness's native browser to act on the web. Adults only; each use requires approval.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "adult",
+    providesCapabilities: ["native.browser"],
+    bindings: [
+      { capability: "native.browser", runtime: "hermes", runtimeToolName: "browser", execution: "local", risk: "high" },
+    ],
+    defaultPolicies: [
+      {
+        description: "Adults may drive the Harness's native browser, subject to approval (Browser package).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["native.browser"],
+        effect: "allow",
+      },
+    ],
+  }),
+  createManifest({
     id: "household-payments",
     type: "skill",
     title: "Household Payments",

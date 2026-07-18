@@ -230,7 +230,7 @@ describe("UI API client", () => {
         gatewayEndpoint: "http://x/spheres/sph_1/mcp",
         authSecretRef: "secret://sphere-mcp/sph_1/agt_0",
         allowedTools: ["memory.search"],
-        nativeToolsAllow: [],
+        nativeToolsetsAllow: [],
         autonomousInstallDisabled: true,
       }),
     );

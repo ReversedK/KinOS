@@ -1484,7 +1484,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       gatewayEndpoint: projection.gateway.endpoint,
       authSecretRef: projection.gateway.authSecretRef,
       allowedTools: projection.gateway.allowedTools,
-      nativeToolsAllow: projection.nativeToolsAllow,
+      nativeToolsetsAllow: projection.nativeToolsetsAllow,
       autonomousInstallDisabled: projection.autonomousInstallDisabled,
     });
   }

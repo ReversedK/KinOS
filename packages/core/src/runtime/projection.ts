@@ -11,7 +11,10 @@
  * baked in here (coding principle 6, RFC-007):
  *   - exactly one Sphere gateway (the Sphere MCP) is registered — no others;
  *   - `allowedTools` = the deny-by-default authorized capability surface;
- *   - the native-tool allow-list is deny-by-default (empty unless given);
+ *   - `nativeToolsetsAllow` = the granted native toolsets (RFC-025): the runtime
+ *     may use these of its OWN native tools; deny-by-default (empty unless a
+ *     `native.<toolset>` capability is authorized). A distinct channel from the
+ *     Sphere-MCP surface — native grants are never offered as MCP tools;
  *   - autonomous tool/integration install is disabled (KinOS owns the surface);
  *   - the per-agent credential is held by reference only, never inline.
  *
@@ -40,11 +43,26 @@ export interface RuntimeConfigProjection {
   readonly profile: RuntimeProfile;
   /** Exactly one gateway — the Sphere MCP. No other tool surface is registered. */
   readonly gateway: SphereGatewayProjection;
-  /** Deny-by-default allow-list of runtime-native tools. */
-  readonly nativeToolsAllow: readonly string[];
+  /**
+   * Deny-by-default granted native toolsets (RFC-025), derived from authorized
+   * `native.<toolset>` capabilities — e.g. `["web", "cron"]`. The runtime adapter
+   * maps these to its native toolset allow-list; the hard floor (native memory,
+   * terminal, file, code execution) is enforced by the adapter and is never here.
+   */
+  readonly nativeToolsetsAllow: readonly string[];
   /** KinOS owns the tool surface; the runtime never installs its own. */
   readonly autonomousInstallDisabled: true;
   readonly version: number;
+}
+
+/** A `native.<toolset>` capability names a runtime-native toolset, not an MCP tool. */
+const NATIVE_PREFIX = "native.";
+export function isNativeToolsetCapability(name: string): boolean {
+  return name.startsWith(NATIVE_PREFIX);
+}
+/** The toolset a `native.<toolset>` capability grants (e.g. `native.web` → `web`). */
+export function toolsetOf(nativeCapabilityName: string): string {
+  return nativeCapabilityName.slice(NATIVE_PREFIX.length);
 }
 
 export interface ProjectAgentRuntimeConfigInput {
@@ -63,8 +81,6 @@ export interface ProjectAgentRuntimeConfigInput {
   readonly bindings?: readonly CapabilityBinding[];
   /** Optional boring model swap (RFC-004) — never escalates provider/execution. */
   readonly agentModelPreference?: string;
-  /** Deny-by-default native-tool allow-list (empty unless explicitly provided). */
-  readonly nativeToolsAllow?: readonly string[];
   readonly version: number;
 }
 
@@ -77,11 +93,18 @@ export function projectAgentRuntimeConfig(input: ProjectAgentRuntimeConfigInput)
   // Deny by default: never project a provider/execution the Sphere does not allow.
   assertProfileAllowed(input.runtimeConfig, profile);
 
-  const allowedTools = resolveAuthorizedCapabilities(input.subject, input.context, {
+  const authorized = resolveAuthorizedCapabilities(input.subject, input.context, {
     catalog: input.catalog,
     policies: input.policies,
     ...(input.bindings !== undefined ? { bindings: input.bindings } : {}),
   }).map((c) => c.name);
+
+  // Split the authorized surface into two distinct channels (RFC-025):
+  //   - MCP tools: everything reachable through the Sphere MCP gateway;
+  //   - native toolsets: `native.<toolset>` grants the runtime realizes itself.
+  // A native grant is never offered as an MCP tool, and vice versa.
+  const allowedTools = authorized.filter((name) => !isNativeToolsetCapability(name));
+  const nativeToolsetsAllow = authorized.filter(isNativeToolsetCapability).map(toolsetOf);
 
   return {
     agentId: input.agentId,
@@ -92,7 +115,7 @@ export function projectAgentRuntimeConfig(input: ProjectAgentRuntimeConfigInput)
       authSecretRef: input.authSecretRef,
       allowedTools,
     },
-    nativeToolsAllow: input.nativeToolsAllow ?? [],
+    nativeToolsetsAllow,
     autonomousInstallDisabled: true,
     version: input.version,
   };

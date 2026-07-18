@@ -6,7 +6,10 @@
  * owned by KinOS. The agent never edits these files. Consequences carried from
  * the domain projection (the core already enforced them; this only serializes):
  *   - exactly one MCP server, the Sphere MCP, with its tools.include surface;
- *   - native tools are a deny-by-default allow-list;
+ *   - native toolsets are governed via Hermes' real `agent.enabled_toolsets` /
+ *     `agent.disabled_toolsets` keys (RFC-025), deny-by-default: only granted
+ *     toolsets are enabled, and every ungranted toolset — always including native
+ *     memory, terminal, file and code execution — is explicitly disabled;
  *   - autonomous MCP install is disabled (KinOS registers only the Sphere MCP).
  *
  * Real Hermes config schema (verified against
@@ -39,6 +42,28 @@ export const SPHERE_MCP_TOKEN_ENV = "SPHERE_MCP_TOKEN";
 export const HERMES_MIN_CONTEXT_LENGTH = 65536;
 
 /**
+ * Hermes' known native toolsets (RFC-025). KinOS governs at this grain via the real
+ * `agent.enabled_toolsets` / `agent.disabled_toolsets` keys. Deny-by-default is made
+ * robust by explicitly DISABLING every toolset that is not granted, rather than
+ * trusting an empty allow-list — so the outcome does not depend on Hermes' own
+ * defaults. The dangerous toolsets (`terminal`, `file`, `execute_code`), native
+ * `memory` (invariant 2 — canonical memory is served via the Sphere MCP instead)
+ * and `agent`/delegate are never grantable, so they are always in the disabled set.
+ */
+export const ALL_HERMES_TOOLSETS = [
+  "web",
+  "x",
+  "browser",
+  "media",
+  "cron",
+  "memory",
+  "terminal",
+  "file",
+  "execute_code",
+  "agent",
+] as const;
+
+/**
  * Hermes' `ollama` provider speaks the OpenAI-compatible endpoint: a bare
  * `:11434` base_url 404s, so the `/v1` suffix is required. Applied only to a
  * local Ollama base URL the operator supplied without it — a deployment detail of
@@ -66,7 +91,11 @@ export interface HermesConfig {
   };
   /** Map keyed by server name — KinOS registers exactly one: "sphere". */
   readonly mcp_servers: Readonly<Record<string, HermesMcpServer>>;
-  readonly native_tools: { readonly allow: readonly string[] };
+  /** Real Hermes toolset governance (RFC-025): granted toolsets enabled, all else disabled. */
+  readonly agent: {
+    readonly enabled_toolsets: readonly string[];
+    readonly disabled_toolsets: readonly string[];
+  };
   readonly autonomous_mcp_install: false;
 }
 
@@ -96,8 +125,25 @@ export function projectionToHermesConfig(projection: RuntimeConfigProjection): H
         enabled: true,
       },
     },
-    native_tools: { allow: projection.nativeToolsAllow },
+    agent: toolsetGovernance(projection.nativeToolsetsAllow),
     autonomous_mcp_install: false,
+  };
+}
+
+/**
+ * Deny-by-default toolset governance: enable exactly the granted toolsets, and
+ * explicitly disable every other known toolset (so the result never depends on
+ * Hermes' defaults). The hard floor (memory/terminal/file/execute_code/agent) is
+ * never granted, so it is always disabled.
+ */
+export function toolsetGovernance(granted: readonly string[]): {
+  enabled_toolsets: readonly string[];
+  disabled_toolsets: readonly string[];
+} {
+  const enabledSet = new Set(granted);
+  return {
+    enabled_toolsets: [...granted],
+    disabled_toolsets: ALL_HERMES_TOOLSETS.filter((t) => !enabledSet.has(t)),
   };
 }
 
@@ -132,9 +178,11 @@ export function toYaml(config: HermesConfig): string {
     for (const t of s.tools.include) lines.push(`        - ${scalar(t)}`);
   }
 
-  lines.push("native_tools:");
-  lines.push("  allow:");
-  for (const t of config.native_tools.allow) lines.push(`    - ${scalar(t)}`);
+  lines.push("agent:");
+  lines.push("  enabled_toolsets:");
+  for (const t of config.agent.enabled_toolsets) lines.push(`    - ${scalar(t)}`);
+  lines.push("  disabled_toolsets:");
+  for (const t of config.agent.disabled_toolsets) lines.push(`    - ${scalar(t)}`);
 
   lines.push(`autonomous_mcp_install: ${config.autonomous_mcp_install}`);
 
@@ -222,8 +270,14 @@ export function mergeHermesConfig(existing: string | undefined, projection: Runt
   );
   merged = replaceTopLevelBlock(
     merged,
-    "native_tools",
-    ["native_tools:", "  allow:", ...cfg.native_tools.allow.map((t) => `    - ${quoteIfNeeded(t)}`)].join("\n"),
+    "agent",
+    [
+      "agent:",
+      "  enabled_toolsets:",
+      ...cfg.agent.enabled_toolsets.map((t) => `    - ${quoteIfNeeded(t)}`),
+      "  disabled_toolsets:",
+      ...cfg.agent.disabled_toolsets.map((t) => `    - ${quoteIfNeeded(t)}`),
+    ].join("\n"),
   );
   merged = replaceTopLevelBlock(merged, "autonomous_mcp_install", `autonomous_mcp_install: ${cfg.autonomous_mcp_install}`);
   return merged;

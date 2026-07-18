@@ -21,7 +21,7 @@ const projection: RuntimeConfigProjection = {
     authSecretRef: "secret://sphere-mcp/sph_1/agt_0",
     allowedTools: ["memory.search", "calendar.read"],
   },
-  nativeToolsAllow: [],
+  nativeToolsetsAllow: [],
   autonomousInstallDisabled: true,
   version: 1,
 };
@@ -129,9 +129,9 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
       "  github:",
       "    url: https://example.test/mcp",
       "    enabled: true",
-      "native_tools:",
-      "  allow:",
-      "    - shell",
+      "agent:",
+      "  enabled_toolsets:",
+      "    - terminal",
       "",
     ].join("\n");
     const merged = mergeHermesConfig(existing, projection);
@@ -140,6 +140,28 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
     expect(merged).toContain('allowed_chats: "1234"');
     expect(merged).toContain("sphere:");
     expect(merged).not.toContain("github:");
+    // KinOS owns toolset governance: a stray `enabled_toolsets: [terminal]` is
+    // replaced by the projected, deny-by-default agent block — terminal is floored.
+    expect(merged).not.toMatch(/enabled_toolsets:\n\s+- terminal/);
+    expect(merged).toMatch(/disabled_toolsets:[\s\S]*terminal/);
+  });
+
+  it("governs toolsets deny-by-default: granted enabled, everything else (incl. the floor) disabled (RFC-025)", () => {
+    const granted: RuntimeConfigProjection = { ...projection, nativeToolsetsAllow: ["web", "cron"] };
+    const cfg = projectionToHermesConfig(granted);
+    expect(cfg.agent.enabled_toolsets).toEqual(["web", "cron"]);
+    // The hard floor is always disabled — no grant can reach it.
+    for (const floored of ["memory", "terminal", "file", "execute_code"]) {
+      expect(cfg.agent.disabled_toolsets).toContain(floored);
+    }
+    // Ungranted grantables are disabled too (deny-by-default, not left to defaults).
+    expect(cfg.agent.disabled_toolsets).toContain("browser");
+    expect(cfg.agent.disabled_toolsets).not.toContain("web");
+
+    // No grant → nothing enabled, and native memory is off (invariant 2).
+    const none = projectionToHermesConfig(projection);
+    expect(none.agent.enabled_toolsets).toEqual([]);
+    expect(none.agent.disabled_toolsets).toContain("memory");
   });
 
   it("merges the Sphere MCP token into an existing .env without dropping Hermes credentials", () => {

@@ -305,6 +305,46 @@ const CAPABILITIES: readonly Capability[] = [
     approvalFloor: false,
     auditFacts: ["actor", "capability", "policyId", "decision", "correlationId"],
   },
+
+  // --- Governed Hermes native toolsets (RFC-025) ---------------------------
+  // A `native.<toolset>` grant does NOT run through the Sphere MCP: it is
+  // projected into the Harness's `enabled_toolsets` so the agent may use that
+  // native toolset directly. Governed like any capability (deny-by-default,
+  // profile floor, approval), but a distinct channel. The dangerous toolsets
+  // (terminal/file/execute_code) and native memory are never offered here — they
+  // are a hard floor in the projection, always disabled.
+  {
+    name: "native.web",
+    description: "Let the agent use the Harness's native web search & extract (read-only).",
+    risk: "medium",
+    allowedProfiles: ["adult"], // minors get no native web
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    name: "native.cron",
+    description: "Let the agent schedule Harness cron jobs. Actions they trigger are still policy-checked.",
+    risk: "medium",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    name: "native.media",
+    description: "Let the agent use the Harness's native media tools (vision, image generation, TTS).",
+    risk: "medium",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    name: "native.browser",
+    description: "Let the agent drive the Harness's native browser. It acts on the web — approval-floored.",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: true,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
 ];
 
 /** A fresh catalog map keyed by capability name. */

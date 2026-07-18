@@ -235,6 +235,18 @@ export function AgentConfig({
                       </td>
                     </tr>
                     <tr>
+                      <td className="faint">native toolsets</td>
+                      <td>
+                        {projection.nativeToolsetsAllow.length === 0 ? (
+                          <span className="faint">none (deny by default)</span>
+                        ) : (
+                          projection.nativeToolsetsAllow.map((t) => (
+                            <code key={t} className="pill" style={{ marginRight: 4 }}>{t}</code>
+                          ))
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
                       <td className="faint">autonomous install</td>
                       <td>{projection.autonomousInstallDisabled ? "disabled" : "enabled"}</td>
                     </tr>

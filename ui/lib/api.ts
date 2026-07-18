@@ -429,7 +429,8 @@ export interface RuntimeProjection {
   readonly gatewayEndpoint: string;
   readonly authSecretRef: string;
   readonly allowedTools: readonly string[];
-  readonly nativeToolsAllow: readonly string[];
+  /** Granted native runtime toolsets (RFC-025) — a channel distinct from allowedTools. */
+  readonly nativeToolsetsAllow: readonly string[];
   readonly autonomousInstallDisabled: boolean;
   /** Set on a denial (HTTP 403). */
   readonly code?: string;

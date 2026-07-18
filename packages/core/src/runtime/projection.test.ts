@@ -52,11 +52,24 @@ describe("projectAgentRuntimeConfig (RFC-007)", () => {
     expect(JSON.stringify(p)).not.toMatch(/BEGIN|password|sk-/i);
   });
 
-  it("is deny-by-default: empty allowedTools and native-tool allow-list, install disabled", () => {
+  it("is deny-by-default: empty allowedTools and native toolsets, install disabled", () => {
     const p = projectAgentRuntimeConfig({ ...base, policies: [] });
     expect(p.gateway.allowedTools).toEqual([]);
-    expect(p.nativeToolsAllow).toEqual([]);
+    expect(p.nativeToolsetsAllow).toEqual([]);
     expect(p.autonomousInstallDisabled).toBe(true);
+  });
+
+  it("splits authorized capabilities into MCP tools vs native toolsets (RFC-025)", () => {
+    // Grant one MCP capability (memory.search) and one native toolset (native.web).
+    const allowWeb: Policy = { ...allowSearch, id: "pol_web", resourceSelector: { capabilityNames: ["native.web"] } };
+    const bindings = [
+      { capability: "memory.search", runtime: "local" as const, runtimeToolName: "local.memory_search", execution: "local" as const, risk: "low" as const, requiresApproval: false, status: "enabled" as const },
+      { capability: "native.web", runtime: "hermes" as const, runtimeToolName: "web", execution: "local" as const, risk: "medium" as const, requiresApproval: false, status: "enabled" as const },
+    ];
+    const p = projectAgentRuntimeConfig({ ...base, policies: [allowSearch, allowWeb], bindings });
+    // native.* goes to the native channel as a toolset name, never to the MCP surface.
+    expect(p.gateway.allowedTools).toEqual(["memory.search"]);
+    expect(p.nativeToolsetsAllow).toEqual(["web"]);
   });
 
   it("rejects a projection without a per-agent credential reference (deny by default)", () => {

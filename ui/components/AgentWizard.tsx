@@ -199,6 +199,14 @@ export function AgentWizard({
                     <tr><td className="faint">provider · model</td><td><code>{projection.provider}</code> · <code>{projection.model}</code> · {projection.execution}</td></tr>
                     <tr><td className="faint">sphere MCP gateway</td><td><code>{projection.gatewayEndpoint}</code></td></tr>
                     <tr><td className="faint">auth</td><td>by reference · <code>{projection.authSecretRef}</code></td></tr>
+                    <tr>
+                      <td className="faint">native toolsets</td>
+                      <td>
+                        {projection.nativeToolsetsAllow.length === 0
+                          ? <span className="faint">none</span>
+                          : projection.nativeToolsetsAllow.map((t) => <code key={t} className="pill" style={{ marginRight: 4 }}>{t}</code>)}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

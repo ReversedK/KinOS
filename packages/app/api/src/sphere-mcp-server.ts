@@ -18,6 +18,7 @@ import {
   defaultCapabilityCatalog,
   handleSphereMcpCall,
   importSphere,
+  isNativeToolsetCapability,
   resolveAuthorizedCapabilities,
   type AgentTokenStore,
   type ApprovalStore,
@@ -118,7 +119,10 @@ export async function handleSphereMcpRpc(
       bindings: imported.bindings,
     });
     return ok({
-      tools: surface.map((c) => ({
+      // `native.<toolset>` grants are a distinct channel (RFC-025): the runtime
+      // uses those of its own native tools directly, so they are never offered as
+      // Sphere-MCP tools. Only MCP-backed capabilities appear here.
+      tools: surface.filter((c) => !isNativeToolsetCapability(c.name)).map((c) => ({
         name: c.name,
         description: catalog.get(c.name)?.description ?? c.name,
         // MCP requires every tool to declare an inputSchema (JSON Schema). The
