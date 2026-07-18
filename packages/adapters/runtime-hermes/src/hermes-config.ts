@@ -23,9 +23,11 @@
  * Secret handling (ADR-007 / secret-store.md): config.yaml stays secret-free —
  * the Authorization header references an env var (`${SPHERE_MCP_TOKEN}`) and the
  * actual token value is written only to the profile `.env`, the single place the
- * value lands. NOTE: this relies on Hermes interpolating `${VAR}` from `.env`
- * into config header values — to confirm against a running Hermes container
- * (env-var interpolation is the one piece not verifiable from the docs alone).
+ * value lands. VERIFIED against the live Hermes container: with `HERMES_HOME` set
+ * to the profile dir (a Hermes profile IS a HERMES_HOME — what KinOS's bridge/gateway
+ * sets), the startup `load_hermes_dotenv()` applies the profile `.env` into the
+ * environment and `load_config()`'s `_expand_env_vars` resolves the header to
+ * `Bearer <token>`. The interpolation seam is real, not fictional.
  */
 
 import type { RuntimeConfigProjection } from "@kinos/core";
