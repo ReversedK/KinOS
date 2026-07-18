@@ -137,6 +137,8 @@ export interface ApproverDecisionInput {
   readonly decision: "grant" | "deny";
   readonly at: string;
   readonly reason?: string;
+  /** RFC-026: the approver is the sole eligible approver → self-approval permitted. */
+  readonly soleEligibleApprover?: boolean;
 }
 
 /**

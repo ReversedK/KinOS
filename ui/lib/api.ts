@@ -930,14 +930,16 @@ async function resolveApprovalAction(
   approver: ApproverRef,
   fetchImpl: typeof fetch,
 ): Promise<ApprovalOutcome> {
-  const { status, body } = await postJson<ApprovalOutcome>(
+  const { status, body } = await postJson<ApprovalOutcome & { message?: string }>(
     baseUrl,
     `/approvals/${encodeURIComponent(approvalId)}/${decision}`,
     { approver },
     fetchImpl,
   );
   if (status !== 200) {
-    throw new Error(`${decision} ${approvalId} failed: ${status}`);
+    // Surface the governed reason the API returned (e.g. "The requester cannot
+    // approve their own request"), not a bare status code.
+    throw new Error(body.message ?? body.reason ?? `${decision} failed (${status})`);
   }
   return body;
 }

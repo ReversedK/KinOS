@@ -471,6 +471,17 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     if (snap === undefined) return err(404, "not_found", "Sphere not found");
     const imported = importSphere(snap);
 
+    // RFC-026: is the approver the ONLY eligible approver in the Sphere? If so, the
+    // requester may self-approve (separation of duties is impossible with one
+    // approver, not violated). Eligible = active adult members holding an approver
+    // role. Strict no-self-approval still applies whenever ≥2 exist.
+    const requesterMember = pending.approval.requestedBy.onBehalfOf;
+    const eligibleApprovers = imported.sphere.members.filter(
+      (m) => m.status === "active" && pending.approval.approverRoles.includes(m.role) && ageProfileForRole(m.role) === "adult",
+    );
+    const soleEligibleApprover =
+      requesterMember !== undefined && eligibleApprovers.length === 1 && eligibleApprovers[0]?.id === requesterMember;
+
     let result;
     try {
       result = await resolveApproval(
@@ -483,6 +494,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           },
           decision,
           at: (deps.now ?? (() => new Date().toISOString()))(),
+          soleEligibleApprover,
         },
         pending.request,
         {

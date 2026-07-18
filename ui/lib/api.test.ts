@@ -162,10 +162,21 @@ describe("UI API client", () => {
     expect(calls[0]?.url).toBe("http://x/approvals/apr_1/deny");
   });
 
-  it("grantApproval throws on a non-200 (e.g. 409 already resolved)", async () => {
+  it("grantApproval throws on a non-200, falling back to the status when no reason", async () => {
     await expect(
       grantApproval("http://x", "apr_1", { memberId: "mbr_p2", role: "parent" }, fakeFetch({}, 409)),
-    ).rejects.toThrow(/failed: 409/);
+    ).rejects.toThrow(/failed \(409\)/);
+  });
+
+  it("grantApproval surfaces the governed reason from the body, not a bare status (422)", async () => {
+    await expect(
+      grantApproval(
+        "http://x",
+        "apr_1",
+        { memberId: "mbr_p1", role: "parent" },
+        fakeFetch({ code: "execution_failed", message: "The requester cannot approve their own request (separation of duties)" }, 422),
+      ),
+    ).rejects.toThrow(/requester cannot approve their own request/i);
   });
 
   it("setRuntime POSTs subject + profile and returns the outcome", async () => {

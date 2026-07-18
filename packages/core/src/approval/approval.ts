@@ -113,6 +113,13 @@ export interface RecordDecisionInput {
   readonly decision: "grant" | "deny";
   readonly at: string;
   readonly reason?: string;
+  /**
+   * True when the approver is the ONLY eligible approver in the Sphere (RFC-026):
+   * self-approval is then permitted, because separation of duties requires a second
+   * principal that does not exist. Defaults false → strict no-self-approval. Only a
+   * caller that has computed this from real Sphere membership may set it.
+   */
+  readonly soleEligibleApprover?: boolean;
 }
 
 /**
@@ -129,7 +136,7 @@ export function recordApprovalDecision(
   if (request.state !== "pending") {
     throw new Error(`Cannot decide an approval in state '${request.state}'; it must be pending`);
   }
-  assertEligible(request, input.approver);
+  assertEligible(request, input.approver, input.soleEligibleApprover ?? false);
 
   // Duplicate decision by the same approver does not count twice.
   if (request.decisions.some((x) => x.approverMemberId === input.approver.memberId)) {
@@ -172,7 +179,7 @@ export function isAuthorized(request: ApprovalRequest): boolean {
   return request.state === "granted";
 }
 
-function assertEligible(request: ApprovalRequest, approver: Approver): void {
+function assertEligible(request: ApprovalRequest, approver: Approver, soleEligibleApprover: boolean): void {
   if (approver.active === false) {
     throw new Error("Approver is not an active member of the Sphere");
   }
@@ -181,7 +188,11 @@ function assertEligible(request: ApprovalRequest, approver: Approver): void {
   }
   if (
     request.requestedBy.onBehalfOf !== undefined &&
-    approver.memberId === request.requestedBy.onBehalfOf
+    approver.memberId === request.requestedBy.onBehalfOf &&
+    // RFC-026: block self-approval only when a SECOND eligible approver exists.
+    // With exactly one eligible approver (the requester), separation of duties is
+    // impossible, not violated — so self-approval is permitted.
+    !soleEligibleApprover
   ) {
     throw new Error("The requester cannot approve their own request (separation of duties)");
   }

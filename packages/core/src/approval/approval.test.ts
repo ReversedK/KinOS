@@ -96,9 +96,38 @@ describe("Who may approve (separation of duties; minors excluded)", () => {
       action: { capabilityName: "payment.execute", riskLevel: "critical", summary: "s" },
       createdAt: CREATED,
     });
+    // Default (≥2 eligible approvers, flag not set) → strict block.
     expect(() =>
       recordApprovalDecision(selfReq, { approver: parentA, decision: "grant", at: CREATED }),
     ).toThrow(/own request|separation/i);
+  });
+
+  it("permits self-approval when the requester is the SOLE eligible approver (RFC-026)", () => {
+    const selfReq = createApprovalFromDecision({
+      id: "apr_solo",
+      sphereId: "sph_1",
+      decision: approvalDecision(),
+      requestedBy: { agentId: "agt_p1", onBehalfOf: "mbr_p1" },
+      action: { capabilityName: "payment.execute", riskLevel: "critical", summary: "s" },
+      createdAt: CREATED,
+    });
+    // parentA IS the requester (mbr_p1), and is the only eligible approver → allowed.
+    const decided = recordApprovalDecision(selfReq, { approver: parentA, decision: "grant", at: CREATED, soleEligibleApprover: true });
+    expect(decided.state).toBe("granted");
+  });
+
+  it("still blocks self-approval even as sole approver if the requester is unidentified (RFC-021 guard intact)", () => {
+    const anon = createApprovalFromDecision({
+      id: "apr_anon2",
+      sphereId: "sph_1",
+      decision: approvalDecision(),
+      requestedBy: { agentId: UNIDENTIFIED_AGENT },
+      action: { capabilityName: "payment.execute", riskLevel: "critical", summary: "s" },
+      createdAt: CREATED,
+    });
+    expect(() =>
+      recordApprovalDecision(anon, { approver: parentA, decision: "grant", at: CREATED, soleEligibleApprover: true }),
+    ).toThrow(/unidentified|separation/i);
   });
 
   // Regression: with no identified requester the self-approval check above cannot
