@@ -6,10 +6,11 @@
  * owned by KinOS. The agent never edits these files. Consequences carried from
  * the domain projection (the core already enforced them; this only serializes):
  *   - exactly one MCP server, the Sphere MCP, with its tools.include surface;
- *   - native toolsets are governed via Hermes' real `agent.enabled_toolsets` /
- *     `agent.disabled_toolsets` keys (RFC-025), deny-by-default: only granted
- *     toolsets are enabled, and every ungranted toolset — always including native
- *     memory, terminal, file and code execution — is explicitly disabled;
+ *   - native toolsets are governed via Hermes' REAL keys (RFC-025, verified against
+ *     the installed hermes_cli): the grant is the exclusive per-platform list
+ *     `platform_toolsets.<gateway>` (NOT the unread `agent.enabled_toolsets`), and
+ *     the hard floor — native memory, terminal, file, code execution, computer use,
+ *     delegation — is always in the global `agent.disabled_toolsets` master subtraction;
  *   - autonomous MCP install is disabled (KinOS registers only the Sphere MCP).
  *
  * Real Hermes config schema (verified against
@@ -42,25 +43,57 @@ export const SPHERE_MCP_TOKEN_ENV = "SPHERE_MCP_TOKEN";
 export const HERMES_MIN_CONTEXT_LENGTH = 65536;
 
 /**
- * Hermes' known native toolsets (RFC-025). KinOS governs at this grain via the real
- * `agent.enabled_toolsets` / `agent.disabled_toolsets` keys. Deny-by-default is made
- * robust by explicitly DISABLING every toolset that is not granted, rather than
- * trusting an empty allow-list — so the outcome does not depend on Hermes' own
- * defaults. The dangerous toolsets (`terminal`, `file`, `execute_code`), native
- * `memory` (invariant 2 — canonical memory is served via the Sphere MCP instead)
- * and `agent`/delegate are never grantable, so they are always in the disabled set.
+ * The gateway platform KinOS runs Hermes as (`hermes gateway run`). Toolsets are
+ * granted PER PLATFORM under `platform_toolsets.<platform>` — NOT via a global
+ * `agent.enabled_toolsets` (verified against the real Hermes: that key is not read;
+ * only `agent.disabled_toolsets` is). The per-platform list is exclusive, so it is
+ * itself deny-by-default: an agent gets only the toolsets listed here.
  */
-export const ALL_HERMES_TOOLSETS = [
-  "web",
-  "x",
-  "browser",
-  "media",
-  "cron",
+export const HERMES_GATEWAY_PLATFORM = "api_server";
+
+/**
+ * Abstract KinOS grant token → real Hermes toolset name(s) (RFC-025). KinOS's
+ * `native.<token>` capabilities are provider-agnostic; this adapter maps each to the
+ * Harness's actual toolset keys (verified against the installed `toolsets` registry:
+ * cron is `cronjob`, media bundles three, etc.).
+ */
+export const GRANT_TO_HERMES_TOOLSETS: Readonly<Record<string, readonly string[]>> = {
+  web: ["web"],
+  cron: ["cronjob"],
+  media: ["vision", "image_gen", "tts"],
+  browser: ["browser"],
+};
+
+/**
+ * The hard floor: toolsets that are NEVER grantable. `memory` is here because
+ * canonical memory is served via the Sphere MCP (invariant 2); the rest give
+ * shell / code / file / full-computer / subagent-spawn power a governed family
+ * agent must never hold. (Real Hermes toolset names — verified against the
+ * installed `toolsets` registry: `code_execution`, `delegation`.)
+ */
+export const HERMES_TOOLSET_FLOOR = [
   "memory",
   "terminal",
   "file",
-  "execute_code",
-  "agent",
+  "code_execution",
+  "computer_use",
+  "delegation",
+] as const;
+
+/**
+ * Every configurable Hermes toolset (verified against the installed
+ * CONFIGURABLE_TOOLSETS registry). Deny-by-default is enforced by disabling every
+ * one of these that is NOT granted, via `agent.disabled_toolsets` — the master
+ * subtraction Hermes applies last. This is required because an empty per-platform
+ * grant list falls through to Hermes' (permissive) defaults; the subtraction clamps
+ * the effective set to exactly the grant. Keep in sync with the Harness version.
+ */
+export const ALL_HERMES_CONFIGURABLE_TOOLSETS = [
+  "browser", "clarify", "code_execution", "computer_use", "context_engine",
+  "cronjob", "delegation", "discord", "discord_admin", "file",
+  "homeassistant", "image_gen", "memory", "session_search", "skills",
+  "spotify", "terminal", "todo", "tts", "video",
+  "video_gen", "vision", "web", "x_search", "yuanbao",
 ] as const;
 
 /**
@@ -91,11 +124,13 @@ export interface HermesConfig {
   };
   /** Map keyed by server name — KinOS registers exactly one: "sphere". */
   readonly mcp_servers: Readonly<Record<string, HermesMcpServer>>;
-  /** Real Hermes toolset governance (RFC-025): granted toolsets enabled, all else disabled. */
-  readonly agent: {
-    readonly enabled_toolsets: readonly string[];
-    readonly disabled_toolsets: readonly string[];
-  };
+  /**
+   * Real Hermes toolset governance (RFC-025). The grant is the exclusive per-platform
+   * list `platform_toolsets.<gateway>`; the floor is the global `agent.disabled_toolsets`
+   * master subtraction. Together they deny-by-default and hard-floor the dangerous set.
+   */
+  readonly platform_toolsets: Readonly<Record<string, readonly string[]>>;
+  readonly agent: { readonly disabled_toolsets: readonly string[] };
   readonly autonomous_mcp_install: false;
 }
 
@@ -125,26 +160,46 @@ export function projectionToHermesConfig(projection: RuntimeConfigProjection): H
         enabled: true,
       },
     },
-    agent: toolsetGovernance(projection.nativeToolsetsAllow),
+    ...toolsetGovernance(projection.nativeToolsetsAllow),
     autonomous_mcp_install: false,
   };
 }
 
 /**
- * Deny-by-default toolset governance: enable exactly the granted toolsets, and
- * explicitly disable every other known toolset (so the result never depends on
- * Hermes' defaults). The hard floor (memory/terminal/file/execute_code/agent) is
- * never granted, so it is always disabled.
+ * Deny-by-default toolset governance (verified against the live Hermes resolver):
+ *   - grant: the exclusive per-platform list `platform_toolsets.<gateway>`;
+ *   - clamp: disable EVERY configurable toolset that is not granted, via the global
+ *     `agent.disabled_toolsets` master subtraction — so an empty grant (which
+ *     otherwise falls through to Hermes' permissive defaults) yields nothing, and
+ *     the hard floor can never be reached.
  */
-export function toolsetGovernance(granted: readonly string[]): {
-  enabled_toolsets: readonly string[];
-  disabled_toolsets: readonly string[];
+export function toolsetGovernance(grantTokens: readonly string[]): {
+  platform_toolsets: Readonly<Record<string, readonly string[]>>;
+  agent: { disabled_toolsets: readonly string[] };
 } {
-  const enabledSet = new Set(granted);
+  const granted = grantedToolsets(grantTokens);
+  const grantedSet = new Set(granted);
   return {
-    enabled_toolsets: [...granted],
-    disabled_toolsets: ALL_HERMES_TOOLSETS.filter((t) => !enabledSet.has(t)),
+    platform_toolsets: { [HERMES_GATEWAY_PLATFORM]: granted },
+    agent: { disabled_toolsets: ALL_HERMES_CONFIGURABLE_TOOLSETS.filter((t) => !grantedSet.has(t)) },
   };
+}
+
+/**
+ * Map the abstract KinOS grant tokens (from `native.<token>` capabilities) to the
+ * Harness's real toolset names, deduped and floor-stripped. The per-platform list
+ * Hermes reads is exclusive, so this alone is deny-by-default; the floor cannot be
+ * requested even if a grant token mistakenly resolved to one.
+ */
+export function grantedToolsets(grantTokens: readonly string[]): readonly string[] {
+  const floor = new Set<string>(HERMES_TOOLSET_FLOOR);
+  const out: string[] = [];
+  for (const token of grantTokens) {
+    for (const ts of GRANT_TO_HERMES_TOOLSETS[token] ?? []) {
+      if (!floor.has(ts) && !out.includes(ts)) out.push(ts);
+    }
+  }
+  return out;
 }
 
 function providerKeyEnv(provider: string): string {
@@ -178,9 +233,13 @@ export function toYaml(config: HermesConfig): string {
     for (const t of s.tools.include) lines.push(`        - ${scalar(t)}`);
   }
 
+  lines.push("platform_toolsets:");
+  for (const [plat, list] of Object.entries(config.platform_toolsets)) {
+    lines.push(`  ${scalar(plat)}:`);
+    for (const t of list) lines.push(`    - ${scalar(t)}`);
+  }
+
   lines.push("agent:");
-  lines.push("  enabled_toolsets:");
-  for (const t of config.agent.enabled_toolsets) lines.push(`    - ${scalar(t)}`);
   lines.push("  disabled_toolsets:");
   for (const t of config.agent.disabled_toolsets) lines.push(`    - ${scalar(t)}`);
 
@@ -270,14 +329,19 @@ export function mergeHermesConfig(existing: string | undefined, projection: Runt
   );
   merged = replaceTopLevelBlock(
     merged,
-    "agent",
+    "platform_toolsets",
     [
-      "agent:",
-      "  enabled_toolsets:",
-      ...cfg.agent.enabled_toolsets.map((t) => `    - ${quoteIfNeeded(t)}`),
-      "  disabled_toolsets:",
-      ...cfg.agent.disabled_toolsets.map((t) => `    - ${quoteIfNeeded(t)}`),
+      "platform_toolsets:",
+      ...Object.entries(cfg.platform_toolsets).flatMap(([plat, list]) => [
+        `  ${quoteIfNeeded(plat)}:`,
+        ...list.map((t) => `    - ${quoteIfNeeded(t)}`),
+      ]),
     ].join("\n"),
+  );
+  merged = replaceTopLevelBlock(
+    merged,
+    "agent",
+    ["agent:", "  disabled_toolsets:", ...cfg.agent.disabled_toolsets.map((t) => `    - ${quoteIfNeeded(t)}`)].join("\n"),
   );
   merged = replaceTopLevelBlock(merged, "autonomous_mcp_install", `autonomous_mcp_install: ${cfg.autonomous_mcp_install}`);
   return merged;

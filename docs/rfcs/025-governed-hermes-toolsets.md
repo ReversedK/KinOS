@@ -55,17 +55,24 @@ Three rules fall out and are non-negotiable:
 
 ### 1. Projection: real keys, deny-by-default (correctness fix)
 
-Replace the fictional `native_tools: { allow: [...] }` with the real
-`agent.enabled_toolsets` / `agent.disabled_toolsets`. The projection computes:
+Replace the fictional `native_tools: { allow: [...] }` with the toolset governance
+Hermes **actually reads** (verified live against the installed `hermes_cli`, see
+§Verification):
 
-- `enabled_toolsets` = exactly the native toolsets the policy authorizes for the
-  agent (empty by default → no native tools);
-- `disabled_toolsets` = the hard floor `["memory", "terminal", "file",
-  "execute_code"]` always, plus anything else not granted — belt-and-suspenders, and
-  it binds subagents.
+- **Grant** = the exclusive per-platform list `platform_toolsets.<gateway>` (the
+  gateway platform is `api_server`). NOT `agent.enabled_toolsets` — that key is *not
+  read by Hermes*. The list is exclusive, so it is itself deny-by-default.
+- **Clamp/floor** = `agent.disabled_toolsets` (the master subtraction Hermes applies
+  last) set to **every configurable toolset that is not granted**. This is required
+  because an *empty* per-platform list falls through to Hermes' permissive defaults;
+  the subtraction clamps the effective set to exactly the grant, and guarantees the
+  hard floor (`memory`, `terminal`, `file`, `code_execution`, `computer_use`,
+  `delegation`) is never reachable.
 
-`RuntimeConfigProjection.nativeToolsAllow` is replaced by
-`enabledToolsets` / `disabledToolsets`; `HermesConfig` emits an `agent:` block.
+The provider-agnostic core emits abstract grant tokens
+(`RuntimeConfigProjection.nativeToolsetsAllow`, e.g. `["web","cron","media"]`); the
+Hermes adapter maps each to the real toolset names (`cron`→`cronjob`,
+`media`→`vision`+`image_gen`+`tts`, …) and writes `platform_toolsets` + `agent`.
 
 ### 2. Native toolsets as a distinct grantable channel
 
@@ -144,14 +151,40 @@ pipeline. New store packages, no new package model.
   channels stay distinct in projection and UI, even though they share the policy
   engine.
 
+## Verification (against the live Hermes container)
+
+Both open questions were resolved by driving the *installed* Hermes (`hermes_cli`),
+which corrected the implementation:
+
+- **`agent.enabled_toolsets` is not read by Hermes.** Feeding it `[web]` returned the
+  full default set — `terminal`, `code_execution`, `file`, `memory`, `delegation`,
+  `browser`, … — i.e. the first cut governed *nothing*. The real grant key is the
+  exclusive per-platform `platform_toolsets.<gateway>`; `agent.disabled_toolsets` is
+  the master subtraction applied last. Real toolset names differ from the guesses
+  (`cronjob`, `code_execution`, `delegation`, `computer_use`; `media` bundles
+  `vision`+`image_gen`+`tts`).
+- **Empty grant leaks defaults.** An empty per-platform list falls through to Hermes'
+  defaults, so the floor alone is insufficient — the fix disables *every configurable
+  toolset that is not granted*. Re-verified against the resolver: grant
+  `web+cron+media` → exactly `{web, cronjob, vision, image_gen, tts}`; **no grant →
+  `{}`**; `browser` → `{browser}`; the floor never leaks in any case.
+- **Subagent token propagation (#4).** `delegate_tool.py` has
+  `_get_inherit_mcp_toolsets()` defaulting **true**: a child inherits the parent's MCP
+  toolsets (→ the same Sphere-MCP token, the same governed principal), is bound by the
+  global `disabled_toolsets` floor, and receives only a *subset* of the parent's
+  toolsets. So `native.delegate` would be safe to add later — provided KinOS keeps
+  `inherit_mcp_toolsets` true. It stays withheld (floored) until that increment.
+
 ## Open questions
 
-- `native.delegate` (subagents) once token propagation to children is verified live
-  against Hermes.
-- `integrations` toolset (Home Assistant, …) — overlaps KinOS's own integration
-  model; deferred pending a decision on which owns device/service integrations.
-- Whether `enabled_toolsets` fully replaces Hermes' default set or merely adds to it
-  (must be confirmed at implementation so deny-by-default is real, not additive).
+- `native.delegate` (subagents) — now known safe (above); a future increment can add
+  it, keeping `inherit_mcp_toolsets` true and verifying the child's MCP calls carry
+  the parent token end-to-end.
+- `integrations`/channel toolsets (Home Assistant, Spotify, Discord, …) — overlap
+  KinOS's own integration model; deferred pending a decision on which owns them.
+- The configurable-toolset list is pinned to the Harness version; it must be kept in
+  sync when Hermes adds toolsets (the hard floor is listed explicitly, so dangerous
+  additions still can't be granted, but a new *benign* toolset could leak until added).
 
 ## Acceptance criteria
 

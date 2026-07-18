@@ -129,8 +129,8 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
       "  github:",
       "    url: https://example.test/mcp",
       "    enabled: true",
-      "agent:",
-      "  enabled_toolsets:",
+      "platform_toolsets:",
+      "  api_server:",
       "    - terminal",
       "",
     ].join("\n");
@@ -140,28 +140,34 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
     expect(merged).toContain('allowed_chats: "1234"');
     expect(merged).toContain("sphere:");
     expect(merged).not.toContain("github:");
-    // KinOS owns toolset governance: a stray `enabled_toolsets: [terminal]` is
-    // replaced by the projected, deny-by-default agent block — terminal is floored.
-    expect(merged).not.toMatch(/enabled_toolsets:\n\s+- terminal/);
+    // KinOS owns toolset governance: a stray platform_toolsets [terminal] is replaced
+    // by the projected deny-by-default block (empty grant here), and terminal is floored.
+    expect(merged).not.toMatch(/api_server:\n\s+- terminal/);
     expect(merged).toMatch(/disabled_toolsets:[\s\S]*terminal/);
   });
 
-  it("governs toolsets deny-by-default: granted enabled, everything else (incl. the floor) disabled (RFC-025)", () => {
-    const granted: RuntimeConfigProjection = { ...projection, nativeToolsetsAllow: ["web", "cron"] };
+  it("grants via the real per-platform key, hard-floors the dangerous set (RFC-025)", () => {
+    const granted: RuntimeConfigProjection = { ...projection, nativeToolsetsAllow: ["web", "cron", "media"] };
     const cfg = projectionToHermesConfig(granted);
-    expect(cfg.agent.enabled_toolsets).toEqual(["web", "cron"]);
-    // The hard floor is always disabled — no grant can reach it.
-    for (const floored of ["memory", "terminal", "file", "execute_code"]) {
+    // Grant is the exclusive per-platform list — real Hermes toolset names.
+    // cron → cronjob; media → vision/image_gen/tts; NOT the unread agent.enabled_toolsets.
+    expect(cfg.platform_toolsets.api_server).toEqual(["web", "cronjob", "vision", "image_gen", "tts"]);
+    expect("enabled_toolsets" in cfg.agent).toBe(false);
+    // The hard floor is always in the global disabled_toolsets master subtraction.
+    for (const floored of ["memory", "terminal", "file", "code_execution", "computer_use", "delegation"]) {
       expect(cfg.agent.disabled_toolsets).toContain(floored);
     }
-    // Ungranted grantables are disabled too (deny-by-default, not left to defaults).
+    // Every ungranted configurable toolset is disabled too — an empty grant otherwise
+    // falls through to Hermes' defaults (verified live). Granted ones are NOT disabled.
     expect(cfg.agent.disabled_toolsets).toContain("browser");
-    expect(cfg.agent.disabled_toolsets).not.toContain("web");
-
-    // No grant → nothing enabled, and native memory is off (invariant 2).
+    for (const grantedTs of ["web", "cronjob", "vision", "image_gen", "tts"]) {
+      expect(cfg.agent.disabled_toolsets).not.toContain(grantedTs);
+    }
+    // No grant → empty per-platform list AND every configurable disabled (deny-all).
     const none = projectionToHermesConfig(projection);
-    expect(none.agent.enabled_toolsets).toEqual([]);
+    expect(none.platform_toolsets.api_server).toEqual([]);
     expect(none.agent.disabled_toolsets).toContain("memory");
+    expect(none.agent.disabled_toolsets).toContain("web");
   });
 
   it("merges the Sphere MCP token into an existing .env without dropping Hermes credentials", () => {
