@@ -125,6 +125,31 @@ describe("executeCapability — governance pipeline (ADR-001)", () => {
     expect(executor.calls).toBe(0);
   });
 
+  it("RFC-028: returns outcome 'failed' (not a throw) when the handler throws, recording one capability.failed fact and preserving the error type", async () => {
+    const { InMemoryAuditSink } = await import("../audit/events.js");
+    const audit = new InMemoryAuditSink();
+    class NotFound extends Error {}
+    const throwing: CapabilityExecutor = {
+      async execute() {
+        throw new NotFound("Memory item x not found");
+      },
+    };
+    const res = await executeCapability(
+      { subject: adult, capabilityName: "calendar.create_event", context: ctx() },
+      { catalog, bindings: [binding()], policies: [allowAdultCalendar], executor: throwing, audit },
+    );
+    expect(res.outcome).toBe("failed");
+    expect(res.reason).toBe("Memory item x not found");
+    // The original error is preserved so callers can classify (e.g. 409 vs 422).
+    expect(res.error).toBeInstanceOf(NotFound);
+    const failed = audit.byCorrelation("cor_exec").filter((e) => e.type === "capability.failed");
+    expect(failed).toHaveLength(1);
+    // The chain reflects authorization-then-failure, never a bogus "executed".
+    const types = audit.byCorrelation("cor_exec").map((e) => e.type);
+    expect(types).toContain("capability.allowed");
+    expect(types).not.toContain("capability.executed");
+  });
+
   it("raises an allow to approval when the capability has an approval floor", async () => {
     const executor = fakeExecutor();
     // payment.execute has approvalFloor=true in the catalog; allow policy is raised.

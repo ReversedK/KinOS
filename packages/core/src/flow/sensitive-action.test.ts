@@ -45,6 +45,17 @@ function fakeExecutor() {
   } satisfies CapabilityExecutor & { calls: number };
 }
 
+/** An executor whose handler throws — the RFC-028 execution-failure case. */
+function throwingExecutor(message = "downstream target not found") {
+  return {
+    calls: 0,
+    async execute() {
+      this.calls += 1;
+      throw new Error(message);
+    },
+  } satisfies CapabilityExecutor & { calls: number };
+}
+
 function ctx(correlationId = "cor_sa"): PolicyRequest["context"] {
   return { sphereId: "sph_1", time: TIME, execution: "local", correlationId };
 }
@@ -123,6 +134,57 @@ describe("sensitive-action flow (ADR-001 + ADR-004 + event-model)", () => {
     expect(res.status).toBe("denied");
     expect(executor.calls).toBe(0);
     expect(audit.byCorrelation("cor_sa").map((e) => e.type)).toContain("approval.denied");
+  });
+
+  it("RFC-028: a grant whose execution fails is terminal, not a throw — returns the GRANTED approval so it can be persisted (never stranded pending)", async () => {
+    const executor = throwingExecutor("Memory item x not found");
+    const audit = new InMemoryAuditSink();
+    const d = deps(executor, audit);
+    const began = await beginSensitiveAction(
+      { subject: adult, capabilityName: "payment.execute", input: { amount: 20 }, context: ctx() },
+      d,
+    );
+    const res = await resolveApproval(
+      began.approval!,
+      { approver: parentB, decision: "grant", at: TIME },
+      { subject: adult, capabilityName: "payment.execute", input: { amount: 20 }, context: ctx() },
+      d,
+    );
+
+    expect(res.status).toBe("execution_failed");
+    expect(res.reason).toBe("Memory item x not found");
+    // The grant was a real decision: the approval comes back GRANTED so the caller
+    // persists it and it leaves the pending inbox — not left pending to loop forever.
+    expect(res.approval?.state).toBe("granted");
+    // The failure is a recorded security fact closing the chain.
+    const types = audit.byCorrelation("cor_sa").map((e) => e.type);
+    expect(types).toEqual(
+      expect.arrayContaining(["approval.granted", "capability.allowed", "capability.failed"]),
+    );
+    expect(types).not.toContain("capability.executed");
+  });
+
+  it("RFC-028: a direct action whose execution fails returns execution_failed (not a throw) and records capability.failed", async () => {
+    const executor = throwingExecutor("boom");
+    const audit = new InMemoryAuditSink();
+    const calendarBinding: CapabilityBinding = {
+      capability: "calendar.create_event",
+      runtime: "local",
+      runtimeToolName: "local.cal",
+      execution: "local",
+      risk: "medium",
+      requiresApproval: false,
+      status: "enabled",
+    };
+    const allowCal: Policy = { ...allowPayment, id: "pc", resourceSelector: { capabilityNames: ["calendar.create_event"] } };
+    const res = await beginSensitiveAction(
+      { subject: adult, capabilityName: "calendar.create_event", context: ctx("cor_fail") },
+      { catalog, bindings: [calendarBinding], policies: [allowCal], executor, audit, newApprovalId: () => "apr_x" },
+    );
+    expect(res.status).toBe("execution_failed");
+    expect(res.reason).toBe("boom");
+    expect(res.error).toBeInstanceOf(Error);
+    expect(audit.byCorrelation("cor_fail").map((e) => e.type)).toContain("capability.failed");
   });
 
   it("executes immediately when no approval is required", async () => {

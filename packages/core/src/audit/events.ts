@@ -34,6 +34,8 @@ export type KinEventType =
   | "capability.allowed"
   | "capability.denied"
   | "capability.executed"
+  /** A governed action failed while executing, after authorization (RFC-028). */
+  | "capability.failed"
   | "approval.requested"
   | "approval.granted"
   | "approval.denied"

@@ -261,6 +261,14 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       return err(422, "execution_failed", (e as Error).message);
     }
     if (result.status === "denied") return err(403, "forbidden", result.reason);
+    if (result.status === "execution_failed") {
+      // RFC-028: the failure now comes back as an outcome, not a throw, so the
+      // collision-vs-generic classification moves here (the error type is preserved).
+      if (result.error instanceof SphereAlreadyExistsError) {
+        return err(409, "conflict", result.reason);
+      }
+      return err(422, "execution_failed", result.reason);
+    }
     return ok({
       status: result.status,
       reason: result.reason,
@@ -336,6 +344,11 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     }
     if (result.status === "denied") {
       return err(403, "forbidden", result.reason);
+    }
+    if (result.status === "execution_failed") {
+      // RFC-028: authorized, but the action failed while executing. A clean 422
+      // with the handler's reason — recorded as a capability.failed audit fact.
+      return err(422, "execution_failed", result.reason);
     }
     return ok({
       status: result.status,
@@ -432,6 +445,11 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     if (result.status === "denied") {
       return err(403, "forbidden", result.reason);
     }
+    if (result.status === "execution_failed") {
+      // RFC-028: authorized, but the action failed while executing. A clean 422
+      // with the handler's reason — recorded as a capability.failed audit fact.
+      return err(422, "execution_failed", result.reason);
+    }
     return ok({
       status: result.status,
       reason: result.reason,
@@ -520,6 +538,14 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
 
     if (result.approval !== undefined) {
       await deps.approvals.save({ approval: result.approval, request: pending.request });
+    }
+    if (result.status === "execution_failed") {
+      // RFC-028: the grant was recorded (approval persisted above → it leaves the
+      // pending inbox); the action then failed. Surface the failure cleanly. This
+      // path is reached only because resolveApproval RETURNS the failure now — a
+      // throw here (e.g. a wrongful self-approval) is still caught above, WITHOUT
+      // saving, so a genuinely-unresolved approval stays pending for a valid approver.
+      return err(422, "execution_failed", result.reason);
     }
     return ok({
       approvalId,

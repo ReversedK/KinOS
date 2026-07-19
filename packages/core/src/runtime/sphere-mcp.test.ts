@@ -86,6 +86,22 @@ describe("handleSphereMcpCall (RFC-007 governed gateway)", () => {
     expect(res.status).toBe("ok");
   });
 
+  it("RFC-028: a handler that throws yields a 'failed' result (a clean tool error), never an uncaught throw", async () => {
+    const audit = new InMemoryAuditSink();
+    const boom: CapabilityExecutor = {
+      async execute() {
+        throw new Error("Memory item x not found");
+      },
+    };
+    const res = await handleSphereMcpCall(
+      { token: "tok-adult", capabilityName: "memory.search", input: { q: "x" } },
+      { ...deps(audit), executor: boom },
+    );
+    expect(res.status).toBe("failed");
+    expect(res.reason).toBe("Memory item x not found");
+    expect(audit.events.some((e) => e.type === "capability.failed")).toBe(true);
+  });
+
   it("executes a capability the calling agent's identity is authorized for", async () => {
     const res = await handleSphereMcpCall({ token: "tok-adult", capabilityName: "memory.search", input: { q: "x" } }, deps());
     expect(res.status).toBe("ok");

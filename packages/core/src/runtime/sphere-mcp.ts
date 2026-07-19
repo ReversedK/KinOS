@@ -52,7 +52,7 @@ export interface SphereMcpDeps extends SensitiveActionDeps {
   readonly newCorrelationId: () => string;
 }
 
-export type SphereMcpStatus = "ok" | "denied" | "pending_approval" | "unauthenticated";
+export type SphereMcpStatus = "ok" | "denied" | "pending_approval" | "unauthenticated" | "failed";
 
 export interface SphereMcpResult {
   readonly status: SphereMcpStatus;
@@ -120,6 +120,12 @@ export async function handleSphereMcpCall(call: SphereMcpCall, deps: SphereMcpDe
       reason: result.reason,
       ...(result.approval !== undefined ? { approval: result.approval } : {}),
     };
+  }
+  if (result.status === "execution_failed") {
+    // RFC-028: an authorized tool call that failed while executing is a clean
+    // tool error (the server renders any non-ok status as isError), never a
+    // thrown RPC.
+    return { status: "failed", correlationId, reason: result.reason };
   }
   return { status: "denied", correlationId, reason: result.reason };
 }

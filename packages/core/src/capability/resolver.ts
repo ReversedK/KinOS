@@ -28,7 +28,7 @@ import {
 } from "../policy/types.js";
 import type { Capability, CapabilityBinding, CapabilityExecutor } from "./types.js";
 
-export type CapabilityOutcome = "executed" | "requires_approval" | "denied";
+export type CapabilityOutcome = "executed" | "requires_approval" | "denied" | "failed";
 
 export interface CapabilityExecutionRequest {
   readonly subject: PolicyRequest["subject"];
@@ -59,6 +59,12 @@ export interface CapabilityExecutionResult {
   readonly correlationId: string;
   readonly decision?: PolicyDecision;
   readonly output?: unknown;
+  /**
+   * The original error, on `outcome: "failed"` (RFC-028). The reason is the
+   * user-safe message; this preserves the error's *type* for callers that must
+   * classify a failure (e.g. an id collision → 409 vs a generic failure → 422).
+   */
+  readonly error?: unknown;
 }
 
 /** Default approver roles when an approval floor (not a policy) raises the bar. */
@@ -171,13 +177,26 @@ export async function executeCapability(
   emit("capability.allowed", decision);
   // Hand the handler the already-governed execution context (RFC-012): scope and
   // attribution only — the Policy Engine has already decided this call is allowed.
-  const output = await deps.executor.execute(binding, request.input, {
-    sphereId: request.context.sphereId,
-    subject: request.subject,
-    correlationId,
-    execution: request.context.execution,
-    time: request.context.time,
-  });
+  let output: unknown;
+  try {
+    output = await deps.executor.execute(binding, request.input, {
+      sphereId: request.context.sphereId,
+      subject: request.subject,
+      correlationId,
+      execution: request.context.execution,
+      time: request.context.time,
+    });
+  } catch (error) {
+    // RFC-028: a governed action that fails DURING execution is a terminal
+    // outcome, not a thrown crash. The authorization was real and is already
+    // recorded (requested → allowed); record the failure as a security fact and
+    // return it so callers surface it cleanly and never strand a granted
+    // approval as pending. The message is the handler's own (an id, a status),
+    // never private payload content (§18).
+    const reason = error instanceof Error ? error.message : String(error);
+    emit("capability.failed", decision, reason);
+    return { outcome: "failed", reason, correlationId, decision, error };
+  }
   emit("capability.executed", decision);
   return { outcome: "executed", reason: decision.reason, correlationId, decision, output };
 }

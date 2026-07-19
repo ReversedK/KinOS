@@ -469,7 +469,7 @@ describe("API router — approval resolution (write path)", () => {
     status: "enabled",
   };
 
-  async function approvalDeps() {
+  async function approvalDeps(opts: { failWith?: string } = {}) {
     const store = new InMemorySphereStore();
     const sphere = createSphere({
       id: "sph_1",
@@ -510,6 +510,7 @@ describe("API router — approval resolution (write path)", () => {
     const executor: CapabilityExecutor = {
       async execute() {
         calls += 1;
+        if (opts.failWith !== undefined) throw new Error(opts.failWith);
         return { paid: true };
       },
     };
@@ -538,6 +539,23 @@ describe("API router — approval resolution (write path)", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ approvalId: "apr_1", status: "executed" });
     expect(calls()).toBe(1);
+  });
+
+  it("RFC-028: a grant whose action fails returns 422 execution_failed AND resolves the approval (leaves the pending inbox — never stranded)", async () => {
+    const { deps, approvals, calls } = await approvalDeps({ failWith: "Memory item x not found" });
+    expect(await approvals.listPending("sph_1")).toHaveLength(1);
+
+    const res = await handleApiRequest(
+      { method: "POST", path: "/approvals/apr_1/grant", body: parentApprover },
+      deps,
+    );
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({ code: "execution_failed" });
+    expect((res.body as { message?: string }).message).toBe("Memory item x not found");
+    expect(calls()).toBe(1); // it DID attempt execution
+    // The decisive fix: the granted approval is persisted, so it no longer
+    // appears in the inbox — it cannot loop forever on an action that can't succeed.
+    expect(await approvals.listPending("sph_1")).toHaveLength(0);
   });
 
   it("deny records a denial and executes nothing (200 denied)", async () => {

@@ -37,7 +37,7 @@ export interface SensitiveActionDeps extends CapabilityExecutionDeps {
   readonly newApprovalId: () => string;
 }
 
-export type SensitiveActionStatus = "executed" | "denied" | "pending_approval";
+export type SensitiveActionStatus = "executed" | "denied" | "pending_approval" | "execution_failed";
 
 export interface SensitiveActionResult {
   readonly status: SensitiveActionStatus;
@@ -45,6 +45,9 @@ export interface SensitiveActionResult {
   readonly reason: string;
   readonly output?: unknown;
   readonly approval?: ApprovalRequest;
+  /** The original error, on `status: "execution_failed"` — preserves its type for
+   * classification by the caller (RFC-028). */
+  readonly error?: unknown;
 }
 
 function emitApproval(
@@ -81,6 +84,11 @@ export async function beginSensitiveAction(
   }
   if (result.outcome === "denied") {
     return { status: "denied", correlationId, reason: result.reason };
+  }
+  if (result.outcome === "failed") {
+    // RFC-028: the action was authorized but failed while executing. A terminal,
+    // recorded outcome — surfaced cleanly, never a thrown crash.
+    return { status: "execution_failed", correlationId, reason: result.reason, error: result.error };
   }
 
   // require_approval: create the ApprovalRequest and record the request event.
@@ -167,6 +175,12 @@ export async function resolveApproval(
   const result = await executeCapability(request, { ...deps, grantedApproval: updated });
   if (result.outcome === "executed") {
     return { status: "executed", correlationId, reason: result.reason, output: result.output, approval: updated };
+  }
+  if (result.outcome === "failed") {
+    // RFC-028: the grant is a recorded decision; execution failed. Return the
+    // granted approval so the caller PERSISTS it — it leaves the pending inbox
+    // rather than stranding, re-grantable forever, on an action that can't succeed.
+    return { status: "execution_failed", correlationId, reason: result.reason, error: result.error, approval: updated };
   }
   // A deny still dominates even a granted approval.
   return { status: "denied", correlationId, reason: result.reason, approval: updated };
