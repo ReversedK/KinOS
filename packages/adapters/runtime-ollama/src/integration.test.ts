@@ -6,13 +6,20 @@ import { OllamaRuntime } from "./ollama-runtime.js";
 // no Ollama is reachable, so CI without one stays green. Generation is skipped
 // unless at least one model is pulled.
 /**
+ * Names of Ollama embedding-model families, which reject /api/chat with 400.
+ * Not every one contains the literal "embed" (e.g. bge-m3, all-minilm), so match
+ * the known families by name — the heuristic a name-only /api/tags list allows.
+ */
+const EMBEDDING_MODEL_RE = /embed|bge|minilm|arctic|nomic|\bgte[-:]|\be5[-:]|mxbai/i;
+
+/**
  * Pick a chat-capable model: prefer $OLLAMA_TEST_MODEL, else the first model
- * that is not an embedding model (embedding models reject /api/chat with 400).
+ * that is not a known embedding model (embedding models reject /api/chat with 400).
  */
 function pickChatModel(models: readonly string[]): string | undefined {
   const override = process.env["OLLAMA_TEST_MODEL"];
   if (override !== undefined) return override;
-  return models.find((m) => !/embed/i.test(m));
+  return models.find((m) => !EMBEDDING_MODEL_RE.test(m));
 }
 
 describe("OllamaRuntime — live (skipped when no Ollama is reachable)", () => {
