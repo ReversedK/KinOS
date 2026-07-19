@@ -117,6 +117,8 @@ export async function handleSphereMcpRpc(
       catalog,
       policies: imported.policies,
       bindings: imported.bindings,
+      // RFC-027: offer only capabilities within this agent's declared scope.
+      agentScope: agent.enabledCapabilities,
     });
     return ok({
       // `native.<toolset>` grants are a distinct channel (RFC-025): the runtime
@@ -144,7 +146,8 @@ export async function handleSphereMcpRpc(
       { token: input.token, capabilityName: params.name, input: params.arguments },
       {
         sphereId: input.sphereId,
-        resolveAgentByToken: (t) => (t === input.token ? { agentId: agent.id, subject } : undefined),
+        // RFC-027: carry the agent's declared scope so out-of-scope calls are refused.
+        resolveAgentByToken: (t) => (t === input.token ? { agentId: agent.id, subject, scope: agent.enabledCapabilities } : undefined),
         catalog,
         bindings: imported.bindings,
         policies: imported.policies,

@@ -1175,7 +1175,7 @@ describe("API router — package store", () => {
       name: "Doe Family",
       founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
     });
-    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A" });
+    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A", enabledCapabilities: ["calendar.read", "calendar.create_event"] });
     await store.save(exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies, exportedAt: NOW }));
     const audit = new InMemoryAuditSink();
     let n = 0;
@@ -1296,7 +1296,7 @@ describe("API router — runtime config projection preview (RFC-007/ADR-007)", (
       name: "Doe",
       founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
     });
-    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A" });
+    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A", enabledCapabilities: ["memory.search"] });
     await store.save(
       exportSphere({
         sphere,

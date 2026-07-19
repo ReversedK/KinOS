@@ -36,6 +36,12 @@ export interface ResolvedAgentIdentity {
   readonly agentId: string;
   /** The policy subject for this agent — derived from the credential, authoritative. */
   readonly subject: PolicyRequest["subject"];
+  /**
+   * The agent's declared capability scope (RFC-027). When present, a call for a
+   * capability outside it is refused before any policy check — an agent may only
+   * use what it was deployed for. Omit to skip per-agent scope enforcement.
+   */
+  readonly scope?: readonly string[];
 }
 
 export interface SphereMcpDeps extends SensitiveActionDeps {
@@ -75,6 +81,24 @@ export async function handleSphereMcpCall(call: SphereMcpCall, deps: SphereMcpDe
       createdAt: time,
     });
     return { status: "unauthenticated", correlationId, reason: "Unauthenticated credential." };
+  }
+
+  // Per-agent scope (RFC-027): an agent may call only capabilities in its declared
+  // scope, refused before policy. Defence in depth — the surface already omits
+  // out-of-scope tools, but an agent naming one directly is denied here too.
+  if (identity.scope !== undefined && !identity.scope.includes(call.capabilityName)) {
+    deps.audit?.record({
+      type: "capability.denied",
+      sphereId: deps.sphereId,
+      ...(identity.agentId !== undefined ? { agentId: identity.agentId } : {}),
+      resourceType: "capability",
+      resourceId: call.capabilityName,
+      decision: "deny",
+      reason: "Capability is outside the agent's declared scope.",
+      correlationId,
+      createdAt: time,
+    });
+    return { status: "denied", correlationId, reason: "Capability is outside the agent's declared scope." };
   }
 
   // The request's subject is the resolved identity — never anything in the call.

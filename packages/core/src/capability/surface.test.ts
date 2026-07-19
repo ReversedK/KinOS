@@ -53,6 +53,29 @@ describe("resolveAuthorizedCapabilities (RFC-007 offered surface)", () => {
     expect(resolveAuthorizedCapabilities(adult, ctx, { catalog, policies: [] })).toEqual([]);
   });
 
+  it("narrows the surface to the agent's declared scope — policy ∩ scope (RFC-027)", () => {
+    // Policy allows both, but the agent is scoped to only memory.search.
+    const surface = resolveAuthorizedCapabilities(adult, ctx, {
+      catalog,
+      policies: [allowSearch, approvePay],
+      agentScope: ["memory.search"],
+    });
+    expect(surface.map((c) => c.name)).toEqual(["memory.search"]); // payment.execute excluded by scope
+  });
+
+  it("scope never widens: an in-scope but policy-denied capability stays denied (RFC-027)", () => {
+    const surface = resolveAuthorizedCapabilities(adult, ctx, {
+      catalog,
+      policies: [], // nothing allowed
+      agentScope: ["memory.search", "payment.execute"],
+    });
+    expect(surface).toEqual([]);
+  });
+
+  it("an empty scope offers nothing (deny by default, RFC-027)", () => {
+    expect(resolveAuthorizedCapabilities(adult, ctx, { catalog, policies: [allowSearch], agentScope: [] })).toEqual([]);
+  });
+
   it("includes a require_approval capability but flags it requiresApproval", () => {
     const surface = resolveAuthorizedCapabilities(adult, ctx, {
       catalog,

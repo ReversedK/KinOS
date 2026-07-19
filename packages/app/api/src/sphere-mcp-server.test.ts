@@ -71,7 +71,8 @@ async function seed(): Promise<SphereMcpServerDeps> {
     name: "Doe",
     founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
   });
-  const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A" });
+  // RFC-027: the agent's declared scope now binds — it must include what it uses.
+  const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A", enabledCapabilities: ["memory.search"] });
   await store.save(
     exportSphere({
       sphere,

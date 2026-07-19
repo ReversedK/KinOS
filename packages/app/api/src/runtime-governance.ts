@@ -134,6 +134,8 @@ export async function projectAgentConfig(
     catalog: defaultCapabilityCatalog(),
     policies: imported.policies,
     bindings: imported.bindings,
+    // RFC-027: the projected surface is narrowed to the agent's declared scope.
+    agentScope: agent.enabledCapabilities,
     context: { sphereId, time: stamp, execution: "local", correlationId },
     gatewayEndpoint: deps.gatewayEndpoint(sphereId, agentId),
     authSecretRef: provisioned.record.secretRef,

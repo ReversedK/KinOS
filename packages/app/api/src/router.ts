@@ -1483,6 +1483,9 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       catalog: defaultCapabilityCatalog(),
       policies: imported.policies,
       bindings: imported.bindings,
+      // RFC-027: the preview must reflect what actually gets projected — narrowed
+      // to the agent's declared scope, not the full policy-authorized surface.
+      agentScope: agent.enabledCapabilities,
       context: { sphereId, time: stamp, execution: "local", correlationId },
       gatewayEndpoint: `mcp+http://spheres/${sphereId}/mcp`,
       authSecretRef: `secret://sphere-mcp/${sphereId}/${agent.id}`,

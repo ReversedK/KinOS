@@ -32,6 +32,13 @@ export interface AuthorizedSurfaceDeps {
   readonly policies: readonly Policy[];
   /** When provided, restrict the surface to capabilities with an enabled binding. */
   readonly bindings?: readonly CapabilityBinding[];
+  /**
+   * The calling agent's declared capability scope (RFC-027). When provided, a
+   * capability outside the scope is not offered — the agent's surface is the
+   * intersection of what policy authorizes and what it was deployed for. Scope only
+   * narrows; it never grants. Omit for non-agent callers (no per-agent narrowing).
+   */
+  readonly agentScope?: readonly string[];
 }
 
 /**
@@ -48,6 +55,11 @@ export function resolveAuthorizedCapabilities(
   for (const cap of deps.catalog.values()) {
     // 1. Catalog profile floor: a profile not listed is denied for this capability.
     if (!cap.allowedProfiles.includes(subject.ageProfile)) continue;
+
+    // 1b. Per-agent scope (RFC-027): when a scope is supplied, a capability outside
+    //     it is not offered — the surface is policy ∩ declared scope. Scope only
+    //     narrows; an empty scope offers nothing (deny by default).
+    if (deps.agentScope !== undefined && !deps.agentScope.includes(cap.name)) continue;
 
     // 2. When bindings are supplied, an unbound capability has no concrete tool
     //    and is not offered (deny by default).

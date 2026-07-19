@@ -79,6 +79,8 @@ export interface ProjectAgentRuntimeConfigInput {
   readonly authSecretRef: string;
   /** Optional binding set; restricts allowedTools to bound capabilities. */
   readonly bindings?: readonly CapabilityBinding[];
+  /** The agent's declared capability scope (RFC-027): the surface is narrowed to it. */
+  readonly agentScope?: readonly string[];
   /** Optional boring model swap (RFC-004) — never escalates provider/execution. */
   readonly agentModelPreference?: string;
   readonly version: number;
@@ -97,6 +99,7 @@ export function projectAgentRuntimeConfig(input: ProjectAgentRuntimeConfigInput)
     catalog: input.catalog,
     policies: input.policies,
     ...(input.bindings !== undefined ? { bindings: input.bindings } : {}),
+    ...(input.agentScope !== undefined ? { agentScope: input.agentScope } : {}),
   }).map((c) => c.name);
 
   // Split the authorized surface into two distinct channels (RFC-025):

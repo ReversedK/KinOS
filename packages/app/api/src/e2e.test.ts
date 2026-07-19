@@ -79,7 +79,7 @@ async function startSeeded(): Promise<number> {
     name: "Doe Family",
     founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
   });
-  const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "P1 agent" });
+  const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "P1 agent", enabledCapabilities: ["memory.search"] });
   await store.save(
     exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies: [allowAdultPackages], exportedAt: NOW }),
   );
@@ -146,7 +146,7 @@ async function startWithMcp(): Promise<{ port: number; token: string }> {
     name: "Doe Family",
     founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
   });
-  const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "P1 agent" });
+  const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "P1 agent", enabledCapabilities: ["memory.search"] });
   await store.save(
     exportSphere({
       sphere,

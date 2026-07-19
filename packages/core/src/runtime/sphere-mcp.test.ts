@@ -40,6 +40,10 @@ const executor: CapabilityExecutor = {
 const tokens: Record<string, ResolvedAgentIdentity> = {
   "tok-adult": { agentId: "agt_adult", subject: { agentId: "agt_adult", memberId: "mbr_p", role: "parent", ageProfile: "adult" } },
   "tok-child": { agentId: "agt_child", subject: { agentId: "agt_child", memberId: "mbr_c", role: "child", ageProfile: "child" } },
+  // RFC-027: an adult agent scoped to calendar.read only — policy still allows
+  // memory.search for its identity, but its declared scope excludes it.
+  "tok-scoped-out": { agentId: "agt_so", subject: { agentId: "agt_so", memberId: "mbr_p", role: "parent", ageProfile: "adult" }, scope: ["calendar.read"] },
+  "tok-scoped-in": { agentId: "agt_si", subject: { agentId: "agt_si", memberId: "mbr_p", role: "parent", ageProfile: "adult" }, scope: ["memory.search"] },
 };
 
 function deps(audit = new InMemoryAuditSink()): SphereMcpDeps {
@@ -66,6 +70,20 @@ describe("handleSphereMcpCall (RFC-007 governed gateway)", () => {
     expect(res.status).toBe("unauthenticated");
     // Recorded as a security fact, with no resolved actor.
     expect(audit.events.some((e) => e.decision === "deny")).toBe(true);
+  });
+
+  it("refuses a capability outside the agent's declared scope, before policy (RFC-027)", async () => {
+    const audit = new InMemoryAuditSink();
+    // policy WOULD allow memory.search for this adult, but the agent is scoped out.
+    const res = await handleSphereMcpCall({ token: "tok-scoped-out", capabilityName: "memory.search", input: { q: "x" } }, deps(audit));
+    expect(res.status).toBe("denied");
+    expect(res.reason).toMatch(/outside the agent's declared scope/i);
+    expect(audit.events.some((e) => e.decision === "deny" && /scope/i.test(e.reason ?? ""))).toBe(true);
+  });
+
+  it("executes an in-scope, policy-authorized capability (RFC-027)", async () => {
+    const res = await handleSphereMcpCall({ token: "tok-scoped-in", capabilityName: "memory.search", input: { q: "x" } }, deps());
+    expect(res.status).toBe("ok");
   });
 
   it("executes a capability the calling agent's identity is authorized for", async () => {

@@ -67,7 +67,7 @@ async function seed(): Promise<{ deps: RuntimeGovernanceDeps; written: Record<st
     name: "Doe",
     founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
   });
-  const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A" });
+  const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A", enabledCapabilities: ["memory.search"] });
   await store.save(
     exportSphere({
       sphere,
@@ -135,6 +135,7 @@ describe("projectAgentConfig (RFC-007/ADR-007 — runtime.config.project side ef
       sphereId: "sph_1",
       name: "A",
       modelPreference: "qwen2.5:7b",
+      enabledCapabilities: ["memory.search"],
     });
     await store.save(
       exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies: [allowSearchForParents], bindings: [searchBinding], exportedAt: NOW }),
