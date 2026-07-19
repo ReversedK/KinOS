@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { oauthProviderSpec, OAUTH_PROVIDERS } from "./oauth-providers.js";
+import { oauthProviderSpec, unionRealScopes, OAUTH_PROVIDERS } from "./oauth-providers.js";
 
 describe("OAuth provider map (RFC-032)", () => {
   it("maps google_drive to the google social login with the read-only Drive scope", () => {
@@ -22,5 +22,18 @@ describe("OAuth provider map (RFC-032)", () => {
   it("requests read-only Drive — never a write scope (least scope by purpose)", () => {
     expect(OAUTH_PROVIDERS["google_drive"]?.scopes.some((s) => /drive(\.readonly)?$/.test(s))).toBe(true);
     expect(OAUTH_PROVIDERS["google_drive"]?.scopes.some((s) => s.endsWith("/auth/drive"))).toBe(false);
+  });
+
+  it("unions real scopes across providers, deduped (RFC-033)", () => {
+    const union = unionRealScopes(["google_drive", "google", "google_drive"]);
+    expect(union).toContain("https://www.googleapis.com/auth/drive.readonly");
+    expect(union).toContain("https://www.googleapis.com/auth/calendar");
+    // Deduped: drive appears once despite being listed twice.
+    expect(union.filter((s) => s.endsWith("drive.readonly"))).toHaveLength(1);
+  });
+
+  it("union ignores unmapped providers (least scope, deny-by-default)", () => {
+    expect(unionRealScopes(["dropbox"])).toEqual([]);
+    expect(unionRealScopes(["google_drive", "dropbox"])).toEqual(["https://www.googleapis.com/auth/drive.readonly"]);
   });
 });

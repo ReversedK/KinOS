@@ -1151,6 +1151,40 @@ describe("API router — package store", () => {
     expect(JSON.stringify((deps.audit as InMemoryAuditSink).events)).not.toContain("tok_");
   });
 
+  it("RFC-033: begin requests the UNION of real scopes across the Sphere's same-social integrations", async () => {
+    const oauthPolicy: Policy = {
+      id: "pol_oauth2",
+      sphereId: "sph_1",
+      description: "Adults may begin OAuth connects.",
+      subjectSelector: { ageProfiles: ["adult"] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["integration.oauth.begin"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    };
+    const base = await pkgDeps([allowAdultPackages, oauthPolicy]);
+    // A broker that records the real scopes the begin handler asks for.
+    let seenScopes: readonly string[] = [];
+    const capturing = new FakeAuthBroker();
+    const orig = capturing.beginConnect.bind(capturing);
+    capturing.beginConnect = async (input) => {
+      seenScopes = input.scopes;
+      return orig(input);
+    };
+    const deps: ApiDeps = { ...base, authBroker: capturing, pendingOAuth: new PendingOAuthStore(() => NOW), newOAuthState: () => "n_1", oauthRedirectUri: "http://cb/oauth/connected" };
+    // Both Google integrations installed: calendar (google) + documents (google_drive).
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "documents" } }, deps);
+
+    // Begin connect on documents → union covers BOTH drive.readonly and calendar.
+    const begin = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_documents/oauth/begin", body: adult }, deps);
+    expect(begin.status).toBe(200);
+    expect(seenScopes).toContain("https://www.googleapis.com/auth/drive.readonly");
+    expect(seenScopes).toContain("https://www.googleapis.com/auth/calendar");
+  });
+
   it("integration.oauth.begin is denied by default without a policy", async () => {
     const base = await pkgDeps([allowAdultPackages]);
     const deps: ApiDeps = { ...base, authBroker: new FakeAuthBroker(), pendingOAuth: new PendingOAuthStore(() => NOW), newOAuthState: () => "st", oauthRedirectUri: "http://cb" };

@@ -62,6 +62,7 @@ import {
 } from "@kinos/core";
 
 import { OAUTH_STATE_TTL_SECONDS, type AuthBroker, type PendingOAuthStore } from "./oauth.js";
+import { oauthProviderSpec, unionRealScopes } from "./oauth-providers.js";
 // Restore refuses to overwrite (RFC-022); the collision is a 409, not a 422.
 import { SphereAlreadyExistsError } from "./provisioning.js";
 
@@ -955,7 +956,17 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       provider: integration.provider,
       expiresAt: new Date(Date.parse(stamp) + OAUTH_STATE_TTL_SECONDS * 1000).toISOString(),
     });
-    const { url } = await deps.authBroker.beginConnect({ provider: integration.provider, scopes: integration.scopes, callbackURL });
+    // RFC-033: request the union of real OAuth scopes across the Sphere's
+    // integrations that share this one's social login, so a single consent covers
+    // all of them (calendar + drive on one Google account) in any connect order —
+    // bounded to what the Sphere actually installed (least scope). An unmapped
+    // provider yields no scopes and the broker refuses it.
+    const social = oauthProviderSpec(integration.provider)?.socialProvider;
+    const sameSocialProviders = imported.integrations
+      .map((i) => i.provider)
+      .filter((p) => social !== undefined && oauthProviderSpec(p)?.socialProvider === social);
+    const scopes = unionRealScopes(sameSocialProviders.length > 0 ? sameSocialProviders : [integration.provider]);
+    const { url } = await deps.authBroker.beginConnect({ provider: integration.provider, scopes, callbackURL });
     deps.auditSink.record({
       type: "integration.oauth.begun",
       sphereId,

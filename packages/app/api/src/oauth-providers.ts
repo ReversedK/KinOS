@@ -35,3 +35,23 @@ export const OAUTH_PROVIDERS: Readonly<Record<string, OAuthProviderSpec>> = {
 export function oauthProviderSpec(kinosProvider: string): OAuthProviderSpec | undefined {
   return OAUTH_PROVIDERS[kinosProvider];
 }
+
+/**
+ * The deduped union of real OAuth scope URLs across the given KinOS provider ids
+ * (RFC-033). Unmapped providers contribute nothing. Used to request, in one
+ * consent, every scope a Sphere's same-social integrations need — so connecting
+ * one never drops another's access. Order-stable for a deterministic authorize URL.
+ */
+export function unionRealScopes(kinosProviders: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of kinosProviders) {
+    for (const scope of oauthProviderSpec(p)?.scopes ?? []) {
+      if (!seen.has(scope)) {
+        seen.add(scope);
+        out.push(scope);
+      }
+    }
+  }
+  return out;
+}

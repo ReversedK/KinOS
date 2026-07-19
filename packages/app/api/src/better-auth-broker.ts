@@ -91,16 +91,19 @@ export class BetterAuthBroker implements AuthBroker {
   }
 
   async beginConnect(input: { provider: string; scopes: readonly string[]; callbackURL: string }): Promise<{ url: string }> {
-    // RFC-032: a KinOS provider id (e.g. `google_drive`) is an adapter, not a login.
-    // Resolve it to the broker's social provider and the REAL OAuth scope URLs its
-    // capabilities need — the integration's abstract scopes stay governance metadata.
+    // RFC-032: a KinOS provider id (e.g. `google_drive`) is an adapter, not a login —
+    // map it to the broker's social provider. RFC-033: the caller (the begin handler,
+    // which has the Sphere context) supplies the REAL OAuth scopes to request — the
+    // union across the Sphere's same-social integrations — so one consent covers them
+    // all. The broker only requests what it is given; real scope STRINGS still live
+    // solely in oauth-providers.ts.
     const spec = oauthProviderSpec(input.provider);
     if (spec === undefined) throw new Error(`No OAuth provider mapping for '${input.provider}'`);
     const res = (await this.auth.api.signInSocial({
       body: {
         provider: spec.socialProvider,
         callbackURL: input.callbackURL,
-        scopes: [...spec.scopes],
+        scopes: [...input.scopes],
         disableRedirect: true,
       },
     })) as { url?: string };
