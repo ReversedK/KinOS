@@ -34,7 +34,8 @@ const ctx = (sphereId: string, memberId = "mbr_1"): ExecutionContext => ({
 function env(calendar = new InMemoryCalendarStore(), spheres: SphereStore = new InMemorySphereStore()) {
   let n = 0;
   let m = 0;
-  const h = buildLocalHandlers({ calendar, spheres, newEventId: () => `evt_${++n}`, newMemoryId: () => `mem_${++m}`, now: () => NOW });
+  let p = 0;
+  const h = buildLocalHandlers({ calendar, spheres, newEventId: () => `evt_${++n}`, newMemoryId: () => `mem_${++m}`, newProjectId: () => `prj_${++p}`, now: () => NOW });
   return { h, calendar, spheres };
 }
 
@@ -164,5 +165,61 @@ describe("real canonical memory / notes (RFC-013)", () => {
     await h.get("local.memory_capture")!({ content: "into victim", sphereId: "sph_2" }, binding, ctx("sph_1", "mbr_A"));
     expect((await spheres.load("sph_2"))!.memory).toEqual([]);
     expect((await spheres.load("sph_1"))!.memory).toHaveLength(1);
+  });
+});
+
+describe("shared notes, projects & documents (RFC-029)", () => {
+  it("sphere.note.create writes a Sphere-visible note; document.search finds it", async () => {
+    const { h, spheres } = env(new InMemoryCalendarStore(), await seededSphere());
+    const out = (await h.get("local.sphere_note_create")!({ content: "Wifi code is hunter2" }, binding, ctx("sph_1", "mbr_A"))) as {
+      created: boolean;
+      visibility: string;
+    };
+    expect(out).toMatchObject({ created: true, visibility: "shared_with_sphere" });
+    const stored = (await spheres.load("sph_1"))!.memory[0]!;
+    expect(stored).toMatchObject({ ownerType: "sphere", visibility: "shared_with_sphere", content: "Wifi code is hunter2" });
+
+    // Any other member's agent can find the shared document.
+    const found = (await h.get("local.document_search")!({ query: "wifi" }, binding, ctx("sph_1", "mbr_B"))) as { documents: { content: string }[] };
+    expect(found.documents.map((d) => d.content)).toEqual(["Wifi code is hunter2"]);
+  });
+
+  it("document.search returns SHARED content only — never a private note", async () => {
+    const { h } = env(new InMemoryCalendarStore(), await seededSphere());
+    await h.get("local.memory_capture")!({ content: "A private secret" }, binding, ctx("sph_1", "mbr_A")); // private
+    await h.get("local.sphere_note_create")!({ content: "A shared announcement" }, binding, ctx("sph_1", "mbr_A")); // shared
+    // Even the owner's own agent gets only the shared document from document.search.
+    const docs = (await h.get("local.document_search")!({}, binding, ctx("sph_1", "mbr_A"))) as { documents: { content: string }[] };
+    expect(docs.documents.map((d) => d.content)).toEqual(["A shared announcement"]);
+  });
+
+  it("document.summarize summarizes a shared document, but refuses a private one", async () => {
+    const { h } = env(new InMemoryCalendarStore(), await seededSphere());
+    const shared = (await h.get("local.sphere_note_create")!(
+      { content: "The school trip is on Tuesday. Bring a packed lunch. Cost is ten pounds." },
+      binding,
+      ctx("sph_1", "mbr_A"),
+    )) as { id: string };
+    const priv = (await h.get("local.memory_capture")!({ content: "my diary" }, binding, ctx("sph_1", "mbr_A"))) as { id: string };
+
+    const sum = (await h.get("local.document_summarize")!({ documentId: shared.id }, binding, ctx("sph_1", "mbr_B"))) as { summary: string };
+    expect(sum.summary.length).toBeGreaterThan(0);
+    expect(sum.summary.toLowerCase()).toContain("school trip");
+
+    // A private item is not a "document" — summarize refuses it (RFC-028 surfaces cleanly).
+    await expect(h.get("local.document_summarize")!({ documentId: priv.id }, binding, ctx("sph_1", "mbr_B"))).rejects.toThrow(/not found/i);
+  });
+
+  it("sphere.project.create records a project owned by the acting member", async () => {
+    const { h, spheres } = env(new InMemoryCalendarStore(), await seededSphere());
+    const out = (await h.get("local.sphere_project_create")!({ title: "Garden makeover", description: "spring" }, binding, ctx("sph_1", "mbr_A"))) as {
+      created: boolean;
+      id: string;
+      title: string;
+    };
+    expect(out).toMatchObject({ created: true, id: "prj_1", title: "Garden makeover" });
+    const projects = (await spheres.load("sph_1"))!.projects;
+    expect(projects).toHaveLength(1);
+    expect(projects[0]).toMatchObject({ ownerId: "mbr_A", ownerType: "member", title: "Garden makeover", description: "spring", state: "active" });
   });
 });

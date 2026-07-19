@@ -48,6 +48,50 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
   },
   {
+    // RFC-029: create a SHARED Sphere note. A shared note is a memory item owned
+    // by the Sphere with `shared_with_sphere` visibility — this is the explicit,
+    // audited "make it shared" write (private-by-default is never widened by
+    // silence, ADR-002). Adults/teens only; a child is read-only by default.
+    name: "sphere.note.create",
+    description: "Create a shared Sphere note (visible to the whole Sphere).",
+    risk: "medium",
+    allowedProfiles: ["adult", "teen"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
+    // RFC-029: create a shared project in the Sphere. A lightweight collaborative
+    // entity (title + description), distinct from a note.
+    name: "sphere.project.create",
+    description: "Create a shared project in the Sphere.",
+    risk: "medium",
+    allowedProfiles: ["adult", "teen"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
+    // RFC-029: read-only search across the Sphere's SHARED documents (its
+    // shared_with_sphere content). Never a member's private memory — that is
+    // memory.search. Open to children by default: a supervised child's agent may
+    // read the family's shared documents.
+    name: "document.search",
+    description: "Search the Sphere's shared documents (read-only).",
+    risk: "low",
+    allowedProfiles: ["adult", "teen", "child"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    // RFC-029: summarize one shared document by id. Read-only; a deterministic
+    // extractive summary (MVP) — never a private item.
+    name: "document.summarize",
+    description: "Summarize one of the Sphere's shared documents (read-only).",
+    risk: "low",
+    allowedProfiles: ["adult", "teen", "child"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
     name: "calendar.read",
     description: "Read authorized calendars.",
     risk: "low",

@@ -15,6 +15,7 @@ import type { Agent } from "../agent/agent.js";
 import type { CapabilityBinding } from "../capability/types.js";
 import type { Identity } from "../identity/identity.js";
 import type { MemoryItem } from "../memory/memory.js";
+import type { SphereProject } from "../project/project.js";
 import type { Policy } from "../policy/types.js";
 import type { Sphere } from "../sphere/sphere.js";
 import type { Integration } from "../integration/integration.js";
@@ -42,6 +43,8 @@ export interface SphereExport {
   readonly integrations?: readonly Integration[];
   /** Installed packages (RFC-002). Optional; defaults to empty. */
   readonly packages?: readonly InstalledPackage[];
+  /** Shared Sphere projects (RFC-029). Optional; defaults to empty. */
+  readonly projects?: readonly SphereProject[];
 }
 
 export interface ExportSphereInput {
@@ -54,6 +57,7 @@ export interface ExportSphereInput {
   readonly runtimeConfig?: SphereRuntimeConfig;
   readonly integrations?: readonly Integration[];
   readonly packages?: readonly InstalledPackage[];
+  readonly projects?: readonly SphereProject[];
   readonly exportedAt: string;
 }
 
@@ -71,6 +75,7 @@ export function exportSphere(input: ExportSphereInput): SphereExport {
     runtimeConfig: input.runtimeConfig ?? defaultRuntimeConfig(),
     integrations: [...(input.integrations ?? [])],
     packages: [...(input.packages ?? [])],
+    projects: [...(input.projects ?? [])],
   };
 }
 
@@ -84,6 +89,7 @@ export interface ImportedSphere {
   readonly runtimeConfig: SphereRuntimeConfig;
   readonly integrations: readonly Integration[];
   readonly packages: readonly InstalledPackage[];
+  readonly projects: readonly SphereProject[];
   readonly exportedAt: string;
 }
 
@@ -127,6 +133,9 @@ export function importSphere(data: unknown): ImportedSphere {
   if (snap.packages !== undefined && !Array.isArray(snap.packages)) {
     throw new Error("Malformed export snapshot: packages must be an array");
   }
+  if (snap.projects !== undefined && !Array.isArray(snap.projects)) {
+    throw new Error("Malformed export snapshot: projects must be an array");
+  }
   return {
     sphere: snap.sphere,
     identities: snap.identities,
@@ -137,6 +146,7 @@ export function importSphere(data: unknown): ImportedSphere {
     runtimeConfig: snap.runtimeConfig ?? defaultRuntimeConfig(),
     integrations: snap.integrations ?? [],
     packages: snap.packages ?? [],
+    projects: snap.projects ?? [],
     exportedAt: snap.exportedAt,
   };
 }

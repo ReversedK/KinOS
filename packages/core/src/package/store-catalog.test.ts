@@ -52,7 +52,25 @@ describe("store catalog (RFC-002)", () => {
   it("offers several fully-wired, testable packages", () => {
     const wired = defaultStoreCatalog().filter((m) => m.bindings.length > 0);
     expect(wired.map((m) => m.id)).toEqual(
-      expect.arrayContaining(["family-calendar", "family-notes", "household-messaging", "household-payments"]),
+      expect.arrayContaining([
+        "family-calendar",
+        "family-notes",
+        "household-messaging",
+        "household-payments",
+        "shared-workspace",
+        "family-documents",
+      ]),
     );
+  });
+
+  it("RFC-029: the shared-workspace and documents packages bind the domain-blessed capabilities", () => {
+    const known = new Set(defaultCapabilityCatalog().keys());
+    for (const cap of ["sphere.note.create", "sphere.project.create", "document.search", "document.summarize"]) {
+      expect(known.has(cap), `${cap} missing from the core catalog`).toBe(true);
+    }
+    const ws = findStorePackage("shared-workspace");
+    expect(ws?.providesCapabilities).toEqual(["sphere.note.create", "sphere.project.create"]);
+    const docs = findStorePackage("family-documents");
+    expect(docs?.providesCapabilities).toEqual(["document.search", "document.summarize"]);
   });
 });

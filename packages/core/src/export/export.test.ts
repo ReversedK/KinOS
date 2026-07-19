@@ -15,6 +15,7 @@ import type { CapabilityBinding } from "../capability/types.js";
 import { createRuntimeProfile, defaultRuntimeConfig, type SphereRuntimeConfig } from "../runtime/profile.js";
 import { createIntegration } from "../integration/integration.js";
 import { createManifest, installPackage } from "../package/package.js";
+import { createSphereProject } from "../project/project.js";
 
 const NOW = "2026-06-25T10:00:00.000Z";
 
@@ -117,6 +118,27 @@ describe("Sphere export/import (results-contract §17, ADR-002)", () => {
     const legacy = JSON.parse(JSON.stringify(snap)) as Record<string, unknown>;
     delete legacy["bindings"];
     expect(importSphere(legacy).bindings).toEqual([]);
+  });
+
+  it("RFC-029: round-trips shared projects and defaults them empty for an older snapshot", () => {
+    const f = fixture();
+    const project = createSphereProject({
+      id: "prj_1",
+      sphereId: "sph_1",
+      ownerId: "mbr_p1",
+      ownerType: "member",
+      title: "Summer trip",
+      description: "plan the August holiday",
+      now: NOW,
+    });
+    const snap = exportSphere({ ...f, projects: [project], exportedAt: NOW });
+    const restored = importSphere(JSON.parse(JSON.stringify(snap)));
+    expect(restored.projects).toEqual([project]);
+
+    // An older snapshot with no projects section restores as empty (no version bump).
+    const legacy = JSON.parse(JSON.stringify(snap)) as Record<string, unknown>;
+    delete legacy["projects"];
+    expect(importSphere(legacy).projects).toEqual([]);
   });
 
   it("round-trips a custom runtime config (RFC-004)", () => {

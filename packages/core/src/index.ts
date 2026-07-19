@@ -17,6 +17,7 @@ export * from "./policy/types.js";
 export * from "./policy/engine.js";
 export * from "./memory/memory.js";
 export * from "./memory/resolver.js";
+export * from "./project/project.js";
 export * from "./agent/agent.js";
 export * from "./session/session.js";
 export * from "./session/store.js";

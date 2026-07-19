@@ -97,6 +97,61 @@ const CATALOG: readonly PackageManifest[] = [
     ],
   }),
   createManifest({
+    // RFC-029: the WRITE side of shared Sphere content. Create shared notes
+    // (Sphere-visible canonical memory) and lightweight projects.
+    id: "shared-workspace",
+    type: "skill",
+    title: "Shared Notes & Projects",
+    description: "Lets your agent write shared notes for the whole Sphere and create shared projects.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "all",
+    providesCapabilities: ["sphere.note.create", "sphere.project.create"],
+    bindings: [
+      { capability: "sphere.note.create", runtime: "local", runtimeToolName: "local.sphere_note_create", execution: "local", risk: "medium" },
+      { capability: "sphere.project.create", runtime: "local", runtimeToolName: "local.sphere_project_create", execution: "local", risk: "medium" },
+    ],
+    // Deny-by-default for minors (invariant 8): the preset grants adults only.
+    // The capability floor still PERMITS teens, so an admin may widen to them with
+    // a custom grant at enable time — never by default.
+    defaultPolicies: [
+      {
+        description: "Adults may create shared notes and projects (Shared Notes & Projects package).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["sphere.note.create", "sphere.project.create"],
+        effect: "allow",
+      },
+    ],
+  }),
+  createManifest({
+    // RFC-029: the READ side. Search and summarize the Sphere's shared documents
+    // (its shared_with_sphere content). Read-only, open to all profiles — a
+    // child's agent may read the family's shared documents, never a private item.
+    id: "family-documents",
+    type: "skill",
+    title: "Documents",
+    description: "Lets your agent search and summarize the Sphere's shared documents. Read-only.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "all",
+    providesCapabilities: ["document.search", "document.summarize"],
+    bindings: [
+      { capability: "document.search", runtime: "local", runtimeToolName: "local.document_search", execution: "local", risk: "low" },
+      { capability: "document.summarize", runtime: "local", runtimeToolName: "local.document_summarize", execution: "local", risk: "low" },
+    ],
+    // Deny-by-default for minors (invariant 8): the preset grants adults only,
+    // even though these are read-only and the capability floor permits children.
+    // An admin widens to teens/children with a custom grant at enable time.
+    defaultPolicies: [
+      {
+        description: "Adults may search and summarize the Sphere's shared documents (Documents package, read-only).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["document.search", "document.summarize"],
+        effect: "allow",
+      },
+    ],
+  }),
+  createManifest({
     id: "household-messaging",
     type: "skill",
     title: "Household Messaging",
