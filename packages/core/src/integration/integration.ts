@@ -20,6 +20,12 @@ export interface Integration {
   readonly sphereId: string;
   /** Adapter family (e.g. "google", "caldav", "mcp:minecraft"). Not a domain rule. */
   readonly provider: string;
+  /**
+   * The providers this integration MAY be backed by (RFC-034), from the package
+   * manifest — the admin picks one via integration.configure. Optional: an
+   * integration with no choices is fixed to its `provider`.
+   */
+  readonly providerChoices?: readonly string[];
   /** Minimal scopes the integration requests; visible to administrators. */
   readonly scopes: readonly string[];
   /** Secret-store reference for credentials — never the secret value. */
@@ -35,6 +41,7 @@ export interface CreateIntegrationInput {
   readonly id: string;
   readonly sphereId: string;
   readonly provider: string;
+  readonly providerChoices?: readonly string[];
   readonly scopes?: readonly string[];
   readonly secretRef?: string;
   readonly providesCapabilities?: readonly string[];
@@ -50,6 +57,7 @@ export function createIntegration(input: CreateIntegrationInput): Integration {
     id: input.id,
     sphereId: input.sphereId,
     provider,
+    ...(input.providerChoices !== undefined ? { providerChoices: [...input.providerChoices] } : {}),
     scopes: input.scopes ? [...input.scopes] : [],
     ...(input.secretRef !== undefined ? { secretRef: input.secretRef } : {}),
     providesCapabilities: input.providesCapabilities ? [...input.providesCapabilities] : [],

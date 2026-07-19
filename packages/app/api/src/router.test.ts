@@ -1057,7 +1057,22 @@ describe("API router — package store", () => {
     const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
     const integrations = (list.body as { integrations: { id: string; provider: string; status: string }[] }).integrations;
     expect(integrations).toEqual([
-      { id: "int_google-calendar", provider: "google", status: "proposed", scopes: expect.any(Array), providesCapabilities: ["calendar.read", "calendar.create_event"], auth: "oauth", configured: false },
+      {
+        id: "int_google-calendar",
+        provider: "google",
+        status: "proposed",
+        scopes: expect.any(Array),
+        providesCapabilities: ["calendar.read", "calendar.create_event"],
+        auth: "oauth",
+        configured: false,
+        // RFC-034: the manifest's provider choices, each with its auth kind.
+        providerChoices: [
+          { provider: "local", auth: "none" },
+          { provider: "google", auth: "oauth" },
+          { provider: "caldav", auth: "apikey" },
+          { provider: "apple", auth: "oauth" },
+        ],
+      },
     ]);
   });
 
@@ -1113,6 +1128,44 @@ describe("API router — package store", () => {
       deps,
     );
     expect(res.status).toBe(400);
+  });
+
+  it("RFC-034: exposes providerChoices and lets an admin switch provider (with auth kind), refusing an unlisted one", async () => {
+    const configPolicy: Policy = {
+      id: "pol_cfg3",
+      sphereId: "sph_1",
+      description: "Adults may configure integrations.",
+      subjectSelector: { ageProfiles: ["adult"] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["integration.configure"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    };
+    const deps = await pkgDeps([allowAdultPackages, configPolicy]);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "documents" } }, deps);
+
+    // The summary exposes the manifest's provider choices, each with its auth kind.
+    const list1 = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
+    const doc1 = (list1.body as { integrations: Array<{ id: string; provider: string; providerChoices?: Array<{ provider: string; auth: string }> }> }).integrations.find((i) => i.id === "int_documents")!;
+    expect(doc1.provider).toBe("google_drive");
+    expect(doc1.providerChoices).toEqual([
+      { provider: "local", auth: "none" },
+      { provider: "google_drive", auth: "oauth" },
+    ]);
+
+    // Switch to the local provider — no credentials, auth clears.
+    const cfg = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_documents/configure", body: { ...adult, provider: "local" } }, deps);
+    expect(cfg.status).toBe(200);
+    const list2 = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
+    const doc2 = (list2.body as { integrations: Array<{ id: string; provider: string; auth?: string }> }).integrations.find((i) => i.id === "int_documents")!;
+    expect(doc2.provider).toBe("local");
+    expect(doc2.auth).toBeUndefined(); // local has no auth
+
+    // A provider not in the choices is refused.
+    const bad = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_documents/configure", body: { ...adult, provider: "dropbox" } }, deps);
+    expect(bad.status).toBe(400);
   });
 
   it("connects an OAuth integration via begin -> callback; secretRef becomes an account reference, never a token (RFC-017)", async () => {

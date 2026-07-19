@@ -33,6 +33,12 @@ describe("Integration (integration-model.md, RFC-003)", () => {
     expect(() => createIntegration({ id: "x", sphereId: "sph_1", provider: "  " })).toThrow(/provider/i);
   });
 
+  it("carries providerChoices when given (RFC-034), and omits them otherwise", () => {
+    const withChoices = createIntegration({ id: "int_2", sphereId: "sph_1", provider: "google_drive", providerChoices: ["local", "google_drive"] });
+    expect(withChoices.providerChoices).toEqual(["local", "google_drive"]);
+    expect(base().providerChoices).toBeUndefined();
+  });
+
   it("enables and disables (immutably)", () => {
     const i = base();
     const on = enableIntegration(i);

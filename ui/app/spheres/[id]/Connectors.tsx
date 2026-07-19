@@ -83,6 +83,32 @@ export function Connectors({
     }
   }
 
+  // RFC-034: pick the provider that backs this integration (local / Google / …).
+  // Persist the choice, then the row shows that provider's connect affordance. A
+  // provider switch drops any stale credential (fresh connect required).
+  async function setProvider(row: IntegrationSummary, provider: string): Promise<void> {
+    if (provider === row.provider) return;
+    const auth = row.providerChoices?.find((c) => c.provider === provider)?.auth ?? "none";
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const res = await configureIntegration(CLIENT_API_BASE, sphereId, row.id, { provider }, actor);
+      if (res.code === undefined && res.provider !== undefined) {
+        setRows((rs) =>
+          rs.map((r) =>
+            r.id === row.id ? { ...r, provider, auth: auth === "none" ? undefined : auth, configured: false } : r,
+          ),
+        );
+      } else {
+        setNote(res.message ?? "Could not set provider");
+      }
+    } catch (e) {
+      setNote(`Error — ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (rows.length === 0) {
     return <div className="empty"><span className="empty-glyph">⇄</span>No connectors installed. Add one from the store to give agents a real calendar, notes, or other service.</div>;
   }
@@ -100,6 +126,7 @@ export function Connectors({
               <span>
                 <strong>{i.provider}</strong>
                 {i.configured ? <span className="faint" style={{ fontSize: 11, marginLeft: 6 }}>· connected</span> : null}
+                {i.provider === "local" ? <span className="faint" style={{ fontSize: 11, marginLeft: 6 }}>· no setup needed</span> : null}
                 <div className="faint" style={{ fontSize: 12 }}>{i.providesCapabilities.join(", ") || "—"}</div>
               </span>
             </div>
@@ -114,7 +141,25 @@ export function Connectors({
               </button>
             </div>
           </div>
-          {i.auth !== "oauth" ? (
+          {/* RFC-034: choose which provider backs this integration (when it offers more than one). */}
+          {i.providerChoices !== undefined && i.providerChoices.length > 1 ? (
+            <div className="row" style={{ gap: "var(--s2)", alignItems: "center" }}>
+              <label style={{ fontSize: 11 }} className="faint">Provider</label>
+              <select
+                className="select"
+                value={i.provider}
+                disabled={busy}
+                onChange={(e) => void setProvider(i, e.target.value)}
+              >
+                {i.providerChoices.map((c) => (
+                  <option key={c.provider} value={c.provider}>
+                    {c.provider}{c.auth === "none" ? " (local, no setup)" : c.auth === "oauth" ? " (connect)" : " (api key)"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {i.auth === "apikey" ? (
             <div className="row" style={{ gap: "var(--s2)", alignItems: "flex-end" }}>
               <div className="field grow">
                 <label style={{ fontSize: 11 }}>Credentials reference</label>

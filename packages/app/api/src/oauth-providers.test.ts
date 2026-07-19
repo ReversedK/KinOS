@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { oauthProviderSpec, unionRealScopes, OAUTH_PROVIDERS } from "./oauth-providers.js";
+import { oauthProviderSpec, providerAuthKind, unionRealScopes, OAUTH_PROVIDERS } from "./oauth-providers.js";
 
 describe("OAuth provider map (RFC-032)", () => {
   it("maps google_drive to the google social login with the read-only Drive scope", () => {
@@ -35,5 +35,12 @@ describe("OAuth provider map (RFC-032)", () => {
   it("union ignores unmapped providers (least scope, deny-by-default)", () => {
     expect(unionRealScopes(["dropbox"])).toEqual([]);
     expect(unionRealScopes(["google_drive", "dropbox"])).toEqual(["https://www.googleapis.com/auth/drive.readonly"]);
+  });
+
+  it("classifies provider auth kind for the config UI (RFC-034)", () => {
+    expect(providerAuthKind("local")).toBe("none");
+    expect(providerAuthKind("google")).toBe("oauth");
+    expect(providerAuthKind("google_drive")).toBe("oauth");
+    expect(providerAuthKind("caldav")).toBe("apikey"); // not in the OAuth map → api-key
   });
 });

@@ -207,6 +207,8 @@ describe("packageIntegration (RFC-016)", () => {
       provider: "google",
       status: "proposed",
       providesCapabilities: ["calendar.read", "calendar.create_event"],
+      // RFC-034: the manifest's providerChoices are carried onto the integration.
+      providerChoices: ["google", "caldav"],
     });
     expect(i.secretRef).toBeUndefined(); // credentials configured later, by reference
   });

@@ -56,6 +56,15 @@ services:
       # Shared Hermes home: the API reconciles per-agent named profiles here and
       # the Hermes container reads the same volume at /opt/data.
       - HERMES_HOME=/app/data/hermes
+      # Real Google integrations (Calendar, Drive) need the KinOS app's OAuth
+      # CLIENT — an "OAuth 2.0 Client ID" from Google Cloud Console (client_id +
+      # secret), NOT a service-account key. Set these (+ BETTER_AUTH_SECRET) to
+      # switch from the FakeAuthBroker to real per-user consent (RFC-017/032). One
+      # client covers all Google providers; users never type a secret — they click
+      # Connect. Unset → the deterministic FakeAuthBroker (dev).
+      # - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      # - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      # - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # ADR-007 hardening note: the Sphere MCP is currently path-mounted on this

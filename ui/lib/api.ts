@@ -544,6 +544,8 @@ export async function setPackageEnabled(
 
 // --- Connectors / integrations (integration-model) ---
 
+export type ProviderAuthKind = "none" | "oauth" | "apikey";
+
 export interface IntegrationSummary {
   readonly id: string;
   readonly provider: string;
@@ -554,6 +556,8 @@ export interface IntegrationSummary {
   readonly auth?: "oauth" | "apikey";
   /** Whether credentials are set (never the reference value). */
   readonly configured?: boolean;
+  /** RFC-034: the providers the admin may pick, each with its auth kind. */
+  readonly providerChoices?: readonly { readonly provider: string; readonly auth: ProviderAuthKind }[];
 }
 
 export async function getIntegrations(

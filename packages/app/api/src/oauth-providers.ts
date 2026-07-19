@@ -37,6 +37,18 @@ export function oauthProviderSpec(kinosProvider: string): OAuthProviderSpec | un
 }
 
 /**
+ * How a provider authorizes (RFC-034), for the config UI to show the right
+ * affordance: `local` needs no credential (KinOS's built-in reference); an OAuth
+ * provider connects via the broker; anything else authenticates with an api-key
+ * reference. One place owns this classification.
+ */
+export function providerAuthKind(provider: string): "none" | "oauth" | "apikey" {
+  if (provider === "local") return "none";
+  if (oauthProviderSpec(provider) !== undefined) return "oauth";
+  return "apikey";
+}
+
+/**
  * The deduped union of real OAuth scope URLs across the given KinOS provider ids
  * (RFC-033). Unmapped providers contribute nothing. Used to request, in one
  * consent, every scope a Sphere's same-social integrations need — so connecting

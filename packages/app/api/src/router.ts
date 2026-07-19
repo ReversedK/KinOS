@@ -37,6 +37,7 @@ import {
   packageIntegration,
   packageIntegrationBindings,
   type GrantClause,
+  type Integration,
   projectAgentRuntimeConfig,
   provisioningBindings,
   resolveInstallPlan,
@@ -62,7 +63,7 @@ import {
 } from "@kinos/core";
 
 import { OAUTH_STATE_TTL_SECONDS, type AuthBroker, type PendingOAuthStore } from "./oauth.js";
-import { oauthProviderSpec, unionRealScopes } from "./oauth-providers.js";
+import { oauthProviderSpec, providerAuthKind, unionRealScopes } from "./oauth-providers.js";
 // Restore refuses to overwrite (RFC-022); the collision is a 409, not a 422.
 import { SphereAlreadyExistsError } from "./provisioning.js";
 
@@ -872,13 +873,36 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     if (typeof body.secretRef === "string" && /^(sk-|Bearer\s|ya29\.|AIza)/.test(body.secretRef)) {
       return err(400, "invalid_request", "secretRef must be a secret-store reference, not a credential value");
     }
-    const provider = typeof body.provider === "string" && body.provider.trim() !== "" ? body.provider.trim() : integration.provider;
+    const requestedProvider = typeof body.provider === "string" && body.provider.trim() !== "" ? body.provider.trim() : integration.provider;
+    // RFC-034: only a provider the manifest offered may be selected — never arbitrary.
+    const choices = integration.providerChoices ?? [];
+    if (requestedProvider !== integration.provider && choices.length > 0 && !choices.includes(requestedProvider)) {
+      return err(400, "invalid_request", `Provider '${requestedProvider}' is not an option for this integration`);
+    }
+    const provider = requestedProvider;
+    const providerChanged = provider !== integration.provider;
+    const authKind = providerAuthKind(provider); // none | oauth | apikey
     const scopes = Array.isArray(body.scopes) ? body.scopes.filter((s): s is string => typeof s === "string") : integration.scopes;
-    const configured = {
-      ...integration,
+    // Credential reference: a new one if supplied, else keep the existing one only
+    // when the provider is unchanged — a provider switch requires a fresh connect.
+    const newSecretRef =
+      typeof body.secretRef === "string" && body.secretRef.trim() !== ""
+        ? body.secretRef.trim()
+        : providerChanged
+          ? undefined
+          : integration.secretRef;
+    // Rebuild explicitly so a stale `auth`/`secretRef` never survives a provider switch.
+    const configured: Integration = {
+      id: integration.id,
+      sphereId: integration.sphereId,
       provider,
+      ...(integration.providerChoices !== undefined ? { providerChoices: integration.providerChoices } : {}),
       scopes: [...scopes],
-      ...(typeof body.secretRef === "string" && body.secretRef.trim() !== "" ? { secretRef: body.secretRef.trim() } : {}),
+      providesCapabilities: integration.providesCapabilities,
+      status: integration.status,
+      // auth reflects the chosen provider; a `none` provider (local) carries no auth.
+      ...(authKind !== "none" ? { auth: authKind } : {}),
+      ...(newSecretRef !== undefined ? { secretRef: newSecretRef } : {}),
     };
     const integrations = imported.integrations.map((i) => (i.id === integrationId ? configured : i));
     await deps.store.save(exportSphere({ ...imported, integrations, exportedAt: stamp }));
@@ -1694,6 +1718,11 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           // How it authorizes + whether credentials are set — never the reference value.
           ...(i.auth !== undefined ? { auth: i.auth } : {}),
           configured: i.secretRef !== undefined,
+          // RFC-034: the providers the admin may pick, each with its auth kind, so
+          // the config screen shows the right affordance (none/oauth/apikey).
+          ...(i.providerChoices !== undefined && i.providerChoices.length > 0
+            ? { providerChoices: i.providerChoices.map((p) => ({ provider: p, auth: providerAuthKind(p) })) }
+            : {}),
         })),
       });
     }
