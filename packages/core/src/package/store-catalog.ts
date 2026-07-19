@@ -152,6 +152,38 @@ const CATALOG: readonly PackageManifest[] = [
     ],
   }),
   createManifest({
+    // RFC-031: a real Documents SOURCE (integration), the external counterpart to
+    // the family-documents skill. Provider choice selects where documents come
+    // from — "local" (the Sphere's shared notes) or "google_drive" (a real Drive
+    // over OAuth). Installing mints a proposed Integration; configuring picks the
+    // provider + connects; enabling backs document.* via the chosen source. The
+    // capability, policies and audit are identical whichever provider backs them.
+    id: "documents",
+    type: "mcp",
+    title: "Documents",
+    description: "Connect a real documents source (Google Drive, or KinOS's own shared notes) so your agent can search and summarize them.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "all",
+    providesCapabilities: ["document.search", "document.summarize"],
+    integration: {
+      provider: "google_drive",
+      providerChoices: ["local", "google_drive"],
+      scopes: ["documents.read"],
+      auth: "oauth",
+    },
+    // Adults only by default (invariant 8); read-only. Widen to minors via a custom
+    // grant at enable time (the capability floor permits it — read-only).
+    defaultPolicies: [
+      {
+        description: "Adults may search and summarize the connected documents (Documents integration, read-only).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["document.search", "document.summarize"],
+        effect: "allow",
+      },
+    ],
+  }),
+  createManifest({
     id: "household-messaging",
     type: "skill",
     title: "Household Messaging",

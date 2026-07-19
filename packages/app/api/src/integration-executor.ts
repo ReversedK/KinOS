@@ -34,10 +34,13 @@ import {
 } from "@kinos/core";
 
 import type { SecretMaterial, SecretStore } from "./secret-store.js";
+import { extractiveSummary, searchSharedDocuments, summarizeSharedDocument } from "./documents.js";
 
 export interface IntegrationProviderCtx {
   readonly sphereId: string;
   readonly subject: ExecutionContext["subject"];
+  /** The governed call's correlation id — threads a provider read into the chain. */
+  readonly correlationId: string;
   /** Credentials secret-store reference for the configured provider (never a value). */
   readonly secretRef?: string;
   /**
@@ -80,6 +83,90 @@ export function localCalendarProvider(calendar: CalendarStore): IntegrationProvi
       return { created: true, event };
     }
     throw new Error(`The local provider does not implement '${capability}'`);
+  };
+}
+
+/**
+ * The `local` documents source (RFC-031): the Sphere's shared notes, read-only and
+ * policy-scoped, reusing the one documents-source implementation (never a private
+ * item). Built over the SphereStore; no external service.
+ */
+export function localDocumentsProvider(spheres: SphereStore): IntegrationProviderAdapter {
+  return async (capability, input, ctx) => {
+    const readCtx: ExecutionContext = {
+      sphereId: ctx.sphereId,
+      subject: ctx.subject,
+      correlationId: ctx.correlationId,
+      execution: "local",
+      time: ctx.now(),
+    };
+    if (capability === "document.search") {
+      const q = (typeof input === "object" && input !== null ? (input as { query?: unknown }).query : undefined);
+      return searchSharedDocuments(spheres, readCtx, typeof q === "string" ? q : undefined);
+    }
+    if (capability === "document.summarize") {
+      const args = (typeof input === "object" && input !== null ? input : {}) as { documentId?: unknown };
+      if (typeof args.documentId !== "string") throw new Error("document.summarize requires a documentId");
+      return summarizeSharedDocument(spheres, readCtx, args.documentId);
+    }
+    throw new Error(`The local documents provider does not implement '${capability}'`);
+  };
+}
+
+/**
+ * The built-in `local` provider (RFC-031): KinOS's own reference for whatever
+ * capability is asked — `calendar.*` via the calendar store, `document.*` via the
+ * Sphere's shared notes. This makes provider "local" uniform across integrations,
+ * so a Documents integration set to `local` reuses the RFC-029 shared-notes source.
+ */
+export function localProvider(deps: { calendar: CalendarStore; spheres: SphereStore }): IntegrationProviderAdapter {
+  const calendar = localCalendarProvider(deps.calendar);
+  const documents = localDocumentsProvider(deps.spheres);
+  return async (capability, input, ctx) => {
+    if (capability.startsWith("calendar.")) return calendar(capability, input, ctx);
+    if (capability.startsWith("document.")) return documents(capability, input, ctx);
+    throw new Error(`The local provider does not implement '${capability}'`);
+  };
+}
+
+/**
+ * Google Drive provider (RFC-031): resolves a fresh access token from the auth
+ * broker (the same OAuth path as the calendar provider) and calls the Drive API —
+ * `files.list` full-text search for `document.search`, `files.export` (text/plain)
+ * + an extractive summary for `document.summarize`. `fetchImpl` is injectable so
+ * the broker→token→Drive wiring is testable without hitting Google. The HTTP calls
+ * are the only provider-specific code.
+ */
+export function googleDriveProvider(
+  broker: { getAccessToken(accountRef: string): Promise<string> },
+  fetchImpl: typeof fetch = fetch,
+): IntegrationProviderAdapter {
+  const FILES = "https://www.googleapis.com/drive/v3/files";
+  return async (capability, input, ctx) => {
+    if (ctx.secretRef === undefined) throw new Error("Google Drive integration is not connected (no account)");
+    const token = await broker.getAccessToken(ctx.secretRef);
+    const auth = { Authorization: `Bearer ${token}` };
+    if (capability === "document.search") {
+      const q = (typeof input === "object" && input !== null ? (input as { query?: unknown }).query : undefined);
+      const query = typeof q === "string" ? q.trim() : "";
+      // Read-only full-text search over the connected Drive, trashed files excluded.
+      const driveQ = query === "" ? "trashed=false" : `fullText contains ${JSON.stringify(query)} and trashed=false`;
+      const url = `${FILES}?q=${encodeURIComponent(driveQ)}&fields=${encodeURIComponent("files(id,name)")}&pageSize=50`;
+      const res = await fetchImpl(url, { headers: auth });
+      if (!res.ok) throw new Error(`Google Drive search failed: ${res.status}`);
+      const body = (await res.json()) as { files?: Array<{ id?: string; name?: string }> };
+      return { documents: (body.files ?? []).map((f) => ({ id: f.id ?? "", content: f.name ?? "(untitled)" })) };
+    }
+    if (capability === "document.summarize") {
+      const args = (typeof input === "object" && input !== null ? input : {}) as { documentId?: unknown };
+      if (typeof args.documentId !== "string") throw new Error("document.summarize requires a documentId");
+      // Export the file as plain text (works for Google Docs), then summarize it.
+      const res = await fetchImpl(`${FILES}/${encodeURIComponent(args.documentId)}/export?mimeType=text/plain`, { headers: auth });
+      if (!res.ok) throw new Error(`Google Drive summarize failed: ${res.status}`);
+      const text = await res.text();
+      return { id: args.documentId, summary: extractiveSummary(text) };
+    }
+    throw new Error(`The Google Drive provider does not implement '${capability}'`);
   };
 }
 
@@ -257,6 +344,7 @@ export class IntegrationExecutor implements CapabilityExecutor {
     return adapter(binding.capability, input, {
       sphereId: context.sphereId,
       subject: context.subject,
+      correlationId: context.correlationId,
       ...(secretRef !== undefined ? { secretRef } : {}),
       // Lazy: only a non-OAuth adapter that authenticates pays the lookup, and the
       // material is fetched at use and not retained on the context.

@@ -28,7 +28,7 @@ import { OpenAiRuntime } from "@kinos/runtime-openai";
 
 import { createApiServer } from "./server.js";
 import { buildLocalHandlers } from "./local-handlers.js";
-import { IntegrationExecutor, caldavCalendarProvider, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { IntegrationExecutor, caldavCalendarProvider, googleCalendarProvider, googleDriveProvider, localProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 import { FakeAuthBroker, PendingOAuthStore, type AuthBroker } from "./oauth.js";
 import { BetterAuthBroker } from "./better-auth-broker.js";
 import { secretStoreFromEnv } from "./secret-store.js";
@@ -230,10 +230,14 @@ const pendingOAuth = new PendingOAuthStore();
 setInterval(() => pendingOAuth.prune(), 60_000).unref();
 
 const providerRegistry = new Map<string, IntegrationProviderAdapter>([
-  ["local", localCalendarProvider(calendarStore)],
+  // RFC-031: "local" is the built-in reference for BOTH calendar.* (calendar store)
+  // and document.* (the Sphere's shared notes) — one uniform local provider.
+  ["local", localProvider({ calendar: calendarStore, spheres: store })],
   // Google/Apple resolve a fresh token via the broker (RFC-017) and call the real
   // Calendar API. Wire real client credentials into the broker to use live.
   ["google", googleCalendarProvider(authBroker)],
+  // RFC-031: a real Documents source — Google Drive over the same OAuth broker.
+  ["google_drive", googleDriveProvider(authBroker)],
   // CalDAV (RFC-019): Basic auth via the secret store — Apple iCloud, Nextcloud,
   // Fastmail. Configure a KINOS_SECRETS entry with {kind:"basic",username,password,
   // endpoint} for the integration's secretRef.

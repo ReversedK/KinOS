@@ -32,6 +32,8 @@ import {
 } from "@kinos/core";
 import type { CapabilityHandler } from "@kinos/executor-local";
 
+import { searchSharedDocuments, summarizeSharedDocument } from "./documents.js";
+
 export interface LocalHandlerDeps {
   readonly calendar: CalendarStore;
   /** Canonical memory + policies live in the Sphere snapshot (RFC-013). */
@@ -41,22 +43,6 @@ export interface LocalHandlerDeps {
   readonly newMemoryId?: () => string;
   readonly newProjectId?: () => string;
   readonly now?: () => string;
-}
-
-/**
- * A deterministic extractive summary (RFC-029 MVP): the first sentences up to a
- * bound, no model call. A real summarizer is a later binding — the capability
- * and its governance are unchanged when it is swapped in.
- */
-function extractiveSummary(content: string, maxChars = 240): string {
-  const text = content.trim().replace(/\s+/g, " ");
-  if (text.length <= maxChars) return text;
-  const clipped = text.slice(0, maxChars);
-  // Prefer a sentence boundary within the bound; else fall back to a word break.
-  const lastStop = Math.max(clipped.lastIndexOf(". "), clipped.lastIndexOf("! "), clipped.lastIndexOf("? "));
-  if (lastStop >= maxChars * 0.5) return clipped.slice(0, lastStop + 1);
-  const lastSpace = clipped.lastIndexOf(" ");
-  return `${clipped.slice(0, lastSpace > 0 ? lastSpace : maxChars)}…`;
 }
 
 /** Tool name -> handler for the `local`-runtime bindings the store packages declare. */
@@ -248,24 +234,13 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
     [
       // Documents = the Sphere's SHARED content. Read-only, policy-scoped, and
       // narrowed to shared_with_sphere so a private item is never returned here
-      // (that is memory.search, which the owner alone reaches).
+      // (that is memory.search, which the owner alone reaches). RFC-031: the same
+      // documents-source logic backs the `local` integration provider.
       "local.document_search",
       async (input, _binding, context) => {
         const ctx = requireCtx(context, "document.search");
-        const snap = await deps.spheres.load(ctx.sphereId);
-        if (snap === undefined) return { documents: [] };
-        const imported = importSphere(snap);
-        const readable = resolveReadableMemory(ctx.subject, imported.memory, imported.policies, {
-          sphereId: ctx.sphereId,
-          time: ctx.time,
-          correlationId: ctx.correlationId,
-        }).filter((m) => m.visibility === "shared_with_sphere");
         const q = (typeof input === "object" && input !== null ? (input as { query?: unknown }).query : undefined);
-        const query = typeof q === "string" ? q.trim().toLowerCase() : "";
-        const matched = query === ""
-          ? readable
-          : readable.filter((m) => `${m.content} ${m.summary ?? ""}`.toLowerCase().includes(query));
-        return { documents: matched.map((m) => ({ id: m.id, content: m.content, summary: m.summary })) };
+        return searchSharedDocuments(deps.spheres, ctx, typeof q === "string" ? q : undefined);
       },
     ],
     [
@@ -274,18 +249,7 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
         const ctx = requireCtx(context, "document.summarize");
         const args = (typeof input === "object" && input !== null ? input : {}) as { documentId?: unknown };
         if (typeof args.documentId !== "string") throw new Error("document.summarize requires a documentId");
-        const snap = await deps.spheres.load(ctx.sphereId);
-        if (snap === undefined) throw new Error(`Sphere ${ctx.sphereId} not found`);
-        const imported = importSphere(snap);
-        const readable = resolveReadableMemory(ctx.subject, imported.memory, imported.policies, {
-          sphereId: ctx.sphereId,
-          time: ctx.time,
-          correlationId: ctx.correlationId,
-        });
-        // Only a SHARED document is summarizable here — never a private item.
-        const doc = readable.find((m) => m.id === args.documentId && m.visibility === "shared_with_sphere");
-        if (doc === undefined) throw new Error(`Document ${args.documentId} not found`);
-        return { id: doc.id, summary: doc.summary ?? extractiveSummary(doc.content) };
+        return summarizeSharedDocument(deps.spheres, ctx, args.documentId);
       },
     ],
 

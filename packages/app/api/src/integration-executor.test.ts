@@ -2,6 +2,7 @@ import {
   InMemoryCalendarStore,
   InMemorySphereStore,
   createIntegration,
+  createMemoryItem,
   createSphere,
   enableIntegration,
   exportSphere,
@@ -9,12 +10,13 @@ import {
   type CapabilityExecutor,
   type ExecutionContext,
   type Integration,
+  type MemoryItem,
 } from "@kinos/core";
 import { describe, expect, it } from "vitest";
 
 import { FakeAuthBroker } from "./oauth.js";
 import { MapSecretStore, type SecretMaterial } from "./secret-store.js";
-import { IntegrationExecutor, caldavCalendarProvider, googleCalendarProvider, localCalendarProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { IntegrationExecutor, caldavCalendarProvider, googleCalendarProvider, googleDriveProvider, localCalendarProvider, localProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
 
 const NOW = "2026-07-16T10:00:00.000Z";
 const ctx: ExecutionContext = {
@@ -158,6 +160,87 @@ describe("googleCalendarProvider (RFC-017)", () => {
     await expect(
       provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secret: async () => undefined, scopes: [], now: () => "", newId: () => "" }),
     ).rejects.toThrow(/not connected/i);
+  });
+});
+
+describe("Documents integration providers (RFC-031)", () => {
+  const provCtx = (over: Record<string, unknown> = {}) => ({
+    sphereId: "sph_1",
+    subject: { memberId: "mbr_A", role: "parent" as const, ageProfile: "adult" as const },
+    correlationId: "cor_1",
+    secret: async () => undefined,
+    scopes: [],
+    now: () => NOW,
+    newId: () => "id_1",
+    ...over,
+  });
+
+  function sharedNote(id: string, content: string): MemoryItem {
+    return { ...createMemoryItem({ id, ownerId: "sph_1", ownerType: "sphere", sphereId: "sph_1", content, source: "manual", now: NOW }), visibility: "shared_with_sphere" };
+  }
+
+  async function storeWithMemory(items: MemoryItem[]): Promise<InMemorySphereStore> {
+    const spheres = new InMemorySphereStore();
+    const sphere = createSphere({ id: "sph_1", type: "family", name: "Doe", founder: { memberId: "mbr_A", identityId: "idy_A", role: "parent" } });
+    await spheres.save(exportSphere({ sphere, identities: [], agents: [], memory: items, policies: [], exportedAt: NOW }));
+    return spheres;
+  }
+
+  it("localProvider: document.search returns shared notes; a private note is never returned", async () => {
+    const priv = createMemoryItem({ id: "mem_p", ownerId: "mbr_A", ownerType: "member", sphereId: "sph_1", content: "a private secret", source: "manual", now: NOW });
+    const spheres = await storeWithMemory([sharedNote("mem_s", "The wifi code is hunter2"), priv]);
+    const provider = localProvider({ calendar: new InMemoryCalendarStore(), spheres });
+    const out = (await provider("document.search", { query: "wifi" }, provCtx())) as { documents: { id: string; content: string }[] };
+    expect(out.documents.map((d) => d.content)).toEqual(["The wifi code is hunter2"]);
+    // The private note is not a document even with an empty query.
+    const all = (await provider("document.search", {}, provCtx())) as { documents: { id: string }[] };
+    expect(all.documents.map((d) => d.id)).toEqual(["mem_s"]);
+  });
+
+  it("localProvider: document.summarize summarizes a shared note but refuses a private one", async () => {
+    const priv = createMemoryItem({ id: "mem_p", ownerId: "mbr_A", ownerType: "member", sphereId: "sph_1", content: "diary", source: "manual", now: NOW });
+    const spheres = await storeWithMemory([sharedNote("mem_s", "School trip Tuesday. Bring lunch."), priv]);
+    const provider = localProvider({ calendar: new InMemoryCalendarStore(), spheres });
+    const sum = (await provider("document.summarize", { documentId: "mem_s" }, provCtx())) as { summary: string };
+    expect(sum.summary.toLowerCase()).toContain("school trip");
+    await expect(provider("document.summarize", { documentId: "mem_p" }, provCtx())).rejects.toThrow(/not found/i);
+  });
+
+  it("localProvider: still dispatches calendar.* to the calendar store", async () => {
+    const calendar = new InMemoryCalendarStore();
+    const provider = localProvider({ calendar, spheres: await storeWithMemory([]) });
+    await provider("calendar.create_event", { title: "Dentist", start: "2026-07-20T09:00:00Z" }, provCtx());
+    const read = (await provider("calendar.read", {}, provCtx())) as { events: { title: string }[] };
+    expect(read.events.map((e) => e.title)).toEqual(["Dentist"]);
+  });
+
+  it("googleDriveProvider: document.search issues a Bearer'd full-text files.list query", async () => {
+    const broker = new FakeAuthBroker();
+    let seen: { url: string; auth?: string } | undefined;
+    const fakeFetch = (async (url: string, init?: RequestInit) => {
+      seen = { url, auth: (init?.headers as Record<string, string> | undefined)?.["Authorization"] };
+      return { ok: true, json: async () => ({ files: [{ id: "f1", name: "Insurance.pdf" }] }) } as Response;
+    }) as unknown as typeof fetch;
+    const provider = googleDriveProvider(broker, fakeFetch);
+    const out = (await provider("document.search", { query: "insurance" }, provCtx({ secretRef: "google_drive::broker://fake/alice" }))) as { documents: { id: string; content: string }[] };
+    expect(seen?.auth).toBe("Bearer tok_alice");
+    expect(decodeURIComponent(seen!.url)).toContain("fullText contains \"insurance\"");
+    expect(out.documents).toEqual([{ id: "f1", content: "Insurance.pdf" }]);
+  });
+
+  it("googleDriveProvider: document.summarize exports the file as text and summarizes it", async () => {
+    const fakeFetch = (async (url: string) => {
+      expect(url).toContain("/export?mimeType=text/plain");
+      return { ok: true, text: async () => "The policy renews in March. Premium is 500. Contact the broker to change cover." } as Response;
+    }) as unknown as typeof fetch;
+    const provider = googleDriveProvider(new FakeAuthBroker(), fakeFetch);
+    const out = (await provider("document.summarize", { documentId: "f1" }, provCtx({ secretRef: "google_drive::broker://fake/alice" }))) as { id: string; summary: string };
+    expect(out.id).toBe("f1");
+    expect(out.summary.toLowerCase()).toContain("policy renews");
+  });
+
+  it("googleDriveProvider: refuses when not connected (no account reference)", async () => {
+    await expect(googleDriveProvider(new FakeAuthBroker())("document.search", {}, provCtx())).rejects.toThrow(/not connected/i);
   });
 });
 
