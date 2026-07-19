@@ -31,6 +31,8 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { getMigrations } from "better-auth/db/migration";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 
+import { oauthProviderSpec } from "./oauth-providers.js";
+
 import type { AuthBroker } from "./oauth.js";
 
 export interface BetterAuthBrokerOptions {
@@ -89,11 +91,16 @@ export class BetterAuthBroker implements AuthBroker {
   }
 
   async beginConnect(input: { provider: string; scopes: readonly string[]; callbackURL: string }): Promise<{ url: string }> {
+    // RFC-032: a KinOS provider id (e.g. `google_drive`) is an adapter, not a login.
+    // Resolve it to the broker's social provider and the REAL OAuth scope URLs its
+    // capabilities need — the integration's abstract scopes stay governance metadata.
+    const spec = oauthProviderSpec(input.provider);
+    if (spec === undefined) throw new Error(`No OAuth provider mapping for '${input.provider}'`);
     const res = (await this.auth.api.signInSocial({
       body: {
-        provider: input.provider as "google" | "apple",
+        provider: spec.socialProvider,
         callbackURL: input.callbackURL,
-        scopes: [...input.scopes],
+        scopes: [...spec.scopes],
         disableRedirect: true,
       },
     })) as { url?: string };
@@ -111,12 +118,15 @@ export class BetterAuthBroker implements AuthBroker {
   }
 
   async getAccessToken(accountRef: string): Promise<string> {
-    // accountRef is either "userId" or "provider::userId" (see beginConnect binding).
+    // accountRef is either "userId" or "kinosProvider::userId" (see beginConnect
+    // binding). RFC-032: refresh under the SOCIAL provider that actually holds the
+    // account — `google_drive::u1` is stored under `google`, not `google_drive`.
     const [maybeProvider, maybeUser] = accountRef.split(REF_SEP);
-    const providerId = maybeUser !== undefined ? maybeProvider : "google";
+    const kinosProvider = maybeUser !== undefined ? maybeProvider : "google";
     const userId = maybeUser ?? maybeProvider;
+    const socialProvider = oauthProviderSpec(kinosProvider ?? "google")?.socialProvider ?? kinosProvider;
     const res = (await this.auth.api.getAccessToken({
-      body: { providerId: providerId as string, userId: userId as string },
+      body: { providerId: socialProvider as string, userId: userId as string },
     })) as { accessToken?: string };
     if (res.accessToken === undefined) throw new Error("Better Auth returned no access token for the connected account");
     return res.accessToken;

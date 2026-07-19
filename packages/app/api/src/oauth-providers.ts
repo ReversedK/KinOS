@@ -1,0 +1,37 @@
+/**
+ * KinOS OAuth provider map (RFC-032).
+ *
+ * A KinOS "provider id" names which integration ADAPTER runs a capability
+ * (`google` calendar, `google_drive` documents). That is not the same as the auth
+ * broker's SOCIAL provider — the actual OAuth login. Google Drive is the Google
+ * login with Drive scopes: adapter `google_drive`, login `google`.
+ *
+ * This map translates a KinOS provider id to the broker's social provider and the
+ * real OAuth scope URLs its capabilities need. It lives in the app layer beside the
+ * broker: real provider/scope strings are a provider detail (integration-model —
+ * providers live in adapters, not the domain). The abstract scopes on the
+ * Integration entity (`documents.read`, `calendar.read`) stay for governance
+ * display; the broker uses this map for the actual OAuth request.
+ */
+
+export interface OAuthProviderSpec {
+  /** The auth broker's social-login provider that actually holds the account. */
+  readonly socialProvider: "google" | "apple";
+  /** The real OAuth scope URLs to request for this KinOS provider's purpose. */
+  readonly scopes: readonly string[];
+}
+
+const GOOGLE_CALENDAR = "https://www.googleapis.com/auth/calendar";
+const GOOGLE_DRIVE_READONLY = "https://www.googleapis.com/auth/drive.readonly";
+
+/** KinOS provider id → social provider + real OAuth scopes. */
+export const OAUTH_PROVIDERS: Readonly<Record<string, OAuthProviderSpec>> = {
+  google: { socialProvider: "google", scopes: [GOOGLE_CALENDAR] },
+  google_drive: { socialProvider: "google", scopes: [GOOGLE_DRIVE_READONLY] },
+  apple: { socialProvider: "apple", scopes: [] },
+};
+
+/** Look up a provider spec; undefined for an unmapped provider (caller refuses). */
+export function oauthProviderSpec(kinosProvider: string): OAuthProviderSpec | undefined {
+  return OAUTH_PROVIDERS[kinosProvider];
+}
