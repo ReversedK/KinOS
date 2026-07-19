@@ -75,17 +75,6 @@ Before external transfer, KinOS must know:
 - consent source;
 - retention expectation if known.
 
-## External transfers
-
-Before external transfer, KinOS must know:
-
-- data class;
-- destination service;
-- purpose;
-- capability;
-- consent source;
-- retention expectation if known.
-
 Each of these is recorded as an external-transfer event (requested → allowed/denied). A transfer without a known data class, destination and consent source is denied. Cloud model use is itself an external transfer and follows this rule.
 
 ## Audit privacy

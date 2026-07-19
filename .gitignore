@@ -10,3 +10,9 @@ next-env.d.ts
 *.sqlite
 *.sqlite3
 data/
+
+# Credentials / secrets must never be committed (secret-store references only).
+google-credentials.json
+*-credentials.json
+*.pem
+.env
