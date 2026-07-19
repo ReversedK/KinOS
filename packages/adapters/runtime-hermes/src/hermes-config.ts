@@ -64,14 +64,24 @@ export const GRANT_TO_HERMES_TOOLSETS: Readonly<Record<string, readonly string[]
   cron: ["cronjob"],
   media: ["vision", "image_gen", "tts"],
   browser: ["browser"],
+  // RFC-030: subagents. Safe to grant — a child's toolsets are a subset of the
+  // parent's governed set and its calls flow through the parent's Sphere MCP
+  // (verified live against delegate_tool.py: child_toolsets ⊆ parent).
+  delegate: ["delegation"],
 };
 
 /**
  * The hard floor: toolsets that are NEVER grantable. `memory` is here because
  * canonical memory is served via the Sphere MCP (invariant 2); the rest give
- * shell / code / file / full-computer / subagent-spawn power a governed family
- * agent must never hold. (Real Hermes toolset names — verified against the
- * installed `toolsets` registry: `code_execution`, `delegation`.)
+ * shell / code / file / full-computer power a governed family agent must never
+ * hold. (Real Hermes toolset names — verified against the installed `toolsets`
+ * registry: `code_execution`.)
+ *
+ * `delegation` is NOT on the floor (RFC-030): it is grantable via
+ * `native.delegate`. A subagent's toolsets are a subset of the parent's governed
+ * set and its capability calls still flow through the parent's Sphere MCP, so it
+ * cannot exceed the parent's authority nor reach any floored toolset (those are
+ * absent from the parent, hence from every child).
  */
 export const HERMES_TOOLSET_FLOOR = [
   "memory",
@@ -79,7 +89,6 @@ export const HERMES_TOOLSET_FLOOR = [
   "file",
   "code_execution",
   "computer_use",
-  "delegation",
 ] as const;
 
 /**

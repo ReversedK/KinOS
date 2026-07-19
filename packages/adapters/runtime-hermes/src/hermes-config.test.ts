@@ -154,9 +154,12 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
     expect(cfg.platform_toolsets.api_server).toEqual(["web", "cronjob", "vision", "image_gen", "tts"]);
     expect("enabled_toolsets" in cfg.agent).toBe(false);
     // The hard floor is always in the global disabled_toolsets master subtraction.
-    for (const floored of ["memory", "terminal", "file", "code_execution", "computer_use", "delegation"]) {
+    // RFC-030: delegation is NO LONGER floored (it is grantable via native.delegate);
+    // ungranted here, it is still disabled by the master subtraction below.
+    for (const floored of ["memory", "terminal", "file", "code_execution", "computer_use"]) {
       expect(cfg.agent.disabled_toolsets).toContain(floored);
     }
+    expect(cfg.agent.disabled_toolsets).toContain("delegation"); // ungranted → disabled
     // Every ungranted configurable toolset is disabled too — an empty grant otherwise
     // falls through to Hermes' defaults (verified live). Granted ones are NOT disabled.
     expect(cfg.agent.disabled_toolsets).toContain("browser");
@@ -168,6 +171,19 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
     expect(none.platform_toolsets.api_server).toEqual([]);
     expect(none.agent.disabled_toolsets).toContain("memory");
     expect(none.agent.disabled_toolsets).toContain("web");
+  });
+
+  it("RFC-030: grants delegation while the hard floor stays intact", () => {
+    const granted: RuntimeConfigProjection = { ...projection, nativeToolsetsAllow: ["delegate"] };
+    const cfg = projectionToHermesConfig(granted);
+    // delegation is granted via the exclusive per-platform list...
+    expect(cfg.platform_toolsets.api_server).toEqual(["delegation"]);
+    // ...and therefore NOT in the disabled master subtraction.
+    expect(cfg.agent.disabled_toolsets).not.toContain("delegation");
+    // The real hard floor is never reachable, even alongside a delegation grant.
+    for (const floored of ["memory", "terminal", "file", "code_execution", "computer_use"]) {
+      expect(cfg.agent.disabled_toolsets).toContain(floored);
+    }
   });
 
   it("merges the Sphere MCP token into an existing .env without dropping Hermes credentials", () => {

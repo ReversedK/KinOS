@@ -389,6 +389,20 @@ const CAPABILITIES: readonly Capability[] = [
     approvalFloor: true,
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
+  {
+    // RFC-030: let the agent spawn focused subagents (the Harness's native
+    // delegation). Safe to grant like native.cron: a subagent's toolsets are a
+    // SUBSET of the parent's governed set and its capability calls still go
+    // through the parent's Sphere MCP (policy- and scope-checked per call), so it
+    // can never exceed the parent's authority. No approval floor — the governed
+    // edge is each action the subagent takes, already gated by its own capability.
+    name: "native.delegate",
+    description: "Let the agent spawn focused subagents (Harness delegation). Subagents stay bounded by the agent's governed surface.",
+    risk: "medium",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
 ];
 
 /** A fresh catalog map keyed by capability name. */

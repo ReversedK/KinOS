@@ -342,6 +342,31 @@ const CATALOG: readonly PackageManifest[] = [
     ],
   }),
   createManifest({
+    // RFC-030: govern the Harness's native delegation. Grants `native.delegate`
+    // — the agent may spawn focused subagents. Safe because a subagent's toolsets
+    // are a subset of the parent's governed set and its capability calls flow
+    // through the parent's Sphere MCP (policy- and scope-checked per call).
+    id: "hermes-delegation",
+    type: "skill",
+    title: "Delegation / Subagents (Harness)",
+    description: "Let your agent spawn focused subagents to work in parallel. Subagents stay bounded by the agent's governed surface.",
+    version: "1.0.0",
+    publisher: "kinos",
+    ageRating: "adult",
+    providesCapabilities: ["native.delegate"],
+    bindings: [
+      { capability: "native.delegate", runtime: "hermes", runtimeToolName: "delegation", execution: "local", risk: "medium" },
+    ],
+    defaultPolicies: [
+      {
+        description: "Adults may spawn Harness subagents (Delegation package).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["native.delegate"],
+        effect: "allow",
+      },
+    ],
+  }),
+  createManifest({
     id: "household-payments",
     type: "skill",
     title: "Household Payments",
