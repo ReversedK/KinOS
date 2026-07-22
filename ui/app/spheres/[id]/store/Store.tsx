@@ -5,12 +5,12 @@ import { useState } from "react";
 import {
   CLIENT_API_BASE,
   ageProfileForRole,
-  installStorePackage,
   setPackageEnabled,
   type ActingSubject,
   type InstalledPackageSummary,
   type StorePackage,
 } from "../../../../lib/api";
+import { PackageWizard } from "../../../../components/PackageWizard";
 
 export interface StoreMember {
   readonly id: string;
@@ -53,6 +53,7 @@ export function Store({
   const [rows, setRows] = useState<readonly InstalledPackageSummary[]>(installed);
   const [note, setNote] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [wizardFor, setWizardFor] = useState<string>();
 
   const subject = (): ActingSubject => {
     const m = members.find((x) => x.id === memberId);
@@ -60,19 +61,8 @@ export function Store({
   };
   const statusOf = (id: string) => rows.find((r) => r.id === id)?.status;
 
-  async function install(pkg: StorePackage): Promise<void> {
-    setBusy(true);
-    setNote(undefined);
-    try {
-      const res = await installStorePackage(CLIENT_API_BASE, sphereId, subject(), pkg.id);
-      if (res.code === "forbidden") setNote(`Denied — ${res.message ?? "forbidden"}`);
-      else if (res.status !== undefined)
-        setRows((rs) => [...rs.filter((r) => r.id !== pkg.id), { id: pkg.id, type: pkg.type, title: pkg.title, description: pkg.description, status: res.status as string }]);
-    } catch (e) {
-      setNote(`Error — ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
+  function recordStatus(pkg: StorePackage, status: string): void {
+    setRows((rs) => [...rs.filter((r) => r.id !== pkg.id), { id: pkg.id, type: pkg.type, title: pkg.title, description: pkg.description, status }]);
   }
 
   async function toggle(id: string, enabled: boolean): Promise<void> {
@@ -104,6 +94,24 @@ export function Store({
         </div>
         {note ? <div className="note deny" style={{ maxWidth: 420 }}>{note}</div> : null}
       </div>
+
+      {/* Guided setup for the selected package (install → grant → enable → connect). */}
+      {wizardFor !== undefined && memberId !== "" ? (
+        (() => {
+          const pkg = catalog.find((p) => p.id === wizardFor);
+          if (pkg === undefined) return null;
+          return (
+            <PackageWizard
+              sphereId={sphereId}
+              subject={subject()}
+              pkg={pkg}
+              installedStatus={statusOf(pkg.id)}
+              onClose={() => setWizardFor(undefined)}
+              onStatus={(st) => recordStatus(pkg, st)}
+            />
+          );
+        })()
+      ) : null}
 
       <div className="stack tight">
         <span className="eyebrow">Curated catalog</span>
@@ -137,9 +145,12 @@ export function Store({
                     <span className="faint" style={{ fontSize: 12.5 }}>{p.publisher} · {p.ageRating}</span>
                   </span>
                   {st !== undefined ? (
-                    <span className={`badge ${st === "enabled" ? "allow" : "info"}`}><span className="dot" />{st}</span>
+                    <span className="row" style={{ gap: "var(--s2)" }}>
+                      <span className={`badge ${st === "enabled" ? "allow" : "info"}`}><span className="dot" />{st}</span>
+                      <button className="btn sm ghost" disabled={memberId === ""} onClick={() => setWizardFor(p.id)}>Set up</button>
+                    </span>
                   ) : (
-                    <button className="btn sm primary" disabled={busy || memberId === ""} onClick={() => void install(p)}>Install</button>
+                    <button className="btn sm primary" disabled={busy || memberId === ""} onClick={() => setWizardFor(p.id)}>Set up →</button>
                   )}
                 </div>
               </div>

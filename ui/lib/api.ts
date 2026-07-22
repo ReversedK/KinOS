@@ -523,6 +523,15 @@ export async function installStorePackage(
   throw new Error(`install failed: ${status}`);
 }
 
+/** RFC-014: an admin-specified grant clause — who gets which of a package's capabilities. */
+export interface GrantClause {
+  readonly roles?: readonly string[];
+  readonly ageProfiles?: readonly string[];
+  readonly capabilities: readonly string[];
+  readonly effect?: "allow" | "require_approval";
+  readonly approverRoles?: readonly string[];
+}
+
 export async function setPackageEnabled(
   baseUrl: string,
   sphereId: string,
@@ -530,12 +539,13 @@ export async function setPackageEnabled(
   enabled: boolean,
   subject: ActingSubject,
   fetchImpl: typeof fetch = fetch,
+  grant?: readonly GrantClause[],
 ): Promise<PackageActionOutcome> {
   const action = enabled ? "enable" : "disable";
   const { status, body } = await postJson<PackageActionOutcome>(
     baseUrl,
     `/spheres/${encodeURIComponent(sphereId)}/packages/${encodeURIComponent(packageId)}/${action}`,
-    { subject },
+    { subject, ...(enabled && grant !== undefined && grant.length > 0 ? { grant } : {}) },
     fetchImpl,
   );
   if (status === 200 || status === 403) return body;
