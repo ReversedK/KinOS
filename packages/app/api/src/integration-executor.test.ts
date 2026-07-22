@@ -228,15 +228,30 @@ describe("Documents integration providers (RFC-031)", () => {
     expect(out.documents).toEqual([{ id: "f1", content: "Insurance.pdf" }]);
   });
 
-  it("googleDriveProvider: document.summarize exports the file as text and summarizes it", async () => {
+  it("googleDriveProvider: document.summarize inspects the type, exports a Google Doc as text, and summarizes it", async () => {
     const fakeFetch = (async (url: string) => {
-      expect(url).toContain("/export?mimeType=text/plain");
+      if (!url.includes("/export")) {
+        // metadata lookup: a Google Doc.
+        return { ok: true, json: async () => ({ name: "Policy", mimeType: "application/vnd.google-apps.document" }) } as Response;
+      }
+      expect(url).toContain("/export?mimeType=text%2Fplain");
       return { ok: true, text: async () => "The policy renews in March. Premium is 500. Contact the broker to change cover." } as Response;
     }) as unknown as typeof fetch;
     const provider = googleDriveProvider(new FakeAuthBroker(), fakeFetch);
     const out = (await provider("document.summarize", { documentId: "f1" }, provCtx({ secretRef: "google_drive::broker://fake/alice" }))) as { id: string; summary: string };
     expect(out.id).toBe("f1");
     expect(out.summary.toLowerCase()).toContain("policy renews");
+  });
+
+  it("googleDriveProvider: document.summarize degrades gracefully for a non-text file (never a 403 throw)", async () => {
+    const fakeFetch = (async (url: string) => {
+      expect(url).not.toContain("/export"); // a PDF is never exported
+      return { ok: true, json: async () => ({ name: "Scan.pdf", mimeType: "application/pdf" }) } as Response;
+    }) as unknown as typeof fetch;
+    const provider = googleDriveProvider(new FakeAuthBroker(), fakeFetch);
+    const out = (await provider("document.summarize", { documentId: "f2" }, provCtx({ secretRef: "google_drive::broker://fake/alice" }))) as { id: string; summary: string };
+    expect(out.summary).toContain("Scan.pdf");
+    expect(out.summary.toLowerCase()).toContain("not a text document");
   });
 
   it("googleDriveProvider: refuses when not connected (no account reference)", async () => {

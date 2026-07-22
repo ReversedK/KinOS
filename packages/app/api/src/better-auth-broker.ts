@@ -55,6 +55,13 @@ function buildAuth(opts: BetterAuthBrokerOptions, basePath: string) {
     secret: opts.secret,
     // Durable SQLite (Kysely adapter) when a file is given; in-memory otherwise.
     database: opts.databaseFile !== undefined ? new Database(opts.databaseFile) : memoryAdapter({}),
+    // RFC-035: KinOS's governed broker calls signInSocial server-side and returns
+    // only a URL (RFC-018), so Better Auth's CSRF `state` cookie never reaches the
+    // browser and the callback would fail `state_mismatch`. Skip the cookie check —
+    // the state DATA (PKCE verifier) still lives server-side (database strategy), and
+    // KinOS supplies the CSRF binding via the single-use, admin-minted `nonce` at
+    // /oauth/connected (PendingOAuthStore).
+    account: { skipStateCookieCheck: true },
     socialProviders: {
       ...(opts.google !== undefined ? { google: opts.google } : {}),
       ...(opts.apple !== undefined ? { apple: opts.apple } : {}),

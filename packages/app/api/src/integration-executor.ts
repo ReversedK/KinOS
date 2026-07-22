@@ -160,11 +160,35 @@ export function googleDriveProvider(
     if (capability === "document.summarize") {
       const args = (typeof input === "object" && input !== null ? input : {}) as { documentId?: unknown };
       if (typeof args.documentId !== "string") throw new Error("document.summarize requires a documentId");
-      // Export the file as plain text (works for Google Docs), then summarize it.
-      const res = await fetchImpl(`${FILES}/${encodeURIComponent(args.documentId)}/export?mimeType=text/plain`, { headers: auth });
-      if (!res.ok) throw new Error(`Google Drive summarize failed: ${res.status}`);
-      const text = await res.text();
-      return { id: args.documentId, summary: extractiveSummary(text) };
+      const id = args.documentId;
+      // Look up the file's type first: Drive's `export` only works for Google-native
+      // docs (Docs/Sheets/Slides). A blind export 403s on PDFs, images, notebooks, etc.
+      const metaRes = await fetchImpl(`${FILES}/${encodeURIComponent(id)}?fields=${encodeURIComponent("name,mimeType")}`, { headers: auth });
+      if (!metaRes.ok) throw new Error(`Google Drive summarize failed: ${metaRes.status}`);
+      const meta = (await metaRes.json()) as { name?: string; mimeType?: string };
+      const mime = meta.mimeType ?? "";
+      const name = meta.name ?? "(untitled)";
+      // Google Docs/Slides → plain text; Sheets → CSV; a plain text file → download.
+      const exportAs =
+        mime === "application/vnd.google-apps.document" || mime === "application/vnd.google-apps.presentation"
+          ? "text/plain"
+          : mime === "application/vnd.google-apps.spreadsheet"
+            ? "text/csv"
+            : undefined;
+      let text: string | undefined;
+      if (exportAs !== undefined) {
+        const r = await fetchImpl(`${FILES}/${encodeURIComponent(id)}/export?mimeType=${encodeURIComponent(exportAs)}`, { headers: auth });
+        if (r.ok) text = await r.text();
+      } else if (mime.startsWith("text/")) {
+        const r = await fetchImpl(`${FILES}/${encodeURIComponent(id)}?alt=media`, { headers: auth });
+        if (r.ok) text = await r.text();
+      }
+      // A non-text document (PDF, image, folder, binary) can't be summarized as text —
+      // say so gracefully rather than failing the call.
+      if (text === undefined || text.trim() === "") {
+        return { id, summary: `“${name}” (${mime || "unknown type"}) — not a text document; nothing to summarize.` };
+      }
+      return { id, summary: extractiveSummary(text) };
     }
     throw new Error(`The Google Drive provider does not implement '${capability}'`);
   };
