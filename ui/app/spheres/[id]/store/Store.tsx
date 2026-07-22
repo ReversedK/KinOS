@@ -19,6 +19,19 @@ export interface StoreMember {
 
 const TYPE_TONE: Record<string, string> = { skill: "brand", connector: "info", agent_template: "pending" };
 
+/** A category accent tile + glyph for a package, so the catalog is scannable. */
+function packageTile(p: StorePackage): { tile: string; glyph: string } {
+  const caps = p.providesCapabilities ?? [];
+  const has = (x: string) => caps.some((c) => c.startsWith(x));
+  if (has("calendar.")) return { tile: "calendar", glyph: "📅" };
+  if (has("document.") || has("memory.") || /notes|workspace|documents/.test(p.id)) return { tile: "docs", glyph: "📄" };
+  if (has("message.")) return { tile: "message", glyph: "✉" };
+  if (has("payment.")) return { tile: "payment", glyph: "❖" };
+  if (has("native.") || p.id.startsWith("hermes")) return { tile: "harness", glyph: "⚙" };
+  if (p.id.includes("minecraft")) return { tile: "store", glyph: "⛏" };
+  return { tile: "store", glyph: "◫" };
+}
+
 /**
  * Package store (RFC-002): browse the curated catalog + Install, and manage
  * installed packages (Enable/Disable). The UI only triggers the governed
@@ -93,40 +106,41 @@ export function Store({
       </div>
 
       <div className="stack tight">
-        <span className="eyebrow">curated catalog</span>
+        <span className="eyebrow">Curated catalog</span>
         <div className="grid cols-2">
           {catalog.map((p) => {
             const st = statusOf(p.id);
+            const t = packageTile(p);
             return (
-              <div key={p.id} className="card stack tight">
-                <div className="row between">
-                  <div className="row" style={{ gap: "var(--s2)" }}>
-                    <strong>{p.title}</strong>
-                    <span className={`badge ${TYPE_TONE[p.type] ?? ""}`}>{p.type}</span>
+              <div key={p.id} className="card stack tight reveal">
+                <div className="row" style={{ gap: "var(--s3)", alignItems: "flex-start", flexWrap: "nowrap" }}>
+                  <span className={`tile ${t.tile}`}>{t.glyph}</span>
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="row between" style={{ gap: "var(--s2)" }}>
+                      <strong style={{ fontSize: 16 }}>{p.title}</strong>
+                      <span className="pill mono" style={{ flex: "none" }}>v{p.version}</span>
+                    </div>
+                    <p className="help" style={{ margin: "2px 0 0", fontSize: 14 }}>{p.description}</p>
                   </div>
-                  <span className="faint mono" style={{ fontSize: 12 }}>v{p.version}</span>
                 </div>
-                <p className="help" style={{ margin: 0 }}>{p.description}</p>
                 {p.providesCapabilities.length > 0 ? (
-                  <div className="row" style={{ gap: 4 }}>
+                  <div className="row" style={{ gap: 5 }}>
                     {p.providesCapabilities.map((c) => (
-                      <code key={c} className="pill">
-                        {c}
-                      </code>
+                      <span key={c} className="pill mono">{c}</span>
                     ))}
                   </div>
                 ) : null}
+                <hr className="hairline" style={{ margin: "2px 0" }} />
                 <div className="row between">
-                  <span className="faint" style={{ fontSize: 12 }}>
-                    {p.publisher} · {p.ageRating}
+                  <span className="row" style={{ gap: "var(--s2)" }}>
+                    <span className={`badge ${TYPE_TONE[p.type] ?? ""}`}>{p.type}</span>
+                    <span className="faint" style={{ fontSize: 12.5 }}>{p.publisher} · {p.ageRating}</span>
                   </span>
-                  <button
-                    className={`btn sm${st === undefined ? " primary" : ""}`}
-                    disabled={busy || memberId === "" || st !== undefined}
-                    onClick={() => void install(p)}
-                  >
-                    {st !== undefined ? st : "Install"}
-                  </button>
+                  {st !== undefined ? (
+                    <span className={`badge ${st === "enabled" ? "allow" : "info"}`}><span className="dot" />{st}</span>
+                  ) : (
+                    <button className="btn sm primary" disabled={busy || memberId === ""} onClick={() => void install(p)}>Install</button>
+                  )}
                 </div>
               </div>
             );
@@ -137,19 +151,19 @@ export function Store({
       {rows.length > 0 ? (
         <div className="panel">
           <div className="panel-head">
-            <h3>Installed · {rows.length}</h3>
+            <h3>Installed in this Sphere · {rows.length}</h3>
           </div>
           <div className="panel-body flush">
             {rows.map((p) => (
               <div key={p.id} className="rowitem">
                 <div className="lead">
-                  <span className={`badge ${p.status === "enabled" ? "allow" : ""}`}>
+                  <span className={`badge ${p.status === "enabled" ? "allow" : "info"}`}>
                     <span className="dot" />
                     {p.status}
                   </span>
                   <strong>{p.title}</strong>
                 </div>
-                <button className="btn sm" disabled={busy || memberId === ""} onClick={() => void toggle(p.id, p.status !== "enabled")}>
+                <button className={`btn sm${p.status === "enabled" ? "" : " primary"}`} disabled={busy || memberId === ""} onClick={() => void toggle(p.id, p.status !== "enabled")}>
                   {p.status === "enabled" ? "Disable" : "Enable"}
                 </button>
               </div>
