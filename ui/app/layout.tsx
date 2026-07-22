@@ -8,7 +8,7 @@ export const metadata = {
   description: "Local-first trust infrastructure for personal and collective AI agents inside human Spheres.",
 };
 
-export const viewport = { themeColor: "#0f5d4a" };
+export const viewport = { themeColor: "#0e7a5c" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 
 import type { SphereSummary } from "../lib/api";
 
-const TYPE_GLYPH: Record<string, string> = { family: "⌂", person: "○", team: "◇", organization: "▤" };
+const TYPE_GLYPH: Record<string, string> = { family: "⌂", person: "☺", team: "⧉", organization: "▤" };
+// Soft per-type accent colour so the grid is scannable at a glance.
+const TYPE_TILE: Record<string, string> = { family: "agent", person: "calendar", team: "message", organization: "harness" };
 
 /**
  * The Spheres front door. Server-rendered summaries are passed in; filtering is
@@ -78,25 +80,23 @@ export function SphereList({ spheres }: { spheres: readonly SphereSummary[] }) {
         <div className="grid cols-2">
           {shown.map((s) => (
             <a key={s.id} href={`/spheres/${encodeURIComponent(s.id)}`} className="card reveal">
-              <div className="row between">
-                <div className="row" style={{ gap: "var(--s3)" }}>
-                  <span className="glyph" style={{ background: "var(--panel-2)", color: "var(--brand)", boxShadow: "inset 0 0 0 1px var(--line)" }}>
-                    {TYPE_GLYPH[s.type] ?? "◈"}
-                  </span>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 15 }}>{s.name}</div>
+              <div className="row between" style={{ alignItems: "center", flexWrap: "nowrap", gap: "var(--s3)" }}>
+                <div className="row" style={{ gap: "var(--s3)", alignItems: "center", minWidth: 0, flexWrap: "nowrap" }}>
+                  <span className={`tile ${TYPE_TILE[s.type] ?? "brand"}`}>{TYPE_GLYPH[s.type] ?? "◈"}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 17, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
                     <div className="faint mono" style={{ fontSize: 12 }}>{s.id}</div>
                   </div>
                 </div>
-                <span className={`badge ${s.status === "active" ? "allow" : ""}`}>
+                <span className={`badge ${s.status === "active" ? "allow" : ""}`} style={{ flex: "none" }}>
                   <span className="dot" />
                   {s.status}
                 </span>
               </div>
               <hr className="hairline" />
-              <div className="row" style={{ gap: "var(--s5)" }}>
+              <div className="row between">
                 <span className="faint">
-                  <strong style={{ color: "var(--ink)" }}>{s.members}</strong> member{s.members === 1 ? "" : "s"}
+                  <strong style={{ color: "var(--ink)", fontSize: 15 }}>{s.members}</strong> member{s.members === 1 ? "" : "s"}
                 </span>
                 <span className="pill">{s.type}</span>
               </div>
