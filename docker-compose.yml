@@ -62,9 +62,18 @@ services:
       # switch from the FakeAuthBroker to real per-user consent (RFC-017/032). One
       # client covers all Google providers; users never type a secret — they click
       # Connect. Unset → the deterministic FakeAuthBroker (dev).
-      # - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
-      # - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      # - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
+      # The API as the BROWSER reaches it — NOT the compose name http://api:8787
+      # (that is KINOS_PUBLIC_URL, for Hermes→Sphere-MCP container-to-container).
+      # Better Auth derives the Google redirect_uri from this, and Google redirects
+      # the browser there, so it must be browser-reachable. The redirect URI to
+      # whitelist in Google Cloud Console is `${BETTER_AUTH_URL}/api/auth/callback/google`.
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:8787}
+      # Where Better Auth returns the browser after consent (KinOS sets the account
+      # reference here). Internal to KinOS — NOT a Google redirect URI.
+      - KINOS_OAUTH_REDIRECT_URI=${KINOS_OAUTH_REDIRECT_URI:-http://localhost:8787/oauth/connected}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # ADR-007 hardening note: the Sphere MCP is currently path-mounted on this
