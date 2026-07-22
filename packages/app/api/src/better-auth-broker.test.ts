@@ -42,6 +42,18 @@ describe("BetterAuthBroker OAuth mapping (RFC-032/033)", () => {
     expect(scope).toContain("https://www.googleapis.com/auth/calendar");
   });
 
+  it("RFC-038: requests offline access + consent so Google issues a refresh token", async () => {
+    const { url } = await broker().beginConnect({
+      provider: "google_drive",
+      scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+      callbackURL: "http://localhost:8787/oauth/connected?nonce=n_off",
+    });
+    const u = new URL(url);
+    // Without access_type=offline Google returns no refresh token → calls 401 after ~1h.
+    expect(u.searchParams.get("access_type")).toBe("offline");
+    expect(u.searchParams.get("prompt")).toBe("consent");
+  });
+
   it("refuses an unmapped provider before contacting the broker", async () => {
     await expect(
       broker().beginConnect({ provider: "dropbox", scopes: [], callbackURL: "http://localhost:8787/oauth/connected" }),

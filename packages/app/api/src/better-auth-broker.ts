@@ -63,7 +63,12 @@ function buildAuth(opts: BetterAuthBrokerOptions, basePath: string) {
     // /oauth/connected (PendingOAuthStore).
     account: { skipStateCookieCheck: true },
     socialProviders: {
-      ...(opts.google !== undefined ? { google: opts.google } : {}),
+      // RFC-038: request OFFLINE access + consent so Google issues a REFRESH token.
+      // Without this, Google returns only a ~1h access token and no refresh token, so
+      // getAccessToken cannot refresh and every call 401s once the token expires
+      // (worked right after connecting, failed hours later). `prompt: "consent"`
+      // forces a refresh token even on re-consent for an already-connected account.
+      ...(opts.google !== undefined ? { google: { ...opts.google, accessType: "offline", prompt: "consent" } } : {}),
       ...(opts.apple !== undefined ? { apple: opts.apple } : {}),
     },
   });
