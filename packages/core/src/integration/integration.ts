@@ -34,6 +34,12 @@ export interface Integration {
   readonly providesCapabilities: readonly string[];
   /** How it authorizes (RFC-018): `oauth` → connect via the broker; `apikey` → a secret reference. */
   readonly auth?: "oauth" | "apikey";
+  /**
+   * Provider-specific, NON-secret configuration (RFC-037) — opaque to the domain
+   * (integrations are adapters). E.g. Google Calendar: `{ calendarIds: [...] }`.
+   * Carried in the export; never holds a credential (those are secretRef).
+   */
+  readonly config?: Readonly<Record<string, unknown>>;
   readonly status: IntegrationStatus;
 }
 
@@ -46,6 +52,7 @@ export interface CreateIntegrationInput {
   readonly secretRef?: string;
   readonly providesCapabilities?: readonly string[];
   readonly auth?: "oauth" | "apikey";
+  readonly config?: Readonly<Record<string, unknown>>;
 }
 
 export function createIntegration(input: CreateIntegrationInput): Integration {
@@ -62,6 +69,7 @@ export function createIntegration(input: CreateIntegrationInput): Integration {
     ...(input.secretRef !== undefined ? { secretRef: input.secretRef } : {}),
     providesCapabilities: input.providesCapabilities ? [...input.providesCapabilities] : [],
     ...(input.auth !== undefined ? { auth: input.auth } : {}),
+    ...(input.config !== undefined ? { config: input.config } : {}),
     status: "proposed",
   };
 }

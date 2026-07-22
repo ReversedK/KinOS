@@ -6,8 +6,10 @@ import {
   CLIENT_API_BASE,
   beginOAuthConnect,
   configureIntegration,
+  getIntegrationCalendars,
   setIntegrationEnabled,
   type ActingSubject,
+  type GoogleCalendarChoice,
   type IntegrationSummary,
 } from "../../../lib/api";
 
@@ -33,6 +35,38 @@ export function Connectors({
   const [busy, setBusy] = useState(false);
 
   const [secretRefs, setSecretRefs] = useState<Record<string, string>>({});
+  // RFC-037: per-integration discovered calendar list (fetched on demand).
+  const [calendars, setCalendars] = useState<Record<string, readonly GoogleCalendarChoice[]>>({});
+
+  async function loadCalendars(id: string): Promise<void> {
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const res = await getIntegrationCalendars(CLIENT_API_BASE, sphereId, id, actor);
+      if (res.calendars !== undefined) setCalendars((c) => ({ ...c, [id]: res.calendars! }));
+      else setNote(res.message ?? "Could not list calendars");
+    } catch (e) {
+      setNote(`Error — ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleCalendar(row: IntegrationSummary, calendarId: string): Promise<void> {
+    const current = row.config?.calendarIds ?? [];
+    const next = current.includes(calendarId) ? current.filter((c) => c !== calendarId) : [...current, calendarId];
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const res = await configureIntegration(CLIENT_API_BASE, sphereId, row.id, { config: { calendarIds: next } }, actor);
+      if (res.code === undefined) setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, config: { ...r.config, calendarIds: next } } : r)));
+      else setNote(res.message ?? "Could not save calendar selection");
+    } catch (e) {
+      setNote(`Error — ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function toggle(id: string, enabled: boolean): Promise<void> {
     setBusy(true);
@@ -173,6 +207,30 @@ export function Connectors({
               <button className="btn sm ghost" disabled={busy} onClick={() => void configure(i.id)}>
                 Save
               </button>
+            </div>
+          ) : null}
+          {/* RFC-037: choose which Google calendars this integration uses (once connected). */}
+          {i.provider === "google" && i.configured && i.providesCapabilities.some((c) => c.startsWith("calendar.")) ? (
+            <div className="stack tight" style={{ gap: "var(--s1)" }}>
+              {calendars[i.id] === undefined ? (
+                <button className="btn sm ghost" disabled={busy} onClick={() => void loadCalendars(i.id)}>
+                  Choose calendars…
+                </button>
+              ) : (
+                <div className="stack tight" style={{ gap: 2 }}>
+                  <label className="faint" style={{ fontSize: 11 }}>Calendars used (none selected = primary)</label>
+                  {calendars[i.id]!.map((c) => {
+                    const selected = (i.config?.calendarIds ?? []).includes(c.id);
+                    return (
+                      <label key={c.id} className="row" style={{ gap: "var(--s2)", alignItems: "center", fontSize: 13 }}>
+                        <input type="checkbox" checked={selected} disabled={busy} onChange={() => void toggleCalendar(i, c.id)} />
+                        <span>{c.summary}{c.primary ? " (primary)" : ""}</span>
+                        <span className="faint" style={{ fontSize: 11 }}>{c.accessRole}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : null}
         </div>

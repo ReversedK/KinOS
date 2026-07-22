@@ -39,6 +39,12 @@ describe("Integration (integration-model.md, RFC-003)", () => {
     expect(base().providerChoices).toBeUndefined();
   });
 
+  it("carries provider-specific config when given (RFC-037), and omits it otherwise", () => {
+    const withConfig = createIntegration({ id: "int_3", sphereId: "sph_1", provider: "google", config: { calendarIds: ["primary", "fam@g"] } });
+    expect(withConfig.config).toEqual({ calendarIds: ["primary", "fam@g"] });
+    expect(base().config).toBeUndefined();
+  });
+
   it("enables and disables (immutably)", () => {
     const i = base();
     const on = enableIntegration(i);

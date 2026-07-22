@@ -1168,6 +1168,41 @@ describe("API router — package store", () => {
     expect(bad.status).toBe(400);
   });
 
+  it("RFC-037: configure persists provider config (calendarIds); discovery is admin-gated and provider-guarded", async () => {
+    const configPolicy: Policy = {
+      id: "pol_cfg4",
+      sphereId: "sph_1",
+      description: "Adults may configure integrations.",
+      subjectSelector: { ageProfiles: ["adult"] },
+      action: "execute",
+      resourceSelector: { capabilityNames: ["integration.configure"] },
+      effect: "allow",
+      priority: 0,
+      version: 1,
+      status: "active",
+    };
+    const base = await pkgDeps([allowAdultPackages, configPolicy]);
+    const deps: ApiDeps = { ...base, authBroker: new FakeAuthBroker() };
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "google-calendar" } }, deps);
+
+    // Persist a calendar selection via config.
+    const cfg = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_google-calendar/configure", body: { ...adult, config: { calendarIds: ["primary", "fam@g"] } } }, deps);
+    expect(cfg.status).toBe(200);
+    const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);
+    const cal = (list.body as { integrations: Array<{ id: string; config?: { calendarIds?: string[] } }> }).integrations.find((i) => i.id === "int_google-calendar")!;
+    expect(cal.config?.calendarIds).toEqual(["primary", "fam@g"]);
+
+    // Discovery is admin-gated: a child is refused before any external call.
+    const child = { subject: { memberId: "mbr_c", role: "child", ageProfile: "child" } };
+    const denied = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_google-calendar/calendars", body: child }, deps);
+    expect(denied.status).toBe(403);
+
+    // Discovery on a not-yet-connected google integration refuses (no account).
+    const notConnected = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/integrations/int_google-calendar/calendars", body: adult }, deps);
+    expect(notConnected.status).toBe(400);
+    expect((notConnected.body as { message?: string }).message).toMatch(/not connected/i);
+  });
+
   it("connects an OAuth integration via begin -> callback; secretRef becomes an account reference, never a token (RFC-017)", async () => {
     const oauthPolicy: Policy = {
       id: "pol_oauth",

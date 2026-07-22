@@ -64,6 +64,7 @@ import {
 
 import { OAUTH_STATE_TTL_SECONDS, type AuthBroker, type PendingOAuthStore } from "./oauth.js";
 import { oauthProviderSpec, providerAuthKind, unionRealScopes } from "./oauth-providers.js";
+import { listGoogleCalendars } from "./integration-executor.js";
 // Restore refuses to overwrite (RFC-022); the collision is a 409, not a 422.
 import { SphereAlreadyExistsError } from "./provisioning.js";
 
@@ -856,6 +857,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       provider?: unknown;
       secretRef?: unknown;
       scopes?: unknown;
+      config?: unknown;
     };
     const subject = body.subject;
     if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
@@ -899,7 +901,11 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         : providerChanged
           ? undefined
           : integration.secretRef;
-    // Rebuild explicitly so a stale `auth`/`secretRef` never survives a provider switch.
+    // RFC-037: provider-specific config (e.g. calendarIds). Merge over the existing
+    // config when the provider is unchanged; drop it on a provider switch (stale).
+    const givenConfig = typeof body.config === "object" && body.config !== null && !Array.isArray(body.config) ? (body.config as Record<string, unknown>) : undefined;
+    const newConfig = givenConfig !== undefined ? { ...(providerChanged ? {} : integration.config ?? {}), ...givenConfig } : providerChanged ? undefined : integration.config;
+    // Rebuild explicitly so a stale `auth`/`secretRef`/`config` never survives a provider switch.
     const configured: Integration = {
       id: integration.id,
       sphereId: integration.sphereId,
@@ -911,6 +917,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       // auth reflects the chosen provider; a `none` provider (local) carries no auth.
       ...(authKind !== "none" ? { auth: authKind } : {}),
       ...(newSecretRef !== undefined ? { secretRef: newSecretRef } : {}),
+      ...(newConfig !== undefined && Object.keys(newConfig).length > 0 ? { config: newConfig } : {}),
     };
     const integrations = imported.integrations.map((i) => (i.id === integrationId ? configured : i));
     await deps.store.save(exportSphere({ ...imported, integrations, exportedAt: stamp }));
@@ -930,6 +937,64 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       ...(decision.matchedPolicyVersion !== undefined ? { policyVersion: decision.matchedPolicyVersion } : {}),
     });
     return ok({ id: integrationId, provider, scopes: configured.scopes, configured: configured.secretRef !== undefined, status: configured.status });
+  }
+
+  // --- RFC-037: discover a connected calendar account's calendars (config picker) ---
+  // POST /spheres/:id/integrations/:iid/calendars  { subject }
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 5 &&
+    segments[2] === "integrations" &&
+    segments[4] === "calendars"
+  ) {
+    if (deps.auditSink === undefined || deps.authBroker === undefined) {
+      return err(501, "not_implemented", "Calendar discovery is not enabled on this deployment");
+    }
+    const sphereId = segments[1] as string;
+    const integrationId = segments[3] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+    const integration = imported.integrations.find((i) => i.id === integrationId);
+    if (integration === undefined) return err(404, "not_found", "Integration not found");
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as { subject?: PolicyRequest["subject"] };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    // Admin-gated like integration.configure (adult floor + policy) — never an agent surface.
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    const cap = defaultCapabilityCatalog().get("integration.configure");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "Calendar discovery is not allowed for this profile");
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "integration", id: integrationId, capabilityName: "integration.configure", riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      withAdminSeedMigration(sphereId, imported.policies, "integration.configure"),
+    );
+    if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
+
+    // Only OAuth calendar accounts support discovery; deny-by-default otherwise.
+    if (integration.provider !== "google") {
+      return err(400, "invalid_request", `Provider '${integration.provider}' does not support calendar discovery`);
+    }
+    if (integration.secretRef === undefined) {
+      return err(400, "invalid_request", "Integration is not connected (no account)");
+    }
+    try {
+      const token = await deps.authBroker.getAccessToken(integration.secretRef);
+      const { calendars } = await listGoogleCalendars(token);
+      return ok({ calendars });
+    } catch (e) {
+      return err(502, "discovery_failed", (e as Error).message);
+    }
   }
 
   // --- Governed OAuth connect: begin (RFC-017) ---
@@ -1744,6 +1809,8 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
           ...(i.providerChoices !== undefined && i.providerChoices.length > 0
             ? { providerChoices: i.providerChoices.map((p) => ({ provider: p, auth: providerAuthKind(p) })) }
             : {}),
+          // RFC-037: provider-specific config (e.g. selected calendarIds) — non-secret.
+          ...(i.config !== undefined ? { config: i.config } : {}),
         })),
       });
     }

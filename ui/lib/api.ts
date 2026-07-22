@@ -558,6 +558,33 @@ export interface IntegrationSummary {
   readonly configured?: boolean;
   /** RFC-034: the providers the admin may pick, each with its auth kind. */
   readonly providerChoices?: readonly { readonly provider: string; readonly auth: ProviderAuthKind }[];
+  /** RFC-037: provider-specific, non-secret config (e.g. selected calendarIds). */
+  readonly config?: { readonly calendarIds?: readonly string[] } & Readonly<Record<string, unknown>>;
+}
+
+export interface GoogleCalendarChoice {
+  readonly id: string;
+  readonly summary: string;
+  readonly primary: boolean;
+  readonly accessRole: string;
+}
+
+/** RFC-037: list a connected Google Calendar account's calendars for the picker. */
+export async function getIntegrationCalendars(
+  baseUrl: string,
+  sphereId: string,
+  integrationId: string,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ calendars?: readonly GoogleCalendarChoice[]; code?: string; message?: string }> {
+  const { status, body } = await postJson<{ calendars?: readonly GoogleCalendarChoice[]; code?: string; message?: string }>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/integrations/${encodeURIComponent(integrationId)}/calendars`,
+    { subject },
+    fetchImpl,
+  );
+  if (status === 200 || status === 400 || status === 403) return body;
+  throw new Error(`list calendars failed: ${status}`);
 }
 
 export async function getIntegrations(
@@ -648,7 +675,7 @@ export async function configureIntegration(
   baseUrl: string,
   sphereId: string,
   integrationId: string,
-  input: { provider?: string; secretRef?: string; scopes?: readonly string[] },
+  input: { provider?: string; secretRef?: string; scopes?: readonly string[]; config?: Record<string, unknown> },
   subject: ActingSubject,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ConfigureIntegrationOutcome> {

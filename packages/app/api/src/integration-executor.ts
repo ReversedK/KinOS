@@ -51,6 +51,8 @@ export interface IntegrationProviderCtx {
    */
   readonly secret: () => Promise<SecretMaterial | undefined>;
   readonly scopes: readonly string[];
+  /** Provider-specific, non-secret config (RFC-037), e.g. `{ calendarIds: [...] }`. */
+  readonly config?: Readonly<Record<string, unknown>>;
   readonly now: () => string;
   readonly newId: () => string;
 }
@@ -202,34 +204,69 @@ export function googleDriveProvider(
  * `fetchImpl` is injectable so the broker→token→Authorization wiring is testable
  * without hitting Google.
  */
+const CAL_BASE = "https://www.googleapis.com/calendar/v3";
+const eventsUrl = (calendarId: string) => `${CAL_BASE}/calendars/${encodeURIComponent(calendarId)}/events`;
+
+/** The selected calendar ids from the integration config, defaulting to `primary`. */
+function selectedCalendarIds(config: Readonly<Record<string, unknown>> | undefined): string[] {
+  const ids = config?.["calendarIds"];
+  const list = Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
+  return list.length > 0 ? list : ["primary"];
+}
+
+/**
+ * List a connected Google account's calendars (RFC-037) — for the admin config
+ * picker, never an agent surface. Returns ids + names only.
+ */
+export async function listGoogleCalendars(
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ calendars: Array<{ id: string; summary: string; primary: boolean; accessRole: string }> }> {
+  const res = await fetchImpl(`${CAL_BASE}/users/me/calendarList?minAccessRole=reader`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Google Calendar list failed: ${res.status}`);
+  const body = (await res.json()) as { items?: Array<{ id?: string; summary?: string; primary?: boolean; accessRole?: string }> };
+  return {
+    calendars: (body.items ?? []).map((c) => ({ id: c.id ?? "", summary: c.summary ?? "(unnamed)", primary: c.primary === true, accessRole: c.accessRole ?? "reader" })),
+  };
+}
+
 export function googleCalendarProvider(
   broker: { getAccessToken(accountRef: string): Promise<string> },
   fetchImpl: typeof fetch = fetch,
 ): IntegrationProviderAdapter {
-  const CAL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
   return async (capability, input, ctx) => {
     if (ctx.secretRef === undefined) throw new Error("Google Calendar integration is not connected (no account)");
     const token = await broker.getAccessToken(ctx.secretRef);
     const auth = { Authorization: `Bearer ${token}` };
+    if (capability === "calendar.list_calendars") {
+      return listGoogleCalendars(token, fetchImpl);
+    }
     if (capability === "calendar.read") {
-      const res = await fetchImpl(`${CAL}?maxResults=50&singleEvents=true&orderBy=startTime`, { headers: auth });
-      if (!res.ok) throw new Error(`Google Calendar read failed: ${res.status}`);
-      const body = (await res.json()) as { items?: Array<{ id?: string; summary?: string; start?: { dateTime?: string; date?: string } }> };
-      return {
-        events: (body.items ?? []).map((e) => ({ id: e.id ?? "", title: e.summary ?? "(no title)", start: e.start?.dateTime ?? e.start?.date ?? "" })),
-      };
+      // Read across every selected calendar (RFC-037), tagging each event with its source.
+      const calendarIds = selectedCalendarIds(ctx.config);
+      const perCalendar = await Promise.all(
+        calendarIds.map(async (calId) => {
+          const res = await fetchImpl(`${eventsUrl(calId)}?maxResults=50&singleEvents=true&orderBy=startTime`, { headers: auth });
+          if (!res.ok) throw new Error(`Google Calendar read failed: ${res.status}`);
+          const body = (await res.json()) as { items?: Array<{ id?: string; summary?: string; start?: { dateTime?: string; date?: string } }> };
+          return (body.items ?? []).map((e) => ({ id: e.id ?? "", title: e.summary ?? "(no title)", start: e.start?.dateTime ?? e.start?.date ?? "", calendarId: calId }));
+        }),
+      );
+      return { events: perCalendar.flat() };
     }
     if (capability === "calendar.create_event") {
-      const args = (typeof input === "object" && input !== null ? input : {}) as { title?: unknown; start?: unknown };
+      const args = (typeof input === "object" && input !== null ? input : {}) as { title?: unknown; start?: unknown; calendarId?: unknown };
       const start = typeof args.start === "string" ? args.start : ctx.now();
-      const res = await fetchImpl(CAL, {
+      // An explicit calendarId wins; else the first selected calendar (default primary).
+      const calId = typeof args.calendarId === "string" && args.calendarId.trim() !== "" ? args.calendarId.trim() : selectedCalendarIds(ctx.config)[0]!;
+      const res = await fetchImpl(eventsUrl(calId), {
         method: "POST",
         headers: { ...auth, "content-type": "application/json" },
         body: JSON.stringify({ summary: typeof args.title === "string" ? args.title : "", start: { dateTime: start }, end: { dateTime: start } }),
       });
       if (!res.ok) throw new Error(`Google Calendar create failed: ${res.status}`);
       const body = (await res.json()) as { id?: string };
-      return { created: true, event: { id: body.id ?? "", title: typeof args.title === "string" ? args.title : "", start } };
+      return { created: true, event: { id: body.id ?? "", title: typeof args.title === "string" ? args.title : "", start, calendarId: calId } };
     }
     throw new Error(`The Google provider does not implement '${capability}'`);
   };
@@ -374,6 +411,7 @@ export class IntegrationExecutor implements CapabilityExecutor {
       // material is fetched at use and not retained on the context.
       secret: async () => (secretRef !== undefined && secrets !== undefined ? secrets.get(secretRef) : undefined),
       scopes: integration.scopes,
+      ...(integration.config !== undefined ? { config: integration.config } : {}),
       now: this.deps.now ?? (() => new Date().toISOString()),
       newId: this.deps.newId ?? (() => `evt_${crypto.randomUUID()}`),
     });

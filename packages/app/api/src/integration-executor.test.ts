@@ -158,8 +158,44 @@ describe("googleCalendarProvider (RFC-017)", () => {
   it("refuses when the integration is not connected (no account reference)", async () => {
     const provider = googleCalendarProvider(new FakeAuthBroker());
     await expect(
-      provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, secret: async () => undefined, scopes: [], now: () => "", newId: () => "" }),
+      provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, correlationId: "c", secret: async () => undefined, scopes: [], now: () => "", newId: () => "" }),
     ).rejects.toThrow(/not connected/i);
+  });
+
+  it("RFC-037: reads across exactly the selected calendars (config.calendarIds), tagging each event", async () => {
+    const seen: string[] = [];
+    const fakeFetch = (async (url: string) => {
+      seen.push(new URL(url).pathname);
+      const cal = decodeURIComponent(new URL(url).pathname.split("/calendars/")[1]!.split("/events")[0]!);
+      return { ok: true, json: async () => ({ items: [{ id: `e_${cal}`, summary: `Event in ${cal}`, start: { dateTime: "2026-07-20T09:00:00Z" } }] }) } as Response;
+    }) as unknown as typeof fetch;
+    const provider = googleCalendarProvider(new FakeAuthBroker(), fakeFetch);
+    const out = (await provider(
+      "calendar.read",
+      {},
+      { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, correlationId: "c", secretRef: "google::broker://fake/alice", secret: async () => undefined, scopes: [], config: { calendarIds: ["work@x", "family@y"] }, now: () => "", newId: () => "" },
+    )) as { events: Array<{ calendarId: string }> };
+    expect(out.events.map((e) => e.calendarId).sort()).toEqual(["family@y", "work@x"]);
+    // It hit exactly the two selected calendars, never `primary`.
+    expect(seen.some((p) => p.includes("primary"))).toBe(false);
+  });
+
+  it("RFC-037: defaults to primary when no calendars are selected", async () => {
+    let path = "";
+    const fakeFetch = (async (url: string) => { path = new URL(url).pathname; return { ok: true, json: async () => ({ items: [] }) } as Response; }) as unknown as typeof fetch;
+    const provider = googleCalendarProvider(new FakeAuthBroker(), fakeFetch);
+    await provider("calendar.read", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, correlationId: "c", secretRef: "google::broker://fake/alice", secret: async () => undefined, scopes: [], now: () => "", newId: () => "" });
+    expect(path).toContain("/calendars/primary/events");
+  });
+
+  it("RFC-037: calendar.list_calendars lists the account's calendars (id + name only)", async () => {
+    const fakeFetch = (async (url: string) => {
+      expect(url).toContain("/users/me/calendarList");
+      return { ok: true, json: async () => ({ items: [{ id: "primary", summary: "Me", primary: true, accessRole: "owner" }, { id: "fam@g", summary: "Family", accessRole: "writer" }] }) } as Response;
+    }) as unknown as typeof fetch;
+    const provider = googleCalendarProvider(new FakeAuthBroker(), fakeFetch);
+    const out = (await provider("calendar.list_calendars", {}, { sphereId: "sph_1", subject: { role: "parent", ageProfile: "adult" }, correlationId: "c", secretRef: "google::broker://fake/alice", secret: async () => undefined, scopes: [], now: () => "", newId: () => "" })) as { calendars: Array<{ id: string; summary: string }> };
+    expect(out.calendars.map((c) => c.summary)).toEqual(["Me", "Family"]);
   });
 });
 
