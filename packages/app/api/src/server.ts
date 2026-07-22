@@ -92,6 +92,8 @@ export function createApiServer(deps: ApiDeps, mcp?: SphereMcpServerDeps): Serve
       res.writeHead(response.status, {
         "content-type": "application/json",
         "x-correlation-id": response.correlationId,
+        // RFC-036: handler-supplied headers (e.g. a Location for a 302 redirect).
+        ...(response.headers ?? {}),
       });
       res.end(JSON.stringify(response.body));
       } catch (e) {

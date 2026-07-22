@@ -275,6 +275,8 @@ const server = createApiServer(
     pendingOAuth,
     newOAuthState: () => randomBytes(24).toString("hex"),
     oauthRedirectUri: process.env["KINOS_OAUTH_REDIRECT_URI"] ?? `${mcpPublicUrl}/oauth/connected`,
+    // RFC-036: where /oauth/connected sends the browser back after a connect.
+    consoleUrl: process.env["KINOS_CONSOLE_URL"] ?? "http://localhost:3100",
     newCorrelationId: () => randomUUID(),
     newApprovalId: () => `apr_${randomUUID()}`,
     newSessionId: () => `ses_${randomUUID()}`,

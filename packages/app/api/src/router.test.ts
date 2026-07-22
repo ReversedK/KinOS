@@ -1195,8 +1195,12 @@ describe("API router — package store", () => {
     expect((await handleApiRequest({ method: "GET", path: "/oauth/connected", query: { nonce: "forged" } }, deps)).status).toBe(403);
 
     const cb = await handleApiRequest({ method: "GET", path: "/oauth/connected", query: { nonce: "n_1" }, headers: { "x-fake-user": "alice" } }, deps);
-    expect(cb.status).toBe(200);
-    expect(cb.body).toMatchObject({ id: "int_google-calendar", provider: "google", connected: true });
+    // RFC-036: browser-facing — redirects back to the console, not a JSON dead-end.
+    expect(cb.status).toBe(302);
+    expect(cb.headers?.["Location"]).toBe("http://localhost:3100/spheres/sph_1?connected=google");
+    // The Location carries only the Sphere id + provider — never a token/account ref.
+    expect(cb.headers?.["Location"]).not.toContain("tok_");
+    expect(cb.headers?.["Location"]).not.toContain("broker://");
 
     // The integration is now configured with a broker account reference — never a token.
     const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/integrations" }, deps);

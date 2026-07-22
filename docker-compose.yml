@@ -74,6 +74,9 @@ services:
       # Where Better Auth returns the browser after consent (KinOS sets the account
       # reference here). Internal to KinOS — NOT a Google redirect URI.
       - KINOS_OAUTH_REDIRECT_URI=${KINOS_OAUTH_REDIRECT_URI:-http://localhost:8787/oauth/connected}
+      # The console as the browser reaches it — /oauth/connected 302-redirects back
+      # here after a connect (RFC-036), so the user lands in the UI, not on JSON.
+      - KINOS_CONSOLE_URL=${KINOS_CONSOLE_URL:-http://localhost:3100}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # ADR-007 hardening note: the Sphere MCP is currently path-mounted on this

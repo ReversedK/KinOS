@@ -98,6 +98,12 @@ export interface ApiDeps {
   readonly newOAuthState?: () => string;
   /** Where providers redirect after consent (the KinOS callback URL). */
   readonly oauthRedirectUri?: string;
+  /**
+   * The browser-reachable console origin (RFC-036) to redirect back to after an
+   * OAuth connect. Distinct from oauthRedirectUri (the API callback) and
+   * KINOS_PUBLIC_URL (Hermes→MCP). Defaults to http://localhost:3100.
+   */
+  readonly consoleUrl?: string;
   /** Injectable clock for the execution context; defaults to wall-clock. */
   readonly now?: () => string;
 }
@@ -117,6 +123,8 @@ export interface ApiResponse {
   readonly correlationId: string;
   readonly body: unknown;
   readonly code?: string;
+  /** Extra response headers (RFC-036) — e.g. a `Location` for a 302 redirect. */
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 /** Sphere activity tail bounds (RFC-020): a read must never drain the audit log. */
@@ -1050,7 +1058,20 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       correlationId,
       createdAt: stamp,
     });
-    return ok({ id: integration.id, provider: pending.provider, connected: true });
+    // RFC-036: this is a browser-facing endpoint (the provider redirected the
+    // browser here). Return the user to the console's Sphere view rather than a JSON
+    // dead-end. The Location carries only the Sphere id + provider — never a token
+    // or the account reference. The target is a fixed console origin from config
+    // (not attacker input), so it is not an open redirect.
+    const consoleBase = (deps.consoleUrl ?? "http://localhost:3100").replace(/\/+$/, "");
+    const location = `${consoleBase}/spheres/${encodeURIComponent(pending.sphereId)}?connected=${encodeURIComponent(pending.provider)}`;
+    return {
+      status: 302,
+      correlationId,
+      code: "connected",
+      headers: { Location: location },
+      body: { id: integration.id, provider: pending.provider, connected: true },
+    };
   }
 
   // --- Store: install a package (RFC-002) ---
