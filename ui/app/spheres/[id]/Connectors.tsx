@@ -14,13 +14,30 @@ import {
 } from "../../../lib/api";
 
 /**
- * Connectors (integrations) view (RFC-003 / integration-model / RFC-016/018). Lists
- * the Sphere's integrations and lets an admin connect/configure and enable/disable
- * each via the governed endpoints. The UI only triggers; the Policy Engine decides.
- * Secrets are never shown — only the connector, its status, whether it is
- * configured, and the capabilities it provides. An OAuth integration shows a
- * Connect button (redirects to the provider); an api-key one shows a reference field.
+ * Connectors (integrations) view (RFC-003 / integration-model / RFC-016/018/034/037).
+ * Each connector is a small GUIDED WIZARD: pick provider → connect (OAuth) or set a
+ * credential reference → (choose calendars) → enable. The UI only triggers governed
+ * endpoints; the Policy Engine decides. Secrets are never shown — only the connector,
+ * its status, and the capabilities it provides.
  */
+
+/** Map an integration's capabilities to a category accent tile + glyph. */
+function category(caps: readonly string[]): { tile: string; glyph: string } {
+  const has = (p: string) => caps.some((c) => c.startsWith(p));
+  if (has("calendar.")) return { tile: "calendar", glyph: "📅" };
+  if (has("document.") || has("memory.")) return { tile: "docs", glyph: "📄" };
+  if (has("message.")) return { tile: "message", glyph: "✉" };
+  if (has("payment.")) return { tile: "payment", glyph: "❖" };
+  if (has("native.")) return { tile: "harness", glyph: "⚙" };
+  return { tile: "store", glyph: "⇄" };
+}
+
+function authKindOf(i: IntegrationSummary): "none" | "oauth" | "apikey" {
+  if (i.auth === "oauth") return "oauth";
+  if (i.auth === "apikey") return "apikey";
+  return i.provider === "local" ? "none" : "oauth";
+}
+
 export function Connectors({
   sphereId,
   actor,
@@ -33,212 +50,227 @@ export function Connectors({
   const [rows, setRows] = useState<readonly IntegrationSummary[]>(integrations);
   const [note, setNote] = useState<string>();
   const [busy, setBusy] = useState(false);
-
   const [secretRefs, setSecretRefs] = useState<Record<string, string>>({});
-  // RFC-037: per-integration discovered calendar list (fetched on demand).
   const [calendars, setCalendars] = useState<Record<string, readonly GoogleCalendarChoice[]>>({});
+  const [managing, setManaging] = useState<Record<string, boolean>>({});
 
-  async function loadCalendars(id: string): Promise<void> {
+  const patch = (id: string, next: Partial<IntegrationSummary>) =>
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...next } : r)));
+
+  async function run(fn: () => Promise<void>): Promise<void> {
     setBusy(true);
     setNote(undefined);
     try {
+      await fn();
+    } catch (e) {
+      setNote(`Error — ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const toggle = (id: string, enabled: boolean) =>
+    run(async () => {
+      const res = await setIntegrationEnabled(CLIENT_API_BASE, sphereId, id, enabled, actor);
+      if (res.code === "forbidden") setNote(`Denied — ${res.message ?? "forbidden"}`);
+      else if (res.status !== undefined) patch(id, { status: res.status });
+    });
+
+  const connect = (id: string) =>
+    run(async () => {
+      const res = await beginOAuthConnect(CLIENT_API_BASE, sphereId, id, actor);
+      if (res.authorizeUrl !== undefined) window.location.href = res.authorizeUrl;
+      else setNote(`Denied — ${res.message ?? "cannot connect"}`);
+    });
+
+  const saveCredential = (id: string) =>
+    run(async () => {
+      const ref = (secretRefs[id] ?? "").trim();
+      if (ref === "") return;
+      const res = await configureIntegration(CLIENT_API_BASE, sphereId, id, { secretRef: ref }, actor);
+      if (res.configured) patch(id, { configured: true });
+      else setNote(res.message ?? "Could not configure");
+    });
+
+  const setProvider = (row: IntegrationSummary, provider: string) =>
+    run(async () => {
+      if (provider === row.provider) return;
+      const auth = row.providerChoices?.find((c) => c.provider === provider)?.auth ?? "none";
+      const res = await configureIntegration(CLIENT_API_BASE, sphereId, row.id, { provider }, actor);
+      if (res.code === undefined && res.provider !== undefined) patch(row.id, { provider, auth: auth === "none" ? undefined : auth, configured: false });
+      else setNote(res.message ?? "Could not set provider");
+    });
+
+  const loadCalendars = (id: string) =>
+    run(async () => {
       const res = await getIntegrationCalendars(CLIENT_API_BASE, sphereId, id, actor);
       if (res.calendars !== undefined) setCalendars((c) => ({ ...c, [id]: res.calendars! }));
       else setNote(res.message ?? "Could not list calendars");
-    } catch (e) {
-      setNote(`Error — ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
 
-  async function toggleCalendar(row: IntegrationSummary, calendarId: string): Promise<void> {
-    const current = row.config?.calendarIds ?? [];
-    const next = current.includes(calendarId) ? current.filter((c) => c !== calendarId) : [...current, calendarId];
-    setBusy(true);
-    setNote(undefined);
-    try {
+  const toggleCalendar = (row: IntegrationSummary, calendarId: string) =>
+    run(async () => {
+      const current = row.config?.calendarIds ?? [];
+      const next = current.includes(calendarId) ? current.filter((c) => c !== calendarId) : [...current, calendarId];
       const res = await configureIntegration(CLIENT_API_BASE, sphereId, row.id, { config: { calendarIds: next } }, actor);
-      if (res.code === undefined) setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, config: { ...r.config, calendarIds: next } } : r)));
+      if (res.code === undefined) patch(row.id, { config: { ...row.config, calendarIds: next } });
       else setNote(res.message ?? "Could not save calendar selection");
-    } catch (e) {
-      setNote(`Error — ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function toggle(id: string, enabled: boolean): Promise<void> {
-    setBusy(true);
-    setNote(undefined);
-    try {
-      const res = await setIntegrationEnabled(CLIENT_API_BASE, sphereId, id, enabled, actor);
-      if (res.code === "forbidden") setNote(`Denied — ${res.message ?? "forbidden"}`);
-      else if (res.status !== undefined) setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status: res.status as string } : r)));
-    } catch (e) {
-      setNote(`Error — ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function connect(id: string): Promise<void> {
-    setBusy(true);
-    setNote(undefined);
-    try {
-      const res = await beginOAuthConnect(CLIENT_API_BASE, sphereId, id, actor);
-      if (res.authorizeUrl !== undefined) {
-        // Redirect the browser to the provider's consent screen; it returns to
-        // /oauth/connected, which binds the account to this integration.
-        window.location.href = res.authorizeUrl;
-      } else {
-        setNote(`Denied — ${res.message ?? "cannot connect"}`);
-      }
-    } catch (e) {
-      setNote(`Error — ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function configure(id: string): Promise<void> {
-    const ref = (secretRefs[id] ?? "").trim();
-    if (ref === "") return;
-    setBusy(true);
-    setNote(undefined);
-    try {
-      const res = await configureIntegration(CLIENT_API_BASE, sphereId, id, { secretRef: ref }, actor);
-      if (res.configured) setRows((rs) => rs.map((r) => (r.id === id ? { ...r, configured: true } : r)));
-      else setNote(res.message ?? "Could not configure");
-    } catch (e) {
-      setNote(`Error — ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // RFC-034: pick the provider that backs this integration (local / Google / …).
-  // Persist the choice, then the row shows that provider's connect affordance. A
-  // provider switch drops any stale credential (fresh connect required).
-  async function setProvider(row: IntegrationSummary, provider: string): Promise<void> {
-    if (provider === row.provider) return;
-    const auth = row.providerChoices?.find((c) => c.provider === provider)?.auth ?? "none";
-    setBusy(true);
-    setNote(undefined);
-    try {
-      const res = await configureIntegration(CLIENT_API_BASE, sphereId, row.id, { provider }, actor);
-      if (res.code === undefined && res.provider !== undefined) {
-        setRows((rs) =>
-          rs.map((r) =>
-            r.id === row.id ? { ...r, provider, auth: auth === "none" ? undefined : auth, configured: false } : r,
-          ),
-        );
-      } else {
-        setNote(res.message ?? "Could not set provider");
-      }
-    } catch (e) {
-      setNote(`Error — ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
 
   if (rows.length === 0) {
-    return <div className="empty"><span className="empty-glyph">⇄</span>No connectors installed. Add one from the store to give agents a real calendar, notes, or other service.</div>;
+    return (
+      <div className="empty">
+        <span className="empty-glyph">⇄</span>
+        No connectors yet.
+        <div className="faint" style={{ marginTop: 8 }}>Add one from the Store to give agents a real calendar, documents, or other service.</div>
+      </div>
+    );
   }
 
   return (
-    <div className="stack tight">
-      {rows.map((i) => (
-        <div key={i.id} className="stack tight" style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-sm)", padding: "var(--s3)" }}>
-          <div className="rowitem" style={{ border: "none", padding: 0 }}>
-            <div className="lead">
-              <span className={`badge ${i.status === "enabled" ? "allow" : ""}`}>
-                <span className="dot" />
-                {i.status}
-              </span>
-              <span>
-                <strong>{i.provider}</strong>
-                {i.configured ? <span className="faint" style={{ fontSize: 11, marginLeft: 6 }}>· connected</span> : null}
-                {i.provider === "local" ? <span className="faint" style={{ fontSize: 11, marginLeft: 6 }}>· no setup needed</span> : null}
-                <div className="faint" style={{ fontSize: 12 }}>{i.providesCapabilities.join(", ") || "—"}</div>
-              </span>
-            </div>
-            <div className="row" style={{ gap: "var(--s2)" }}>
-              {i.auth === "oauth" ? (
-                <button className="btn sm" disabled={busy} onClick={() => void connect(i.id)}>
-                  {i.configured ? "Reconnect" : `Connect ${i.provider}`}
-                </button>
+    <div className="stack">
+      {rows.map((i) => {
+        const cat = category(i.providesCapabilities);
+        const kind = authKindOf(i);
+        const connected = i.configured === true || kind === "none";
+        const enabled = i.status === "enabled";
+        const isCalendar = i.providesCapabilities.some((c) => c.startsWith("calendar."));
+        // Wizard steps for this connector's auth kind.
+        const steps = kind === "none" ? ["Enable"] : isCalendar ? ["Connect", "Calendars", "Enable"] : [kind === "apikey" ? "Credentials" : "Connect", "Enable"];
+        const activeIdx = !connected ? 0 : !enabled ? steps.length - 1 : steps.length;
+        const chooseCalendars = calendars[i.id];
+        const selectedCals = i.config?.calendarIds ?? [];
+
+        return (
+          <div key={i.id} className="wizard reveal">
+            <div className="wizard-head" style={{ background: "transparent", borderBottom: "1px solid var(--line)" }}>
+              <div className="row between" style={{ flexWrap: "nowrap", gap: "var(--s3)" }}>
+                <div className="row" style={{ gap: "var(--s3)", minWidth: 0, flexWrap: "nowrap" }}>
+                  <span className={`tile ${cat.tile}`}>{cat.glyph}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16, textTransform: "capitalize" }}>{i.provider.replace(/_/g, " ")}</div>
+                    <div className="faint mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.providesCapabilities.join(" · ") || "—"}</div>
+                  </div>
+                </div>
+                <span className={`badge ${enabled ? "allow" : connected ? "info" : ""}`} style={{ flex: "none" }}>
+                  <span className="dot" />
+                  {enabled ? "active" : connected ? "connected" : "setup"}
+                </span>
+              </div>
+              {steps.length > 1 ? (
+                <ol className="stepper" style={{ margin: "var(--s4) 0 0" }}>
+                  {steps.map((label, idx) => (
+                    <li key={label} className={idx < activeIdx ? "done" : idx === activeIdx ? "active" : ""}>
+                      <span className="step-num">{idx < activeIdx ? "✓" : idx + 1}</span>
+                      {label}
+                    </li>
+                  ))}
+                </ol>
               ) : null}
-              <button className="btn sm" disabled={busy} onClick={() => void toggle(i.id, i.status !== "enabled")}>
-                {i.status === "enabled" ? "Disable" : "Enable"}
-              </button>
+            </div>
+
+            <div className="wizard-body stack tight">
+              {/* Provider choice (RFC-034) — offered while not yet connected. */}
+              {!connected && i.providerChoices !== undefined && i.providerChoices.length > 1 ? (
+                <div className="field" style={{ maxWidth: 320 }}>
+                  <label>Provider</label>
+                  <select className="select" value={i.provider} disabled={busy} onChange={(e) => void setProvider(i, e.target.value)}>
+                    {i.providerChoices.map((c) => (
+                      <option key={c.provider} value={c.provider}>
+                        {c.provider.replace(/_/g, " ")}{c.auth === "none" ? " — built-in, no setup" : c.auth === "oauth" ? " — connect account" : " — API key"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              {/* STEP: connect / credentials / built-in */}
+              {!connected ? (
+                kind === "oauth" ? (
+                  <div className="stack tight">
+                    <p className="section-intro">Connect the account. You'll consent on the provider; KinOS stores only a reference, never a token.</p>
+                    <div><button className="btn primary" disabled={busy} onClick={() => void connect(i.id)}>Connect {i.provider.replace(/_/g, " ")} →</button></div>
+                  </div>
+                ) : kind === "apikey" ? (
+                  <div className="row" style={{ gap: "var(--s2)", alignItems: "flex-end" }}>
+                    <div className="field grow">
+                      <label>Credentials reference</label>
+                      <input className="input mono" placeholder="secret://provider/…" value={secretRefs[i.id] ?? ""} onChange={(e) => setSecretRefs((s) => ({ ...s, [i.id]: e.target.value }))} />
+                      <span className="hint">A secret-store reference — never paste a raw key.</span>
+                    </div>
+                    <button className="btn primary" disabled={busy} onClick={() => void saveCredential(i.id)}>Save</button>
+                  </div>
+                ) : (
+                  <p className="section-intro">Built-in provider — no account needed. Enable it below.</p>
+                )
+              ) : null}
+
+              {/* STEP: choose calendars (RFC-037) — optional, once connected */}
+              {connected && isCalendar ? (
+                <div className="stack tight">
+                  {chooseCalendars === undefined ? (
+                    <div className="row between">
+                      <span className="faint" style={{ fontSize: 13 }}>{selectedCals.length > 0 ? `${selectedCals.length} calendar${selectedCals.length === 1 ? "" : "s"} selected` : "Using your primary calendar"}</span>
+                      <button className="btn sm ghost" disabled={busy} onClick={() => void loadCalendars(i.id)}>Choose calendars…</button>
+                    </div>
+                  ) : (
+                    <div className="stack tight" style={{ gap: 4 }}>
+                      <label className="faint" style={{ fontSize: 12 }}>Calendars this connector may use (none = primary)</label>
+                      {chooseCalendars.map((c) => (
+                        <label key={c.id} className="checkline" style={{ justifyContent: "space-between" }}>
+                          <span className="row" style={{ gap: "var(--s2)" }}>
+                            <input type="checkbox" checked={selectedCals.includes(c.id)} disabled={busy} onChange={() => void toggleCalendar(i, c.id)} />
+                            <span style={{ color: "var(--ink)" }}>{c.summary}{c.primary ? " · primary" : ""}</span>
+                          </span>
+                          <span className="pill">{c.accessRole}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {/* STEP: enable — the final step */}
+              {connected && !enabled ? (
+                <div className="row between">
+                  <span className="faint" style={{ fontSize: 13 }}>Enabling activates these tools for members your policies allow.</span>
+                  <button className="btn primary" disabled={busy} onClick={() => void toggle(i.id, true)}>Enable connector</button>
+                </div>
+              ) : null}
+
+              {/* READY — enabled: compact, with a manage disclosure */}
+              {enabled ? (
+                <div className="stack tight">
+                  <div className="row between">
+                    <span className="badge allow"><span className="dot" />Ready — agents can use this</span>
+                    <button className="btn sm ghost" disabled={busy} onClick={() => setManaging((m) => ({ ...m, [i.id]: !m[i.id] }))}>{managing[i.id] ? "Close" : "Manage"}</button>
+                  </div>
+                  {managing[i.id] ? (
+                    <div className="row" style={{ gap: "var(--s2)" }}>
+                      {kind === "oauth" ? <button className="btn sm" disabled={busy} onClick={() => void connect(i.id)}>Reconnect</button> : null}
+                      {isCalendar ? <button className="btn sm" disabled={busy} onClick={() => void loadCalendars(i.id)}>Calendars</button> : null}
+                      <button className="btn sm danger" disabled={busy} onClick={() => void toggle(i.id, false)}>Disable</button>
+                    </div>
+                  ) : null}
+                  {managing[i.id] && isCalendar && chooseCalendars !== undefined ? (
+                    <div className="stack tight" style={{ gap: 4 }}>
+                      {chooseCalendars.map((c) => (
+                        <label key={c.id} className="checkline" style={{ justifyContent: "space-between" }}>
+                          <span className="row" style={{ gap: "var(--s2)" }}>
+                            <input type="checkbox" checked={selectedCals.includes(c.id)} disabled={busy} onChange={() => void toggleCalendar(i, c.id)} />
+                            <span style={{ color: "var(--ink)" }}>{c.summary}{c.primary ? " · primary" : ""}</span>
+                          </span>
+                          <span className="pill">{c.accessRole}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
-          {/* RFC-034: choose which provider backs this integration (when it offers more than one). */}
-          {i.providerChoices !== undefined && i.providerChoices.length > 1 ? (
-            <div className="row" style={{ gap: "var(--s2)", alignItems: "center" }}>
-              <label style={{ fontSize: 11 }} className="faint">Provider</label>
-              <select
-                className="select"
-                value={i.provider}
-                disabled={busy}
-                onChange={(e) => void setProvider(i, e.target.value)}
-              >
-                {i.providerChoices.map((c) => (
-                  <option key={c.provider} value={c.provider}>
-                    {c.provider}{c.auth === "none" ? " (local, no setup)" : c.auth === "oauth" ? " (connect)" : " (api key)"}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-          {i.auth === "apikey" ? (
-            <div className="row" style={{ gap: "var(--s2)", alignItems: "flex-end" }}>
-              <div className="field grow">
-                <label style={{ fontSize: 11 }}>Credentials reference</label>
-                <input
-                  className="input"
-                  placeholder="secret://provider/…"
-                  value={secretRefs[i.id] ?? ""}
-                  onChange={(e) => setSecretRefs((s) => ({ ...s, [i.id]: e.target.value }))}
-                />
-              </div>
-              <button className="btn sm ghost" disabled={busy} onClick={() => void configure(i.id)}>
-                Save
-              </button>
-            </div>
-          ) : null}
-          {/* RFC-037: choose which Google calendars this integration uses (once connected). */}
-          {i.provider === "google" && i.configured && i.providesCapabilities.some((c) => c.startsWith("calendar.")) ? (
-            <div className="stack tight" style={{ gap: "var(--s1)" }}>
-              {calendars[i.id] === undefined ? (
-                <button className="btn sm ghost" disabled={busy} onClick={() => void loadCalendars(i.id)}>
-                  Choose calendars…
-                </button>
-              ) : (
-                <div className="stack tight" style={{ gap: 2 }}>
-                  <label className="faint" style={{ fontSize: 11 }}>Calendars used (none selected = primary)</label>
-                  {calendars[i.id]!.map((c) => {
-                    const selected = (i.config?.calendarIds ?? []).includes(c.id);
-                    return (
-                      <label key={c.id} className="row" style={{ gap: "var(--s2)", alignItems: "center", fontSize: 13 }}>
-                        <input type="checkbox" checked={selected} disabled={busy} onChange={() => void toggleCalendar(i, c.id)} />
-                        <span>{c.summary}{c.primary ? " (primary)" : ""}</span>
-                        <span className="faint" style={{ fontSize: 11 }}>{c.accessRole}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      ))}
-      <span className="hint">
-        OAuth connectors send you to the provider to consent; KinOS stores only a reference, never a token. Api-key connectors take a
-        secret-store <em>reference</em> — never paste a raw key.
-      </span>
+        );
+      })}
       {note ? <div className="note deny">{note}</div> : null}
     </div>
   );
