@@ -1677,18 +1677,33 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
 
   if (segments.length === 1 && segments[0] === "store") {
     // store.browse (RFC-002): the curated catalog of installable packages.
+    const catalog = defaultCapabilityCatalog();
     return ok({
-      packages: defaultStoreCatalog().map((m) => ({
-        id: m.id,
-        type: m.type,
-        title: m.title,
-        description: m.description,
-        version: m.version,
-        publisher: m.publisher,
-        ageRating: m.ageRating,
-        dependencies: m.dependencies,
-        providesCapabilities: m.providesCapabilities,
-      })),
+      packages: defaultStoreCatalog().map((m) => {
+        // RFC-041: per-capability grant metadata so the install wizard can offer an
+        // approval choice — the manifest preset's default effect, and the catalog
+        // approval floor (true → approval can never be removed).
+        const defaultEffectOf = (cap: string): "allow" | "require_approval" => {
+          const preset = m.defaultPolicies.find((p) => p.capabilityNames.includes(cap));
+          return preset?.effect === "require_approval" ? "require_approval" : "allow";
+        };
+        return {
+          id: m.id,
+          type: m.type,
+          title: m.title,
+          description: m.description,
+          version: m.version,
+          publisher: m.publisher,
+          ageRating: m.ageRating,
+          dependencies: m.dependencies,
+          providesCapabilities: m.providesCapabilities,
+          capabilities: m.providesCapabilities.map((cap) => ({
+            name: cap,
+            defaultEffect: defaultEffectOf(cap),
+            approvalFloor: catalog.get(cap)?.approvalFloor ?? false,
+          })),
+        };
+      }),
     });
   }
 

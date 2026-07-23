@@ -999,6 +999,20 @@ describe("API router — package store", () => {
     expect(pkgs.some((p) => p.id === "minecraft-themepark")).toBe(true);
   });
 
+  it("RFC-041: exposes per-capability default effect + approval floor for the grant wizard", async () => {
+    const res = await handleApiRequest({ method: "GET", path: "/store" }, await pkgDeps([]));
+    const pkgs = (res.body as { packages: Array<{ id: string; capabilities?: Array<{ name: string; defaultEffect: string; approvalFloor: boolean }> }> }).packages;
+    // family-calendar: create_event defaults to approval (preset), no floor → changeable.
+    const cal = pkgs.find((p) => p.id === "family-calendar")!;
+    const create = cal.capabilities?.find((c) => c.name === "calendar.create_event");
+    expect(create).toMatchObject({ defaultEffect: "require_approval", approvalFloor: false });
+    const read = cal.capabilities?.find((c) => c.name === "calendar.read");
+    expect(read).toMatchObject({ defaultEffect: "allow", approvalFloor: false });
+    // household-payments: payment.execute has an inviolable floor.
+    const pay = pkgs.find((p) => p.id === "household-payments")!;
+    expect(pay.capabilities?.find((c) => c.name === "payment.execute")).toMatchObject({ approvalFloor: true });
+  });
+
   it("installs a store package (installed, not enabled — install != authorization) and persists it", async () => {
     const deps = await pkgDeps([allowAdultPackages]);
     const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);

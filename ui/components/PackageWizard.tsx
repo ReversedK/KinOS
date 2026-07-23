@@ -16,20 +16,32 @@ import {
 } from "../lib/api";
 
 /**
- * Package install WIZARD (RFC-002/014/016). Installing a package is a journey, not a
- * click: register it → decide WHO may use it (the grant) → enable it → and, for an
- * integration package, connect the external account. This walks the admin through
- * each governed step and calls out the manual/external ones (OAuth consent, operator
- * config, credential references). The UI only triggers governed endpoints.
+ * Package install WIZARD (RFC-002/014/016/041). Installing a package is a journey,
+ * not a click: register it → decide WHO may use it AND whether each action needs
+ * approval → enable it → and, for an integration package, connect the external
+ * account. This walks the admin through each governed step and calls out the
+ * manual/external ones. The UI only triggers governed endpoints.
  */
 
 type Audience = "adults" | "teens" | "everyone";
+type Effect = "allow" | "require_approval";
 
 const AUDIENCE_PROFILES: Record<Audience, readonly string[]> = {
   adults: ["adult"],
   teens: ["adult", "teen"],
   everyone: ["adult", "teen", "child"],
 };
+
+/** A capability is "approval-relevant" (worth a per-cap choice) if its default is
+ *  approval or it has an inviolable floor; plain allow-by-default caps need no toggle. */
+function isApprovalRelevant(c: { defaultEffect: Effect; approvalFloor: boolean }): boolean {
+  return c.defaultEffect === "require_approval" || c.approvalFloor;
+}
+
+/** A friendly label for a capability name. */
+function capLabel(name: string): string {
+  return name.replace(/_/g, " ").replace(/\./g, " · ");
+}
 
 /** Whether this package needs a secret reference rather than OAuth (CalDAV etc.). */
 function isApiKeyIntegration(i: IntegrationSummary | undefined): boolean {
@@ -57,6 +69,16 @@ export function PackageWizard({
   const [secretRef, setSecretRef] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string>();
+
+  // RFC-041: per-capability approval choice. Seed from each capability's default;
+  // a floored capability is forced to require_approval and can't be changed.
+  const capInfos = pkg.capabilities ?? pkg.providesCapabilities.map((name) => ({ name, defaultEffect: "allow" as Effect, approvalFloor: false }));
+  const approvalCaps = capInfos.filter(isApprovalRelevant);
+  const [effects, setEffects] = useState<Record<string, Effect>>(() =>
+    Object.fromEntries(capInfos.map((c) => [c.name, c.approvalFloor ? "require_approval" : c.defaultEffect])),
+  );
+  const effectOf = (c: { name: string; defaultEffect: Effect; approvalFloor: boolean }): Effect =>
+    c.approvalFloor ? "require_approval" : effects[c.name] ?? c.defaultEffect;
 
   const installed = status !== undefined;
   const enabled = status === "enabled";
@@ -110,11 +132,22 @@ export function PackageWizard({
 
   const doEnable = () =>
     run(async () => {
-      // RFC-014: widen beyond the adults-only default only when the admin chose to.
-      const grant: readonly GrantClause[] | undefined =
-        audience === "adults"
-          ? undefined
-          : [{ ageProfiles: AUDIENCE_PROFILES[audience], capabilities: pkg.providesCapabilities, effect: "allow" as const }];
+      // RFC-041: build the grant from the admin's choices. Custom clauses REPLACE the
+      // package preset (RFC-014), so cover EVERY capability with its chosen effect,
+      // scoped to the chosen audience. Only send a custom grant when something was
+      // changed from the safe default (adults-only + preset effects); otherwise let
+      // the preset apply.
+      const ageProfiles = AUDIENCE_PROFILES[audience];
+      const changed = audience !== "adults" || capInfos.some((c) => effectOf(c) !== (c.approvalFloor ? "require_approval" : c.defaultEffect));
+      let grant: readonly GrantClause[] | undefined;
+      if (changed) {
+        const allowCaps = capInfos.filter((c) => effectOf(c) === "allow").map((c) => c.name);
+        const approvalCapsSel = capInfos.filter((c) => effectOf(c) === "require_approval").map((c) => c.name);
+        grant = [
+          ...(allowCaps.length > 0 ? [{ ageProfiles, capabilities: allowCaps, effect: "allow" as const }] : []),
+          ...(approvalCapsSel.length > 0 ? [{ ageProfiles, capabilities: approvalCapsSel, effect: "require_approval" as const, approverRoles: ["parent"] }] : []),
+        ];
+      }
       const res = await setPackageEnabled(CLIENT_API_BASE, sphereId, pkg.id, true, subject, undefined, grant);
       if (res.code === "forbidden") setNote(`Denied — ${res.message ?? "forbidden"}`);
       else if (res.status !== undefined) {
@@ -164,24 +197,67 @@ export function PackageWizard({
           </div>
         ) : null}
 
-        {/* STEP 2 — Access (the grant): who may use it */}
+        {/* STEP 2 — Access (the grant): who may use it + approval per capability */}
         {installed && !enabled ? (
-          <div className="stack tight">
-            <div className="field">
-              <label>Who may use this?</label>
-              <span className="hint">The safe default is adults only. Widening is your explicit choice; the capability's own floor still applies (a child can never be granted a write it isn't allowed).</span>
+          <div className="stack">
+            <div className="stack tight">
+              <div className="field">
+                <label>Who may use this?</label>
+                <span className="hint">Safe default: adults only. Widening is your explicit choice; a capability's own floor still applies (a child can never be granted a write it isn't allowed).</span>
+              </div>
+              <div className="stack tight" style={{ gap: 6 }}>
+                {(["adults", "teens", "everyone"] as Audience[]).map((a) => (
+                  <label key={a} className="checkline" style={{ gap: 10 }}>
+                    <input type="radio" name="audience" checked={audience === a} onChange={() => setAudience(a)} />
+                    <span style={{ color: "var(--ink)" }}>
+                      {a === "adults" ? "Adults only" : a === "teens" ? "Adults & teens" : "Everyone (adults, teens, children)"}
+                      {a === "adults" ? <span className="pill brand" style={{ marginLeft: 8 }}>recommended</span> : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
-            <div className="stack tight" style={{ gap: 6 }}>
-              {(["adults", "teens", "everyone"] as Audience[]).map((a) => (
-                <label key={a} className="checkline" style={{ gap: 10 }}>
-                  <input type="radio" name="audience" checked={audience === a} onChange={() => setAudience(a)} />
-                  <span style={{ color: "var(--ink)" }}>
-                    {a === "adults" ? "Adults only" : a === "teens" ? "Adults & teens" : "Everyone (adults, teens, children)"}
-                    {a === "adults" ? <span className="pill brand" style={{ marginLeft: 8 }}>recommended</span> : null}
-                  </span>
-                </label>
-              ))}
-            </div>
+
+            {/* RFC-041: per-capability approval — configure once, not per action. */}
+            {approvalCaps.length > 0 ? (
+              <div className="stack tight">
+                <div className="field">
+                  <label>Approval for sensitive actions</label>
+                  <span className="hint">Choose per action whether the agent may do it directly, or must ask a parent each time. Configure it once here so you don't approve every single action.</span>
+                </div>
+                {approvalCaps.map((c) => {
+                  const eff = effectOf(c);
+                  return (
+                    <div key={c.name} className="row between" style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-sm)", padding: "10px 12px", gap: "var(--s3)" }}>
+                      <span className="mono" style={{ fontSize: 13, color: "var(--ink)" }}>{capLabel(c.name)}</span>
+                      {c.approvalFloor ? (
+                        <span className="badge pending" title="This action always requires approval and can't be changed.">
+                          <span className="dot" />always needs approval
+                        </span>
+                      ) : (
+                        <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+                          <button
+                            className={`btn sm${eff === "allow" ? " primary" : ""}`}
+                            disabled={busy}
+                            onClick={() => setEffects((e) => ({ ...e, [c.name]: "allow" }))}
+                          >
+                            Allow directly
+                          </button>
+                          <button
+                            className={`btn sm${eff === "require_approval" ? " primary" : ""}`}
+                            disabled={busy}
+                            onClick={() => setEffects((e) => ({ ...e, [c.name]: "require_approval" }))}
+                          >
+                            Ask a parent
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
             <div className="row"><button className="btn primary" disabled={busy} onClick={() => void doEnable()}>Grant &amp; enable →</button></div>
           </div>
         ) : null}

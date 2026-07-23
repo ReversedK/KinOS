@@ -461,6 +461,14 @@ export async function getAgentRuntimeProjection(
 
 // --- Package store (RFC-002) ---
 
+/** RFC-041: per-capability grant metadata for the install wizard's approval choice. */
+export interface StoreCapabilityInfo {
+  readonly name: string;
+  readonly defaultEffect: "allow" | "require_approval";
+  /** true → approval can never be removed (payment, browser, export, runtime). */
+  readonly approvalFloor: boolean;
+}
+
 export interface StorePackage {
   readonly id: string;
   readonly type: string;
@@ -471,6 +479,7 @@ export interface StorePackage {
   readonly ageRating: string;
   readonly dependencies: ReadonlyArray<{ readonly packageId: string; readonly versionRange: string }>;
   readonly providesCapabilities: readonly string[];
+  readonly capabilities?: readonly StoreCapabilityInfo[];
 }
 
 export interface InstalledPackageSummary {
