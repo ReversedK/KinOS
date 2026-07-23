@@ -1,6 +1,7 @@
 "use client";
 
 import type { CatalogCapability } from "../lib/api";
+import { capabilityLabel } from "../lib/capabilityMeta";
 
 /** Capability-name prefixes that are admin/governance surfaces, not an agent's
  * own request scope — hidden from the agent capability picker. */
@@ -38,30 +39,6 @@ function groupOf(name: string): string {
   const prefix = name.split(".")[0] ?? "other";
   if (name.startsWith("sphere.")) return "sphere";
   return GROUPS.some((g) => g.key === prefix) ? prefix : "other";
-}
-
-/** A short, friendly label for a capability (its action, not the dotted id). */
-function friendlyLabel(name: string): string {
-  const map: Record<string, string> = {
-    "calendar.read": "Read the calendar",
-    "calendar.create_event": "Create calendar events",
-    "document.search": "Search documents",
-    "document.summarize": "Summarize a document",
-    "memory.search": "Search notes",
-    "memory.capture": "Write a private note",
-    "memory.share": "Share a note",
-    "memory.revoke_share": "Un-share a note",
-    "sphere.note.create": "Write a shared note",
-    "sphere.project.create": "Create a shared project",
-    "message.send": "Send a message",
-    "payment.execute": "Make a payment",
-    "native.web": "Search the web",
-    "native.cron": "Schedule tasks",
-    "native.media": "Use media tools",
-    "native.browser": "Drive a web browser",
-    "native.delegate": "Spawn subagents",
-  };
-  return map[name] ?? name.replace(/_/g, " ").replace(/\./g, " · ");
 }
 
 /**
@@ -114,7 +91,7 @@ export function CapabilityPicker({
                   <input type="checkbox" checked={selected.includes(c.name)} onChange={() => toggle(c.name)} style={{ marginTop: 3, accentColor: "var(--brand)", width: 16, height: 16, flex: "none" }} />
                   <span className="grow" style={{ minWidth: 0 }}>
                     <span className="row" style={{ gap: "var(--s2)" }}>
-                      <strong style={{ fontSize: 13.5 }}>{friendlyLabel(c.name)}</strong>
+                      <strong style={{ fontSize: 13.5 }}>{capabilityLabel(c.name)}</strong>
                       <span className={`badge ${riskTone(c.risk)}`}>{c.risk}</span>
                       {c.approvalFloor ? <span className="badge pending">approval</span> : null}
                     </span>

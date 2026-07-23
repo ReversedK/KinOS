@@ -1,4 +1,5 @@
 import { apiBaseUrl, getMembers, getPendingApprovals, type ApproverRef } from "../../lib/api";
+import { capabilityCategory, capabilityLabel } from "../../lib/capabilityMeta";
 import { ApprovalActions } from "./ApprovalActions";
 
 export const dynamic = "force-dynamic";
@@ -52,9 +53,15 @@ export default async function ApprovalsPage() {
             {pending.map((p) => (
               <div key={p.id} className="panel reveal">
                 <div className="panel-body stack tight">
-                  <div className="row between">
-                    <code style={{ fontSize: 15, fontWeight: 600 }}>{p.capability}</code>
-                    <span className="row" style={{ gap: "var(--s2)" }}>
+                  <div className="row between" style={{ flexWrap: "nowrap", gap: "var(--s3)" }}>
+                    <div className="row" style={{ gap: "var(--s3)", minWidth: 0 }}>
+                      <span className={`tile ${capabilityCategory(p.capability).tile}`}>{capabilityCategory(p.capability).glyph}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>{capabilityLabel(p.capability)}</div>
+                        <code className="faint" style={{ fontSize: 12 }}>{p.capability}</code>
+                      </div>
+                    </div>
+                    <span className="row" style={{ gap: "var(--s2)", flex: "none" }}>
                       {p.risk ? <span className={`badge ${p.risk === "critical" || p.risk === "high" ? "deny" : ""}`}>{p.risk} risk</span> : null}
                       <span className="badge pending">
                         <span className="dot" />
@@ -63,7 +70,7 @@ export default async function ApprovalsPage() {
                     </span>
                   </div>
                   {/* User-safe description of the requested action (never private payload, §18). */}
-                  {p.summary ? <div style={{ fontSize: 14 }}>{p.summary}</div> : null}
+                  {p.summary ? <div style={{ fontSize: 14 }} className="subtle">{p.summary}</div> : null}
                   <div className="row" style={{ gap: "var(--s4)", flexWrap: "wrap" }}>
                     <span className="faint">
                       sphere <code>{p.sphereId}</code>
