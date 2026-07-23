@@ -15,6 +15,20 @@ describe("capability catalog — RFC-007 runtime governance", () => {
     }
   });
 
+  it("declares input schemas so an agent knows a capability's arguments (not a guess)", () => {
+    // document.summarize was failing for agents because it advertised no schema —
+    // it must declare a required documentId.
+    const sum = catalog.get("document.summarize")?.inputSchema as { properties?: Record<string, unknown>; required?: string[] } | undefined;
+    expect(sum?.properties).toHaveProperty("documentId");
+    expect(sum?.required).toContain("documentId");
+    // document.search takes an optional query (so it "works" with none).
+    const search = catalog.get("document.search")?.inputSchema as { properties?: Record<string, unknown>; required?: string[] } | undefined;
+    expect(search?.properties).toHaveProperty("query");
+    expect(search?.required ?? []).not.toContain("query");
+    // calendar.create_event needs a title + start.
+    expect((catalog.get("calendar.create_event")?.inputSchema as { required?: string[] } | undefined)?.required).toEqual(["title", "start"]);
+  });
+
   it("requires approval to (re)project config and to restore runtime state", () => {
     // config.project rewrites the agent's governance config; restore overwrites
     // its working state — both carry an approval floor (capability-catalog.md).

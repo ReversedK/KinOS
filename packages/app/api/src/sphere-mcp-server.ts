@@ -127,10 +127,10 @@ export async function handleSphereMcpRpc(
       tools: surface.filter((c) => !isNativeToolsetCapability(c.name)).map((c) => ({
         name: c.name,
         description: catalog.get(c.name)?.description ?? c.name,
-        // MCP requires every tool to declare an inputSchema (JSON Schema). The
-        // Sphere MCP passes opaque capability input through to the binding, so
-        // we advertise a permissive object schema.
-        inputSchema: { type: "object", additionalProperties: true },
+        // The capability's declared input JSON Schema (catalog) so the agent knows
+        // the exact arguments — a required id, a query — instead of guessing. Falls
+        // back to a permissive object for capabilities that take free-form input.
+        inputSchema: catalog.get(c.name)?.inputSchema ?? { type: "object", additionalProperties: true },
         annotations: { requiresApproval: c.requiresApproval },
       })),
     });

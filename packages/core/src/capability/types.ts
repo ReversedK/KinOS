@@ -23,6 +23,12 @@ export interface Capability {
   readonly approvalFloor: boolean;
   /** Metadata facts to audit — never private content. */
   readonly auditFacts: readonly string[];
+  /**
+   * JSON Schema for the capability's input (capability-catalog.md). Surfaced to the
+   * runtime as the tool's `inputSchema` (RFC-007) so an agent knows the exact
+   * arguments — a required id, a query, etc. Omitted → a permissive object schema.
+   */
+  readonly inputSchema?: Readonly<Record<string, unknown>>;
 }
 
 export interface CapabilityBinding {

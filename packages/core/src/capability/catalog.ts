@@ -405,7 +405,40 @@ const CAPABILITIES: readonly Capability[] = [
   },
 ];
 
-/** A fresh catalog map keyed by capability name. */
+/**
+ * Per-capability input JSON Schema (capability-catalog.md). Surfaced to the runtime
+ * as each tool's `inputSchema` so an agent knows the exact arguments — a required id,
+ * a query — instead of guessing (which made e.g. document.summarize fail repeatedly).
+ * A capability with no entry advertises a permissive object schema.
+ */
+const str = (description: string) => ({ type: "string", description });
+const obj = (properties: Record<string, unknown>, required?: readonly string[]) => ({
+  type: "object",
+  properties,
+  ...(required !== undefined && required.length > 0 ? { required } : {}),
+});
+
+const CAPABILITY_INPUT_SCHEMAS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+  "memory.search": obj({ query: str("Text to match; omit to return all readable memory.") }),
+  "memory.capture": obj({ content: str("The note text to record (private by default)."), summary: str("Optional short summary.") }, ["content"]),
+  "memory.share": obj({ itemId: str("Id of the memory item to share."), memberIds: { type: "array", items: { type: "string" }, description: "Member ids to share it with." } }, ["itemId"]),
+  "memory.revoke_share": obj({ itemId: str("Id of the memory item."), memberId: str("Member whose share to withdraw.") }, ["itemId", "memberId"]),
+  "document.search": obj({ query: str("Text to match; omit to list all shared documents.") }),
+  "document.summarize": obj({ documentId: str("Id of the document to summarize — use an id returned by document.search.") }, ["documentId"]),
+  "sphere.note.create": obj({ content: str("The shared note text (visible to the whole Sphere)."), summary: str("Optional short summary.") }, ["content"]),
+  "sphere.project.create": obj({ title: str("Project title."), description: str("Optional description.") }, ["title"]),
+  "calendar.read": obj({}),
+  "calendar.create_event": obj({ title: str("Event title."), start: str("Start time (ISO-8601)."), calendarId: str("Optional target calendar id.") }, ["title", "start"]),
+  "message.send": obj({ to: str("Recipient (channel-specific)."), body: str("Message body.") }, ["body"]),
+  "payment.execute": obj({ amount: { type: "number", description: "Amount to pay." }, to: str("Payee.") }, ["amount"]),
+};
+
+/** A fresh catalog map keyed by capability name, with input schemas attached. */
 export function defaultCapabilityCatalog(): ReadonlyMap<string, Capability> {
-  return new Map(CAPABILITIES.map((c) => [c.name, c]));
+  return new Map(
+    CAPABILITIES.map((c) => {
+      const inputSchema = CAPABILITY_INPUT_SCHEMAS[c.name];
+      return [c.name, inputSchema !== undefined ? { ...c, inputSchema } : c];
+    }),
+  );
 }
