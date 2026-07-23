@@ -167,4 +167,34 @@ describe("Sphere MCP server (RFC-007, ADR-007)", () => {
     );
     expect((res.result as { isError: boolean }).isError).toBe(true);
   });
+
+  it("RFC-040: a require_approval capability is a pending-approval, not an error — persisted for a human", async () => {
+    const deps = await seed();
+    // Make memory.search require approval instead of allow, for the same agent.
+    const store = deps.store as InMemorySphereStore;
+    const snap = (await store.load("sph_1"))!;
+    const imported = exportSphere({
+      sphere: snap.sphere,
+      identities: [...snap.identities],
+      agents: [...snap.agents],
+      memory: [],
+      policies: [{ ...allowSearchForParents, effect: "require_approval", approverRoles: ["parent"] }],
+      bindings: [searchBinding],
+      exportedAt: NOW,
+    });
+    await store.save(imported);
+
+    const res = await handleSphereMcpRpc(
+      { sphereId: "sph_1", token: "good-token", request: { id: 4, method: "tools/call", params: { name: "memory.search", arguments: { query: "x" } } } },
+      deps,
+    );
+    const r = res.result as { isError: boolean; content: Array<{ text: string }>; _meta?: { status?: string; approvalId?: string } };
+    // Pending approval is a legitimate deferred outcome, NOT a tool error.
+    expect(r.isError).toBe(false);
+    expect(r._meta?.status).toBe("pending_approval");
+    expect(r.content[0]!.text.toLowerCase()).toContain("approval");
+    expect(r.content[0]!.text.toLowerCase()).toContain("not performed yet");
+    // The request is persisted so an approver can grant it.
+    expect(await deps.approvals.listPending("sph_1")).toHaveLength(1);
+  });
 });

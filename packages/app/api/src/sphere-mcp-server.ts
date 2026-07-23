@@ -175,8 +175,25 @@ export async function handleSphereMcpRpc(
     if (result.status === "ok") {
       return ok({ content: [{ type: "text", text: JSON.stringify(result.output ?? null) }], isError: false });
     }
-    // denied / pending_approval / unauthenticated -> a tool error result (the
-    // call did not execute). The reason is user-safe; no content leaks.
+    if (result.status === "pending_approval") {
+      // A deferred, LEGITIMATE outcome — not an error. Tell the agent clearly so it
+      // relays "approval requested" to the user instead of reporting a failure and
+      // giving up (RFC-040). isError:false because the request was accepted & queued;
+      // the message makes unambiguous that it has NOT run yet.
+      const approvalId = result.approval?.id ?? "(pending)";
+      const roles = result.approval?.approverRoles?.join(", ") ?? "an approver";
+      const text =
+        `Approval required — this action was NOT performed yet. A request has been submitted for a human to approve ` +
+        `(approval ${approvalId}; approver: ${roles}). It will run automatically once approved in the Approvals inbox. ` +
+        `Tell the user their approval is needed there; do not retry this tool.`;
+      return ok({
+        content: [{ type: "text", text }],
+        isError: false,
+        _meta: { status: "pending_approval", approvalId, correlationId: result.correlationId },
+      });
+    }
+    // denied / unauthenticated / failed -> a real tool error. The reason is
+    // user-safe; no content leaks.
     return ok({
       content: [{ type: "text", text: result.reason }],
       isError: true,
