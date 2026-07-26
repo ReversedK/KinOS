@@ -11,6 +11,7 @@ import {
   type PolicyEffect,
   type SpherePolicy,
 } from "../lib/api";
+import { capabilityCategory, capabilityLabel } from "../lib/capabilityMeta";
 import { describeOutcome } from "../lib/outcome";
 
 const ROLES = ["parent", "teenager", "child", "guest"] as const;
@@ -18,6 +19,11 @@ const EFFECT_LABEL: Record<PolicyEffect, string> = {
   allow: "Allow",
   deny: "Deny",
   require_approval: "Require approval",
+};
+const EFFECT_VERB: Record<PolicyEffect, string> = {
+  allow: "may",
+  deny: "may not",
+  require_approval: "must ask approval to",
 };
 
 export function PolicyManager({
@@ -85,6 +91,15 @@ export function PolicyManager({
     });
   }
 
+  // Capabilities grouped by category for the picker's optgroups.
+  const capabilityGroups = Array.from(
+    capabilities.reduce((acc, c) => {
+      const title = capabilityCategory(c.name).title;
+      (acc.get(title) ?? acc.set(title, []).get(title)!).push(c);
+      return acc;
+    }, new Map<string, CatalogCapability[]>()),
+  ).map(([title, caps]) => ({ title, caps }));
+
   return (
     <div className="stack">
       <div className="row between">
@@ -102,21 +117,24 @@ export function PolicyManager({
       {open ? (
         <div className="rule-builder reveal">
           <div className="rule-sentence">
-            <span>For</span>
-            <select className="select inline-select" value={role} onChange={(event) => setRole(event.target.value)}>
+            <select className="select inline-select" value={role} onChange={(event) => setRole(event.target.value)} aria-label="Role">
               {ROLES.map((value) => <option key={value}>{value}</option>)}
             </select>
-            <select className="select inline-select effect-select" value={effect} onChange={(event) => setEffect(event.target.value as PolicyEffect)}>
-              {Object.entries(EFFECT_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <select className="select inline-select effect-select" value={effect} onChange={(event) => setEffect(event.target.value as PolicyEffect)} aria-label="Effect">
+              {(Object.keys(EFFECT_VERB) as PolicyEffect[]).map((value) => <option key={value} value={value}>{EFFECT_VERB[value]}</option>)}
             </select>
-            <span>the capability</span>
-            <select className="select inline-select capability-select" value={capability} onChange={(event) => setCapability(event.target.value)}>
-              {capabilities.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+            <select className="select inline-select capability-select" value={capability} onChange={(event) => setCapability(event.target.value)} aria-label="Capability">
+              {capabilityGroups.map(({ title, caps }) => (
+                <optgroup key={title} label={title}>
+                  {caps.map((item) => <option key={item.name} value={item.name}>{capabilityLabel(item.name)}</option>)}
+                </optgroup>
+              ))}
             </select>
           </div>
+          <p className="faint mono" style={{ fontSize: 12, marginTop: -6 }}>{capability}</p>
           {effect === "require_approval" ? (
             <div className="field compact-field">
-              <label>Approver role</label>
+              <label>Approved by</label>
               <select className="select" value={approverRole} onChange={(event) => setApproverRole(event.target.value)}>
                 {ROLES.map((value) => <option key={value}>{value}</option>)}
               </select>
@@ -124,10 +142,16 @@ export function PolicyManager({
           ) : null}
           <div className="field">
             <label>Human-readable reason</label>
-            <input className="input" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Parents may create calendar events for the family." />
+            <input
+              className="input"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder={`${role.charAt(0).toUpperCase() + role.slice(1)}s ${EFFECT_VERB[effect]} ${capabilityLabel(capability).toLowerCase()}.`}
+            />
+            <span className="hint">Shown in the rule list and the audit trail — write it for a human.</span>
           </div>
           <div className="row">
-            <button className="btn primary" disabled={busy !== undefined || description.trim() === ""} onClick={() => void create()}>{busy ? <span className="spin" /> : null} Create active rule</button>
+            <button className="btn primary" disabled={busy !== undefined || description.trim() === ""} onClick={() => void create()}>{busy ? <span className="spin" /> : null} Create rule</button>
             <button className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
           </div>
         </div>
@@ -143,9 +167,15 @@ export function PolicyManager({
                 <strong>{policy.description}</strong>
               </div>
               <div className="policy-scope">
-                <span>{policy.subjectSelector.roles?.join(", ") ?? "all roles"}</span>
+                <span>{policy.subjectSelector.roles?.join(", ") ?? policy.subjectSelector.ageProfiles?.join(", ") ?? "everyone"}</span>
                 <span>→</span>
-                <code>{policy.resourceSelector.capabilityNames?.join(", ") ?? "any capability"}</code>
+                {policy.resourceSelector.capabilityNames !== undefined ? (
+                  policy.resourceSelector.capabilityNames.map((c) => (
+                    <span key={c} className="pill" title={c}>{capabilityLabel(c)}</span>
+                  ))
+                ) : (
+                  <span>any capability</span>
+                )}
                 {policy.approverRoles ? <span>· approval by {policy.approverRoles.join(", ")}</span> : null}
               </div>
               <span className="faint mono">{policy.id} · v{policy.version}</span>
