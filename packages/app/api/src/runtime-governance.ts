@@ -16,7 +16,7 @@
  */
 
 import {
-  ageProfileForRole,
+  effectiveAgeProfile,
   assertSnapshotRestorable,
   createRuntimeStateSnapshot,
   defaultCapabilityCatalog,
@@ -109,7 +109,7 @@ export async function projectAgentConfig(
     agentId: agent.id,
     memberId: owner.id,
     role: owner.role,
-    ageProfile: ageProfileForRole(owner.role as Role),
+    ageProfile: effectiveAgeProfile(owner),
   };
 
   // Provision/rotate the per-agent token (ADR-007). Stable secretRef across

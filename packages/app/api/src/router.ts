@@ -13,6 +13,7 @@
 
 import {
   ageProfileForRole,
+  effectiveAgeProfile,
   assertProfileAllowed,
   beginSensitiveAction,
   changeModelPreference,
@@ -506,7 +507,8 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     // role. Strict no-self-approval still applies whenever ≥2 exist.
     const requesterMember = pending.approval.requestedBy.onBehalfOf;
     const eligibleApprovers = imported.sphere.members.filter(
-      (m) => m.status === "active" && pending.approval.approverRoles.includes(m.role) && ageProfileForRole(m.role) === "adult",
+      // RFC-042: a member's EXPLICIT age profile decides adulthood, not the role.
+      (m) => m.status === "active" && pending.approval.approverRoles.includes(m.role) && effectiveAgeProfile(m) === "adult",
     );
     const soleEligibleApprover =
       requesterMember !== undefined && eligibleApprovers.length === 1 && eligibleApprovers[0]?.id === requesterMember;
@@ -1729,7 +1731,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       if (segments[2] === "members") {
         // Security facts only: id, role, status — never private profile content.
         return ok({
-          members: snap.sphere.members.map((m) => ({ id: m.id, role: m.role, status: m.status })),
+          members: snap.sphere.members.map((m) => ({ id: m.id, role: m.role, ageProfile: effectiveAgeProfile(m), status: m.status })),
         });
       }
       return ok({

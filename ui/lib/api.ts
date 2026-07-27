@@ -35,6 +35,8 @@ export interface PendingApproval {
 export interface MemberSummary {
   readonly id: string;
   readonly role: string;
+  /** RFC-042: the member's age profile, independent of role. */
+  readonly ageProfile?: "adult" | "teen" | "child";
   readonly status: string;
 }
 
@@ -104,7 +106,8 @@ export function apiBaseUrl(): string {
  */
 export const CLIENT_API_BASE = "/api/kinos";
 
-/** Map a Sphere role to its age profile (mirrors the core's ageProfileForRole). */
+/** Map a legacy role to its implied age profile (mirrors the core; RFC-042 fallback
+ *  for a member with no explicit ageProfile — generic roles default to adult). */
 export function ageProfileForRole(role: string): "adult" | "teen" | "child" {
   if (role === "child") return "child";
   if (role === "teenager") return "teen";
@@ -122,11 +125,13 @@ export function resolveActingAdmin(
   members: readonly MemberSummary[],
   actorId?: string,
 ): { adminMember?: MemberSummary; admin: ActingSubject } {
+  // RFC-042: prefer an explicit admin/parent(legacy) authority role.
+  const isAdminRole = (r: string) => r === "admin" || r === "parent";
   const adminMember =
-    members.find((m) => m.id === actorId) ?? members.find((m) => m.role === "parent") ?? members[0];
+    members.find((m) => m.id === actorId) ?? members.find((m) => isAdminRole(m.role)) ?? members[0];
   const admin: ActingSubject = adminMember
-    ? { memberId: adminMember.id, role: adminMember.role, ageProfile: ageProfileForRole(adminMember.role) }
-    : { role: "parent", ageProfile: "adult" };
+    ? { memberId: adminMember.id, role: adminMember.role, ageProfile: adminMember.ageProfile ?? ageProfileForRole(adminMember.role) }
+    : { role: "admin", ageProfile: "adult" };
   return { adminMember, admin };
 }
 
@@ -373,7 +378,7 @@ export function inviteMember(
   baseUrl: string,
   sphereId: string,
   subject: ActingSubject,
-  input: { readonly role: string; readonly displayName: string },
+  input: { readonly role: string; readonly ageProfile?: "adult" | "teen" | "child"; readonly displayName: string },
   fetchImpl: typeof fetch = fetch,
 ): Promise<ExecutionOutcome> {
   return executeCapability(baseUrl, sphereId, "member.invite", subject, input, fetchImpl);

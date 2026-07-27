@@ -92,7 +92,7 @@ export const IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES = [
 ] as const;
 
 /** The default administrator roles that the admin seed grants provisioning to. */
-export const DEFAULT_ADMIN_ROLES: readonly Role[] = ["parent"];
+export const DEFAULT_ADMIN_ROLES: readonly Role[] = ["admin", "parent"];
 
 /** The default enabled bindings for the provisioning capabilities. */
 export function provisioningBindings(): CapabilityBinding[] {

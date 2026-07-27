@@ -228,7 +228,7 @@ describe("API e2e over real SQLite adapters", () => {
     expect(summary).toMatchObject({ id: "sph_1", name: "Doe Family", members: 1 });
 
     const members = await (await fetch(`${base}/spheres/sph_1/members`)).json();
-    expect(members).toEqual({ members: [{ id: "mbr_p1", role: "parent", status: "active" }] });
+    expect(members).toEqual({ members: [{ id: "mbr_p1", role: "parent", ageProfile: "adult", status: "active" }] });
 
     const agents = await (await fetch(`${base}/spheres/sph_1/agents`)).json();
     expect((agents as { agents: unknown[] }).agents).toHaveLength(1);

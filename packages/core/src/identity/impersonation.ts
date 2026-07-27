@@ -15,20 +15,18 @@
  * and reads the dev flag from the environment.
  */
 
-import type { Member, Role } from "../sphere/member.js";
+import { effectiveAgeProfile, normalizeRole, type Member, type Role } from "../sphere/member.js";
 import type { AgeProfile } from "../policy/types.js";
 
-/** Map a Sphere role to its age profile. Minors map to teen/child; others adult. */
+/**
+ * Map a Sphere role to the age profile it *implies* (RFC-042 compat): a legacy
+ * family role carries its age (teenager→teen, child→child, parent→adult); a generic
+ * governance role (admin/member/guest) does not encode age and defaults to adult.
+ * Only a fallback — a Member's explicit `ageProfile` is the source of truth (see
+ * `effectiveAgeProfile`).
+ */
 export function ageProfileForRole(role: Role): AgeProfile {
-  switch (role) {
-    case "teenager":
-      return "teen";
-    case "child":
-      return "child";
-    case "parent":
-    case "guest":
-      return "adult";
-  }
+  return normalizeRole(role).ageProfile;
 }
 
 export interface ImpersonationRequest {
@@ -78,7 +76,9 @@ export function resolveImpersonatedSubject(
     subject: {
       memberId: member.id,
       role: member.role,
-      ageProfile: ageProfileForRole(member.role),
+      // RFC-042: the member's EXPLICIT age profile wins; legacy members fall back
+      // to the age their role implied. Impersonation carries the real safety floor.
+      ageProfile: effectiveAgeProfile(member),
     },
     impersonated: true,
     impersonatedBy: req.byDeveloper,

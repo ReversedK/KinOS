@@ -14,7 +14,7 @@
  */
 
 import {
-  ageProfileForRole,
+  effectiveAgeProfile,
   defaultCapabilityCatalog,
   handleSphereMcpCall,
   importSphere,
@@ -106,7 +106,7 @@ export async function handleSphereMcpRpc(
     agentId: agent.id,
     memberId: owner.id,
     role: owner.role,
-    ageProfile: ageProfileForRole(owner.role as Role),
+    ageProfile: effectiveAgeProfile(owner),
   };
   const imported = importSphere(snap);
   const catalog = defaultCapabilityCatalog();

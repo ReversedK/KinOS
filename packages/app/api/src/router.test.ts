@@ -195,7 +195,7 @@ describe("API router (api-contract.md)", () => {
     const res = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/members" }, await deps());
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      members: [{ id: "mbr_p1", role: "parent", status: "active" }],
+      members: [{ id: "mbr_p1", role: "parent", ageProfile: "adult", status: "active" }],
     });
   });
 

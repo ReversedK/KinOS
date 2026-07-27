@@ -127,7 +127,7 @@ export async function createSphereProvision(
   const name = (input.name ?? "").trim();
   if (name.length === 0) throw new Error("Sphere name must not be empty");
   const type: SphereType = input.type ?? "family";
-  const founderRole: Role = input.founderRole ?? "parent";
+  const founderRole: Role = input.founderRole ?? "admin";
   const memberId = deps.newMemberId();
   const identityId = deps.newIdentityId();
 
@@ -157,6 +157,8 @@ export async function createSphereProvision(
 export interface InviteMemberInput {
   readonly sphereId?: string;
   readonly role?: Role;
+  /** RFC-042: the member's age profile, independent of role. */
+  readonly ageProfile?: "adult" | "teen" | "child";
   readonly displayName?: string;
   readonly correlationId?: string;
 }
@@ -180,7 +182,7 @@ export async function inviteMemberProvision(
   const imported = importSphere(await loadOrThrow(deps, input.sphereId));
   const memberId = deps.newMemberId();
   const identityId = deps.newIdentityId();
-  const sphere = addMember(imported.sphere, { memberId, identityId, role: input.role });
+  const sphere = addMember(imported.sphere, { memberId, identityId, role: input.role, ...(input.ageProfile !== undefined ? { ageProfile: input.ageProfile } : {}) });
   const identity = createIdentity({ id: identityId, displayName });
   const at = nowOf(deps);
   await deps.store.save(

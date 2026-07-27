@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { addMember, createSphere, listMembers } from "./sphere.js";
-import { isMinor } from "./member.js";
+import { effectiveAgeProfile, isMinor, normalizeRole } from "./member.js";
 
 // Encodes results-contract §19: "a Sphere can be created" and
 // "two adults and one child can be added".
@@ -21,6 +21,31 @@ describe("Sphere creation and membership (results-contract §19)", () => {
     expect(sphere.status).toBe("active");
     expect(sphere.administrators).toContain("mbr_p1");
     expect(listMembers(sphere)).toHaveLength(1);
+  });
+
+  it("RFC-042: role and age profile are independent — a generic 'member' can be a teen minor", () => {
+    let sphere = createSphere({ id: "sph_1", type: "team", name: "Acme", founder: { memberId: "mbr_a", identityId: "idy_a", role: "admin" } });
+    // A generic governance role with an EXPLICIT age profile.
+    sphere = addMember(sphere, { memberId: "mbr_t", identityId: "idy_t", role: "member", ageProfile: "teen" });
+    const admin = sphere.members.find((m) => m.id === "mbr_a")!;
+    const teen = sphere.members.find((m) => m.id === "mbr_t")!;
+    // admin: generic role, adult; teen: generic role, minor — age is NOT derived from role.
+    expect(admin.role).toBe("admin");
+    expect(effectiveAgeProfile(admin)).toBe("adult");
+    expect(teen.role).toBe("member");
+    expect(effectiveAgeProfile(teen)).toBe("teen");
+    expect(isMinor(effectiveAgeProfile(teen))).toBe(true);
+    expect(isMinor(effectiveAgeProfile(admin))).toBe(false);
+  });
+
+  it("RFC-042: a legacy role normalizes to a governance role + age profile (backward compat)", () => {
+    expect(normalizeRole("parent")).toEqual({ role: "admin", ageProfile: "adult" });
+    expect(normalizeRole("child")).toEqual({ role: "member", ageProfile: "child" });
+    expect(normalizeRole("teenager")).toEqual({ role: "member", ageProfile: "teen" });
+    // A member created with a legacy role gets an explicit age profile, role kept for compat.
+    let s = createSphere({ id: "sph_2", type: "family", name: "Doe", founder: { memberId: "mbr_p", identityId: "idy_p", role: "parent" } });
+    s = addMember(s, { memberId: "mbr_c", identityId: "idy_c", role: "child" });
+    expect(effectiveAgeProfile(s.members.find((m) => m.id === "mbr_c")!)).toBe("child");
   });
 
   it("rejects an empty Sphere name (deny by default)", () => {

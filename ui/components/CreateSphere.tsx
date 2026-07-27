@@ -27,7 +27,7 @@ export function CreateSphere() {
     setBusy(true);
     setNote(undefined);
     // Bootstrap: the local operator is an adult (deny-by-default otherwise).
-    const operator: ActingSubject = { role: "parent", ageProfile: "adult" };
+    const operator: ActingSubject = { role: "admin", ageProfile: "adult" };
     try {
       const res = await createSphereRequest(CLIENT_API_BASE, operator, {
         name: name.trim(),

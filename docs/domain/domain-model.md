@@ -37,7 +37,11 @@ Fields/concepts:
 - id;
 - identity;
 - Sphere membership;
-- role;
+- role — the **governance** authority in the Sphere (`admin | member | guest`),
+  independent of age (RFC-042). Legacy family roles (`parent | teenager | child`)
+  are accepted and normalized on import;
+- age profile — the **supervision** dimension (`adult | teen | child`), an explicit
+  Member attribute independent of role; minors are restricted by default (RFC-042);
 - profile;
 - status.
 

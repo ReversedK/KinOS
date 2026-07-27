@@ -14,7 +14,7 @@ import {
 import { capabilityCategory, capabilityLabel } from "../lib/capabilityMeta";
 import { describeOutcome } from "../lib/outcome";
 
-const ROLES = ["parent", "teenager", "child", "guest"] as const;
+const ROLES = ["admin", "member", "guest"] as const;
 const EFFECT_LABEL: Record<PolicyEffect, string> = {
   allow: "Allow",
   deny: "Deny",
@@ -39,10 +39,10 @@ export function PolicyManager({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [role, setRole] = useState("parent");
+  const [role, setRole] = useState("admin");
   const [capability, setCapability] = useState(capabilities[0]?.name ?? "");
   const [effect, setEffect] = useState<PolicyEffect>("allow");
-  const [approverRole, setApproverRole] = useState("parent");
+  const [approverRole, setApproverRole] = useState("admin");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState<string>();
   const [note, setNote] = useState<{ tone: string; text: string }>();

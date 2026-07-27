@@ -8,7 +8,8 @@
  * deterministic and free of any crypto/random dependency.
  */
 
-import type { Member, Role } from "./member.js";
+import { normalizeRole, type Member, type Role } from "./member.js";
+import type { AgeProfile } from "../policy/types.js";
 
 /** Minimum Sphere types (results-contract §2). */
 export type SphereType = "person" | "family" | "team" | "organization";
@@ -36,6 +37,9 @@ export interface MemberInput {
   readonly memberId: string;
   readonly identityId: string;
   readonly role: Role;
+  /** The member's age profile (RFC-042), independent of role. Defaults to the age
+   *  the role implies when omitted. */
+  readonly ageProfile?: AgeProfile;
 }
 
 export interface CreateSphereInput {
@@ -51,6 +55,9 @@ function activeMember(input: MemberInput): Member {
     id: input.memberId,
     identityId: input.identityId,
     role: input.role,
+    // RFC-042: always store an EXPLICIT age profile so the safety floor is a fact,
+    // not an inference. Given wins; else derive from the (possibly legacy) role.
+    ageProfile: input.ageProfile ?? normalizeRole(input.role).ageProfile,
     status: "active",
   };
 }

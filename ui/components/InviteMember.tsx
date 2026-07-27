@@ -6,18 +6,26 @@ import { useState } from "react";
 import { CLIENT_API_BASE, inviteMember, type ActingSubject } from "../lib/api";
 import { describeOutcome } from "../lib/outcome";
 
-const ROLES = ["parent", "teenager", "child", "guest"] as const;
+// RFC-042: governance role and age profile are independent fields.
+const ROLES = ["admin", "member", "guest"] as const;
+const AGES = [
+  { value: "adult", label: "Adult" },
+  { value: "teen", label: "Teen (minor)" },
+  { value: "child", label: "Child (minor)" },
+] as const;
 
 /**
- * Invite (add) a member to a Sphere (RFC-008 `member.invite`). Acts as the
- * Sphere administrator; the Policy Engine authorizes via the seeded admin
- * policy. Minors (child/teenager) are restricted by default downstream.
+ * Invite (add) a member to a Sphere (RFC-008 `member.invite`, RFC-042). A member has
+ * a governance role (admin/member/guest) AND an age profile (adult/teen/child) — the
+ * two are independent. Acts as the Sphere administrator; the Policy Engine authorizes
+ * via the seeded admin policy. Minors (teen/child) are restricted by default.
  */
 export function InviteMember({ sphereId, admin }: { sphereId: string; admin: ActingSubject }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState<(typeof ROLES)[number]>("child");
+  const [role, setRole] = useState<(typeof ROLES)[number]>("member");
+  const [ageProfile, setAgeProfile] = useState<(typeof AGES)[number]["value"]>("adult");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ tone: string; text: string }>();
 
@@ -26,7 +34,7 @@ export function InviteMember({ sphereId, admin }: { sphereId: string; admin: Act
     setBusy(true);
     setNote(undefined);
     try {
-      const res = await inviteMember(CLIENT_API_BASE, sphereId, admin, { role, displayName: displayName.trim() });
+      const res = await inviteMember(CLIENT_API_BASE, sphereId, admin, { role, ageProfile, displayName: displayName.trim() });
       setNote(describeOutcome(res));
       if (res.status === "executed") {
         setDisplayName("");
@@ -61,6 +69,14 @@ export function InviteMember({ sphereId, admin }: { sphereId: string; admin: Act
               <option key={r} value={r}>
                 {r}
               </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="im-age">Age</label>
+          <select id="im-age" className="select" value={ageProfile} onChange={(e) => setAgeProfile(e.target.value as (typeof AGES)[number]["value"])}>
+            {AGES.map((a) => (
+              <option key={a.value} value={a.value}>{a.label}</option>
             ))}
           </select>
         </div>
