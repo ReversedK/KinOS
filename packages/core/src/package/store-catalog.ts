@@ -11,26 +11,6 @@ import { createManifest, type PackageManifest } from "./package.js";
 
 const CATALOG: readonly PackageManifest[] = [
   createManifest({
-    id: "minecraft-mcp",
-    type: "mcp",
-    title: "Minecraft (MCP)",
-    description: "Connects your agent to a Minecraft world so it can build and inspect structures.",
-    version: "1.0.0",
-    publisher: "kinos",
-    ageRating: "all",
-    providesCapabilities: ["minecraft.build_structure"],
-  }),
-  createManifest({
-    id: "minecraft-themepark",
-    type: "skill",
-    title: "Minecraft Theme Park",
-    description: "Lets your agent build a themed amusement park in Minecraft.",
-    version: "1.0.0",
-    publisher: "kinos",
-    ageRating: "all",
-    dependencies: [{ packageId: "minecraft-mcp", versionRange: "^1" }],
-  }),
-  createManifest({
     id: "family-calendar",
     type: "skill",
     title: "Shared Calendar",

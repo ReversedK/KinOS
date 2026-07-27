@@ -12,11 +12,6 @@ describe("store catalog (RFC-002)", () => {
     expect(catalog.map((m) => m.type)).toContain("skill");
   });
 
-  it("a skill declares its mcp dependency (resolved/deduped at install)", () => {
-    const themepark = findStorePackage("minecraft-themepark");
-    expect(themepark?.dependencies[0]?.packageId).toBe("minecraft-mcp");
-  });
-
   it("returns a fresh copy and undefined for unknown ids", () => {
     expect(defaultStoreCatalog()).not.toBe(defaultStoreCatalog());
     expect(findStorePackage("nope")).toBeUndefined();

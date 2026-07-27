@@ -996,7 +996,7 @@ describe("API router — package store", () => {
     const res = await handleApiRequest({ method: "GET", path: "/store" }, await pkgDeps([]));
     expect(res.status).toBe(200);
     const pkgs = (res.body as { packages: { id: string }[] }).packages;
-    expect(pkgs.some((p) => p.id === "minecraft-themepark")).toBe(true);
+    expect(pkgs.some((p) => p.id === "family-calendar")).toBe(true);
   });
 
   it("RFC-041: exposes per-capability default effect + approval floor for the grant wizard", async () => {
@@ -1032,13 +1032,16 @@ describe("API router — package store", () => {
     expect(res.body).toMatchObject({ id: "family-calendar", status: "enabled" });
   });
 
-  it("installs absent dependencies (RFC-002 resolve + dedup)", async () => {
+  it("reports the resolved install plan in the response (RFC-002)", async () => {
+    // No curated catalog package declares a dependency, so the plan for a single
+    // package is just that package. Dependency resolution + dedup across a chain is
+    // exercised at the unit level in install-plan.test.ts.
     const deps = await pkgDeps([allowAdultPackages]);
-    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "minecraft-themepark" } }, deps);
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-notes" } }, deps);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: "minecraft-themepark", installed: ["minecraft-mcp", "minecraft-themepark"] });
+    expect(res.body).toMatchObject({ id: "family-notes", installed: ["family-notes"] });
     const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/packages" }, deps);
-    expect((list.body as { packages: { id: string }[] }).packages.map((p) => p.id).sort()).toEqual(["minecraft-mcp", "minecraft-themepark"]);
+    expect((list.body as { packages: { id: string }[] }).packages.map((p) => p.id).sort()).toEqual(["family-notes"]);
   });
 
   it("denies install by default when no policy allows it (403)", async () => {
