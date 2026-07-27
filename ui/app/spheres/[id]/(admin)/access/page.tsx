@@ -51,7 +51,7 @@ export default async function AccessSection({
           {pendingApprovals.length === 0 ? (
             <div className="empty">
               <span className="empty-glyph">✓</span>
-              Nothing awaiting approval. Approval-gated actions (e.g. proposing a calendar event) appear here for a parent to decide.
+              Nothing awaiting approval. Approval-gated actions (e.g. proposing a calendar event) appear here for an approver to decide.
             </div>
           ) : (
             <div className="stack">

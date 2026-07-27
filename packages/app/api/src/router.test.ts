@@ -1020,7 +1020,7 @@ describe("API router — package store", () => {
     expect(res.body).toMatchObject({ id: "family-calendar", status: "installed" });
     const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/packages" }, deps);
     expect((list.body as { packages: { id: string; status: string }[] }).packages).toEqual([
-      { id: "family-calendar", type: "skill", title: "Family Calendar", description: expect.any(String), status: "installed" },
+      { id: "family-calendar", type: "skill", title: "Shared Calendar", description: expect.any(String), status: "installed" },
     ]);
   });
 

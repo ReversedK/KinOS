@@ -6,12 +6,12 @@ import { CLIENT_API_BASE, executeCapability, type ActingSubject } from "../lib/a
 import { describeOutcome } from "../lib/outcome";
 
 /**
- * Family Calendar panel (RFC-012): list the Sphere's events and propose a new one,
+ * Shared Calendar panel (RFC-012): list the Sphere's events and propose a new one,
  * through the governed capability endpoints. The console decides nothing (RFC-003):
  * `calendar.read` returns the Sphere-scoped events; `calendar.create_event` is
- * governed and — per the Family Calendar grant — proposes the event for approval,
+ * governed and — per the Shared Calendar grant — proposes the event for approval,
  * so a create surfaces as "approval required, routed to the inbox" rather than an
- * immediate write. Requires the Family Calendar package installed and enabled.
+ * immediate write. Requires the Shared Calendar package installed and enabled.
  */
 interface CalEvent {
   readonly id: string;
@@ -68,8 +68,8 @@ export function Calendar({ sphereId, actor }: { sphereId: string; actor: ActingS
   return (
     <div className="stack">
       <p className="section-intro">
-        A local-first, Sphere-scoped calendar. Listing shows this Sphere&apos;s events; proposing an event is governed — the Family Calendar
-        grant routes it for a parent&apos;s approval before it is written. Requires the <code>Family Calendar</code> package enabled.
+        A local-first, Sphere-scoped calendar. Listing shows this Sphere&apos;s events; proposing an event is governed — the Shared Calendar
+        grant routes it for an approver&apos;s decision before it is written. Requires the <code>Shared Calendar</code> package enabled.
       </p>
       <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field grow">

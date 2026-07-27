@@ -1,4 +1,3 @@
-import { Activity } from "../../../../components/Activity";
 import {
   apiBaseUrl,
   getAgents,
@@ -7,29 +6,27 @@ import {
   getPendingApprovals,
   getPolicies,
   getRuntime,
-  getSphereAudit,
 } from "../../../../lib/api";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Sphere overview — the at-a-glance landing. Health stats, what needs a human
- * decision now, and the most recent governed activity, each linking into its
- * focused section. The one broad-fetch page (a dashboard summarizes everything);
- * every other section loads only its own slice.
+ * Sphere overview — the at-a-glance landing. Health stats and what needs a human
+ * decision now, each linking into its focused section. The full governed audit
+ * lives in its own Activity section (not previewed here, to keep the landing
+ * focused on state and pending decisions rather than history).
  */
 export default async function SphereOverview({ params }: { params: { id: string } }) {
   const base = apiBaseUrl();
   const id = params.id;
 
-  const [members, agents, runtime, integrations, policies, pendingApprovals, activity] = await Promise.all([
+  const [members, agents, runtime, integrations, policies, pendingApprovals] = await Promise.all([
     getMembers(base, id).catch(() => []),
     getAgents(base, id).catch(() => []),
     getRuntime(base, id).catch(() => undefined),
     getIntegrations(base, id).catch(() => []),
     getPolicies(base, id).catch(() => []),
     getPendingApprovals(base, id).catch(() => []),
-    getSphereAudit(base, id, 8).catch(() => []),
   ]);
 
   const href = (slug: string) => `/spheres/${encodeURIComponent(id)}/${slug}`;
@@ -89,19 +86,6 @@ export default async function SphereOverview({ params }: { params: { id: string 
         </div>
       </div>
 
-      {/* Recent activity — a preview; the full audit lives in Activity. */}
-      <div className="panel">
-        <div className="panel-head">
-          <div>
-            <span className="eyebrow">Audit</span>
-            <h3>Recent activity</h3>
-          </div>
-          <a className="btn sm ghost" href={href("activity")}>Full log →</a>
-        </div>
-        <div className="panel-body">
-          <Activity events={activity} />
-        </div>
-      </div>
     </>
   );
 }

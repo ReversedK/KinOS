@@ -66,7 +66,7 @@ export function CreateSphere() {
       <div className="panel-body stack">
         <div className="field">
           <label htmlFor="cs-name">Name</label>
-          <input id="cs-name" className="input" value={name} placeholder="Doe Family" onChange={(e) => setName(e.target.value)} autoFocus />
+          <input id="cs-name" className="input" value={name} placeholder="e.g. Doe Family, Acme Team, Lincoln High" onChange={(e) => setName(e.target.value)} autoFocus />
         </div>
         <div className="row" style={{ gap: "var(--s4)" }}>
           <div className="field grow">

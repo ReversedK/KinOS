@@ -6,11 +6,11 @@ import { CLIENT_API_BASE, executeCapability, type ActingSubject } from "../lib/a
 import { describeOutcome } from "../lib/outcome";
 
 /**
- * Family Notes panel (RFC-013/015): capture a note and search notes as the
+ * Shared Notes panel (RFC-013/015): capture a note and search notes as the
  * current actor, through the governed capability endpoints. The console decides
  * nothing (RFC-003) — it triggers `memory.capture` / `memory.search` and shows the
  * governed outcome. Search is policy-scoped by the core resolver, so the actor
- * only ever sees notes they are authorized to read; a denial (e.g. Family Notes
+ * only ever sees notes they are authorized to read; a denial (e.g. Shared Notes
  * not enabled/granted) surfaces as a governed message.
  */
 interface NoteHit {
@@ -67,7 +67,7 @@ export function Notes({ sphereId, actor }: { sphereId: string; actor: ActingSubj
     <div className="stack">
       <p className="section-intro">
         Notes are canonical memory. Capturing records a <strong>private</strong> note owned by the acting member; searching returns only
-        what that member is authorized to read (policy-scoped per item). Requires the <code>Family Notes</code> package installed and enabled.
+        what that member is authorized to read (policy-scoped per item). Requires the <code>Shared Notes</code> package installed and enabled.
       </p>
       <div className="row" style={{ alignItems: "flex-end" }}>
         <div className="field grow">

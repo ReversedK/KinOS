@@ -33,8 +33,8 @@ const CATALOG: readonly PackageManifest[] = [
   createManifest({
     id: "family-calendar",
     type: "skill",
-    title: "Family Calendar",
-    description: "Lets your agent read the family calendar and propose events for approval.",
+    title: "Shared Calendar",
+    description: "Lets your agent read the shared calendar and propose events for approval.",
     version: "1.0.0",
     publisher: "kinos",
     ageRating: "all",
@@ -51,13 +51,13 @@ const CATALOG: readonly PackageManifest[] = [
     // the catalog profile floor denies them regardless).
     defaultPolicies: [
       {
-        description: "Adults may read the family calendar (Family Calendar package).",
+        description: "Adults may read the shared calendar (Shared Calendar package).",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["calendar.read"],
         effect: "allow",
       },
       {
-        description: "Adults may propose calendar events for approval (Family Calendar package).",
+        description: "Adults may propose calendar events for approval (Shared Calendar package).",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["calendar.create_event"],
         effect: "require_approval",
@@ -68,8 +68,8 @@ const CATALOG: readonly PackageManifest[] = [
   createManifest({
     id: "family-notes",
     type: "skill",
-    title: "Family Notes",
-    description: "Lets your agent search the family's shared notes and share a note with a member.",
+    title: "Shared Notes",
+    description: "Lets your agent search the group's shared notes and share a note with a member.",
     version: "1.0.0",
     publisher: "kinos",
     ageRating: "all",
@@ -82,13 +82,13 @@ const CATALOG: readonly PackageManifest[] = [
     ],
     defaultPolicies: [
       {
-        description: "Adults may capture, search, and revoke shares of the family notes (Family Notes package).",
+        description: "Adults may capture, search, and revoke shares of the shared notes (Shared Notes package).",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["memory.capture", "memory.search", "memory.revoke_share"],
         effect: "allow",
       },
       {
-        description: "Adults may share a note, subject to approval (Family Notes package).",
+        description: "Adults may share a note, subject to approval (Shared Notes package).",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["memory.share"],
         effect: "require_approval",
@@ -186,8 +186,8 @@ const CATALOG: readonly PackageManifest[] = [
   createManifest({
     id: "household-messaging",
     type: "skill",
-    title: "Household Messaging",
-    description: "Lets your agent draft and send an external message on the household's behalf, subject to approval.",
+    title: "Messaging",
+    description: "Lets your agent draft and send an external message on the group's behalf, subject to approval.",
     version: "1.0.0",
     publisher: "kinos",
     ageRating: "teen",
@@ -197,7 +197,7 @@ const CATALOG: readonly PackageManifest[] = [
     ],
     defaultPolicies: [
       {
-        description: "Adults may send an external message, subject to approval (Household Messaging package).",
+        description: "Adults may send an external message, subject to approval (Messaging package).",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["message.send"],
         effect: "require_approval",
@@ -401,8 +401,8 @@ const CATALOG: readonly PackageManifest[] = [
   createManifest({
     id: "household-payments",
     type: "skill",
-    title: "Household Payments",
-    description: "Lets your agent execute a household payment. Always requires approval; adults only.",
+    title: "Payments",
+    description: "Lets your agent execute a payment on the group's behalf. Always requires approval; adults only.",
     version: "1.0.0",
     publisher: "kinos",
     ageRating: "adult",
@@ -414,7 +414,7 @@ const CATALOG: readonly PackageManifest[] = [
     // approval floor on payment.execute — a demonstration that the floor wins.
     defaultPolicies: [
       {
-        description: "Adults may execute a household payment (Household Payments package). The critical approval floor still applies per call.",
+        description: "Adults may execute a payment (Payments package). The critical approval floor still applies per call.",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["payment.execute"],
         effect: "allow",

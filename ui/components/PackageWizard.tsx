@@ -223,7 +223,7 @@ export function PackageWizard({
               <div className="stack tight">
                 <div className="field">
                   <label>Approval for sensitive actions</label>
-                  <span className="hint">Choose per action whether the agent may do it directly, or must ask a parent each time. Configure it once here so you don't approve every single action.</span>
+                  <span className="hint">Choose per action whether the agent may do it directly, or must be approved each time. Configure it once here so you don't approve every single action.</span>
                 </div>
                 {approvalCaps.map((c) => {
                   const eff = effectOf(c);
@@ -248,7 +248,7 @@ export function PackageWizard({
                             disabled={busy}
                             onClick={() => setEffects((e) => ({ ...e, [c.name]: "require_approval" }))}
                           >
-                            Ask a parent
+                            Require approval
                           </button>
                         </div>
                       )}
