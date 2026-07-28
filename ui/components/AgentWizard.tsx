@@ -44,7 +44,9 @@ export function AgentWizard({
 
   const [ownerId, setOwnerId] = useState(members[0]?.id ?? "");
   const [name, setName] = useState("");
-  const [scope, setScope] = useState<string[]>([]);
+  // RFC-043: memory is on by default so a deployed agent can remember/recall across sessions (removable).
+  const DEFAULT_SCOPE = ["memory.capture", "memory.search"];
+  const [scope, setScope] = useState<string[]>(DEFAULT_SCOPE);
   const [agentId, setAgentId] = useState<string>();
   const [projection, setProjection] = useState<RuntimeProjection | { denied: string }>();
   // Projection is approval-floored (RFC-007): committing it may execute or route for
@@ -56,7 +58,7 @@ export function AgentWizard({
     setBusy(false);
     setNote(undefined);
     setName("");
-    setScope([]);
+    setScope(DEFAULT_SCOPE);
     setAgentId(undefined);
     setProjection(undefined);
     setProjectStatus("none");

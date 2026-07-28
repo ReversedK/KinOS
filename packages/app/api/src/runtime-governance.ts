@@ -20,6 +20,8 @@ import {
   assertSnapshotRestorable,
   createRuntimeStateSnapshot,
   defaultCapabilityCatalog,
+  defaultMemoryBindings,
+  defaultMemoryPolicy,
   importSphere,
   projectAgentRuntimeConfig,
   type AgentTokenStore,
@@ -132,8 +134,10 @@ export async function projectAgentConfig(
     // Hermes runs on exactly the model KinOS decided, not the Sphere default.
     ...(agent.modelPreference !== undefined ? { agentModelPreference: agent.modelPreference } : {}),
     catalog: defaultCapabilityCatalog(),
-    policies: imported.policies,
-    bindings: imported.bindings,
+    // RFC-043: built-in agent memory — always available, so the projected surface
+    // (Hermes tools.include) lists memory.capture/search even with no package.
+    policies: [...imported.policies, defaultMemoryPolicy(sphereId)],
+    bindings: [...imported.bindings, ...defaultMemoryBindings()],
     // RFC-027: the projected surface is narrowed to the agent's declared scope.
     agentScope: agent.enabledCapabilities,
     context: { sphereId, time: stamp, execution: "local", correlationId },

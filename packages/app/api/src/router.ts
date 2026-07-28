@@ -41,6 +41,8 @@ import {
   type Integration,
   projectAgentRuntimeConfig,
   provisioningBindings,
+  defaultMemoryBindings,
+  defaultMemoryPolicy,
   resolveInstallPlan,
   runtimeGovernanceBindings,
   authorizeSessionRead,
@@ -430,7 +432,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         // Runtime-governance capabilities (RFC-007) and provisioning capabilities
         // (RFC-008) bind to the local executor's runtime.*/provisioning.* tools;
         // add their bindings so they run through this same governed pipeline.
-        bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings()],
+        bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings(), ...defaultMemoryBindings()],
         policies: effectivePolicies,
         executor: deps.executor,
         audit: deps.auditSink,
@@ -530,7 +532,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         pending.request,
         {
           catalog: defaultCapabilityCatalog(),
-          bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings()],
+          bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings(), ...defaultMemoryBindings()],
           // Same effective policy set the request was checked against when it was
           // suspended. Without the backfill an action could be authorized, wait
           // for approval, then be denied at grant time on a Sphere whose seed set
@@ -1630,8 +1632,9 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       subject: agentSubject,
       runtimeConfig: imported.runtimeConfig,
       catalog: defaultCapabilityCatalog(),
-      policies: imported.policies,
-      bindings: imported.bindings,
+      // RFC-043: include built-in memory so the preview matches the real projection.
+      policies: [...imported.policies, defaultMemoryPolicy(sphereId)],
+      bindings: [...imported.bindings, ...defaultMemoryBindings()],
       // RFC-027: the preview must reflect what actually gets projected — narrowed
       // to the agent's declared scope, not the full policy-authorized surface.
       agentScope: agent.enabledCapabilities,

@@ -12,7 +12,7 @@ import type { Capability } from "./types.js";
 const CAPABILITIES: readonly Capability[] = [
   {
     name: "memory.search",
-    description: "Search authorized memory.",
+    description: "Recall facts from your durable memory (persists across sessions).",
     risk: "low",
     allowedProfiles: ["adult", "teen", "child"],
     approvalFloor: false,
@@ -30,7 +30,7 @@ const CAPABILITIES: readonly Capability[] = [
     // RFC-013: record a note into canonical memory. Private by default (ADR-002);
     // a scope is never widened by silence. Audit records the fact, never content.
     name: "memory.capture",
-    description: "Record a note into canonical memory (private by default).",
+    description: "Remember a fact in durable memory (persists across sessions; private by default).",
     risk: "low",
     allowedProfiles: ["adult", "teen"],
     approvalFloor: false,

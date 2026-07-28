@@ -168,6 +168,37 @@ describe("Sphere MCP server (RFC-007, ADR-007)", () => {
     expect((res.result as { isError: boolean }).isError).toBe(true);
   });
 
+  it("RFC-043: built-in memory is offered to an agent with NO package installed", async () => {
+    const deps = await seed();
+    // Rebuild the sphere with NO bindings and NO policies — a bare sphere — and an
+    // agent scoped to memory. Built-in memory bindings + grant must still offer it.
+    const store = deps.store as InMemorySphereStore;
+    const snap = (await store.load("sph_1"))!;
+    const bareAgent = { ...snap.agents[0]!, enabledCapabilities: ["memory.capture", "memory.search"] };
+    await store.save(
+      exportSphere({
+        sphere: snap.sphere,
+        identities: [...snap.identities],
+        agents: [bareAgent],
+        memory: [],
+        policies: [], // NO grant policy
+        bindings: [], // NO package bindings
+        exportedAt: NOW,
+      }),
+    );
+    const list = await handleSphereMcpRpc({ sphereId: "sph_1", token: "good-token", request: { id: 7, method: "tools/list" } }, deps);
+    const tools = (list.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name).sort();
+    // memory.capture + memory.search are available with no package (RFC-043).
+    expect(tools).toEqual(["memory.capture", "memory.search"]);
+
+    // And a capture actually persists (executes through the built-in binding).
+    const call = await handleSphereMcpRpc(
+      { sphereId: "sph_1", token: "good-token", request: { id: 8, method: "tools/call", params: { name: "memory.capture", arguments: { content: "remember me" } } } },
+      deps,
+    );
+    expect((call.result as { isError: boolean }).isError).toBe(false);
+  });
+
   it("RFC-040: a require_approval capability is a pending-approval, not an error — persisted for a human", async () => {
     const deps = await seed();
     // Make memory.search require approval instead of allow, for the same agent.

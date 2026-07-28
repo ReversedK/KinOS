@@ -16,6 +16,8 @@
 import {
   effectiveAgeProfile,
   defaultCapabilityCatalog,
+  defaultMemoryBindings,
+  defaultMemoryPolicy,
   handleSphereMcpCall,
   importSphere,
   isNativeToolsetCapability,
@@ -115,8 +117,8 @@ export async function handleSphereMcpRpc(
     const ctx = { sphereId: input.sphereId, time: now, execution: "local" as const, correlationId: deps.newCorrelationId() };
     const surface = resolveAuthorizedCapabilities(subject, ctx, {
       catalog,
-      policies: imported.policies,
-      bindings: imported.bindings,
+      policies: [...imported.policies, defaultMemoryPolicy(input.sphereId)],
+      bindings: [...imported.bindings, ...defaultMemoryBindings()],
       // RFC-027: offer only capabilities within this agent's declared scope.
       agentScope: agent.enabledCapabilities,
     });
@@ -149,8 +151,8 @@ export async function handleSphereMcpRpc(
         // RFC-027: carry the agent's declared scope so out-of-scope calls are refused.
         resolveAgentByToken: (t) => (t === input.token ? { agentId: agent.id, subject, scope: agent.enabledCapabilities } : undefined),
         catalog,
-        bindings: imported.bindings,
-        policies: imported.policies,
+        bindings: [...imported.bindings, ...defaultMemoryBindings()],
+        policies: [...imported.policies, defaultMemoryPolicy(input.sphereId)],
         executor: deps.executor,
         audit: deps.auditSink,
         newApprovalId: deps.newApprovalId,

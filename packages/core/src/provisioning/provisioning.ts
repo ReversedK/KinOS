@@ -110,6 +110,36 @@ export function provisioningBindings(): CapabilityBinding[] {
 }
 
 /**
+ * Built-in agent memory bindings (RFC-043): `memory.capture` and `memory.search`
+ * are always available to an agent — durable canonical memory that persists across
+ * sessions — without installing any package. Like provisioning/runtime bindings,
+ * these are code-level defaults added wherever an agent's bindings are assembled.
+ * Governed like any capability (the default grant + catalog floor still apply).
+ */
+export function defaultMemoryBindings(): CapabilityBinding[] {
+  return [
+    { capability: "memory.capture", runtime: "local", runtimeToolName: "local.memory_capture", execution: "local", risk: "low", requiresApproval: false, status: "enabled" },
+    { capability: "memory.search", runtime: "local", runtimeToolName: "local.memory_search", execution: "local", risk: "low", requiresApproval: false, status: "enabled" },
+  ];
+}
+
+/** The seed grant so an adult/teen (and their agents) may use built-in memory. */
+export function defaultMemoryPolicy(sphereId: string): Policy {
+  return {
+    id: `pol_${sphereId}_agent_memory`,
+    sphereId,
+    description: "Members and their agents may remember and recall durable memory.",
+    subjectSelector: { ageProfiles: ["adult", "teen"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["memory.capture", "memory.search"] },
+    effect: "allow",
+    priority: 5,
+    version: 1,
+    status: "active",
+  };
+}
+
+/**
  * The instance **bootstrap** policy set: authorizes exactly `sphere.create` and
  * `sphere.restore` for an adult subject, and nothing else. Both are
  * instance-scoped (there is no Sphere to key a policy to yet), so the execute
@@ -225,5 +255,8 @@ export function defaultAdminPolicies(
       version: 1,
       status: "active",
     },
+    // RFC-043: built-in agent memory — members and their agents may remember and
+    // recall durable canonical memory by default (no package needed).
+    defaultMemoryPolicy(sphereId),
   ];
 }
