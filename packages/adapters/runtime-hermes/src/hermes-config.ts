@@ -141,8 +141,34 @@ export interface HermesConfig {
    * master subtraction. Together they deny-by-default and hard-floor the dangerous set.
    */
   readonly platform_toolsets: Readonly<Record<string, readonly string[]>>;
-  readonly agent: { readonly disabled_toolsets: readonly string[] };
+  readonly agent: {
+    readonly disabled_toolsets: readonly string[];
+    /**
+     * Per-platform system-prompt hints (RFC-045). Hermes reads
+     * `agent.platform_hints.<platform>.append` at agent init and appends it to the
+     * system prompt. KinOS uses it to tell the agent to USE its memory tools.
+     */
+    readonly platform_hints?: Readonly<Record<string, { readonly append: string }>>;
+  };
   readonly autonomous_mcp_install: false;
+}
+
+/**
+ * The governed memory directive (RFC-045): projected into the agent's system prompt
+ * (via platform_hints append) whenever memory is in its surface, so the agent
+ * actually recalls/remembers. A prompt nudge only — it grants nothing; every memory
+ * call is still policy- and scope-checked at the Sphere MCP.
+ */
+export const MEMORY_DIRECTIVE =
+  "You have a durable, private memory that persists across sessions, reached through your tools. " +
+  "Before answering a question that may depend on earlier information, call `memory.search` to recall relevant facts. " +
+  "When the user tells you to remember something, call `memory.capture` to save it. " +
+  "Never say you cannot remember across sessions — use these tools.";
+
+/** Build the platform_hints block for the gateway when memory is in the surface. */
+function memoryHint(allowedTools: readonly string[]): Readonly<Record<string, { append: string }>> | undefined {
+  const hasMemory = allowedTools.includes("memory.search") || allowedTools.includes("memory.capture");
+  return hasMemory ? { [HERMES_GATEWAY_PLATFORM]: { append: MEMORY_DIRECTIVE } } : undefined;
 }
 
 /** Pure mapping: a domain projection -> the (real-schema) Hermes config object. */
@@ -171,7 +197,14 @@ export function projectionToHermesConfig(projection: RuntimeConfigProjection): H
         enabled: true,
       },
     },
-    ...toolsetGovernance(projection.nativeToolsetsAllow),
+    ...(() => {
+      const gov = toolsetGovernance(projection.nativeToolsetsAllow);
+      const hints = memoryHint(gateway.allowedTools);
+      return {
+        platform_toolsets: gov.platform_toolsets,
+        agent: { ...gov.agent, ...(hints !== undefined ? { platform_hints: hints } : {}) },
+      };
+    })(),
     autonomous_mcp_install: false,
   };
 }
@@ -253,6 +286,13 @@ export function toYaml(config: HermesConfig): string {
   lines.push("agent:");
   lines.push("  disabled_toolsets:");
   for (const t of config.agent.disabled_toolsets) lines.push(`    - ${scalar(t)}`);
+  if (config.agent.platform_hints !== undefined) {
+    lines.push("  platform_hints:");
+    for (const [platform, hint] of Object.entries(config.agent.platform_hints)) {
+      lines.push(`    ${scalar(platform)}:`);
+      lines.push(`      append: ${scalar(hint.append)}`);
+    }
+  }
 
   lines.push(`autonomous_mcp_install: ${config.autonomous_mcp_install}`);
 
@@ -352,7 +392,20 @@ export function mergeHermesConfig(existing: string | undefined, projection: Runt
   merged = replaceTopLevelBlock(
     merged,
     "agent",
-    ["agent:", "  disabled_toolsets:", ...cfg.agent.disabled_toolsets.map((t) => `    - ${quoteIfNeeded(t)}`)].join("\n"),
+    [
+      "agent:",
+      "  disabled_toolsets:",
+      ...cfg.agent.disabled_toolsets.map((t) => `    - ${quoteIfNeeded(t)}`),
+      ...(cfg.agent.platform_hints !== undefined
+        ? [
+            "  platform_hints:",
+            ...Object.entries(cfg.agent.platform_hints).flatMap(([platform, hint]) => [
+              `    ${quoteIfNeeded(platform)}:`,
+              `      append: ${quoteIfNeeded(hint.append)}`,
+            ]),
+          ]
+        : []),
+    ].join("\n"),
   );
   merged = replaceTopLevelBlock(merged, "autonomous_mcp_install", `autonomous_mcp_install: ${cfg.autonomous_mcp_install}`);
   return merged;

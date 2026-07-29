@@ -186,6 +186,25 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
     }
   });
 
+  it("RFC-045: projects a memory directive (platform_hints) when memory is in the surface", () => {
+    const cfg = projectionToHermesConfig(projection); // allowedTools includes memory.search
+    const hint = cfg.agent.platform_hints?.["api_server"]?.append;
+    expect(hint).toBeDefined();
+    expect(hint!.toLowerCase()).toContain("memory.search");
+    expect(hint!.toLowerCase()).toContain("memory.capture");
+    // It survives YAML round-trip on one quoted line (parseable).
+    const yaml = toYaml(cfg);
+    expect(yaml).toContain("platform_hints:");
+    expect(yaml).toMatch(/api_server:\n\s+append: ".*memory\.search/);
+  });
+
+  it("RFC-045: no memory directive when memory is NOT in the agent's surface", () => {
+    const noMem: RuntimeConfigProjection = { ...projection, gateway: { ...projection.gateway, allowedTools: ["calendar.read"] } };
+    const cfg = projectionToHermesConfig(noMem);
+    expect(cfg.agent.platform_hints).toBeUndefined();
+    expect(toYaml(cfg)).not.toContain("platform_hints");
+  });
+
   it("merges the Sphere MCP token into an existing .env without dropping Hermes credentials", () => {
     const merged = mergeHermesEnv("TELEGRAM_BOT_TOKEN=tg-secret\nOPENAI_API_KEY=sk-live\n", {
       [SPHERE_MCP_TOKEN_ENV]: "tok-secret-value",
