@@ -27,6 +27,7 @@ import {
   createCalendarEvent,
   importSphere,
   type CalendarStore,
+  type MemoryStore,
   type CapabilityBinding,
   type CapabilityExecutor,
   type ExecutionContext,
@@ -93,7 +94,7 @@ export function localCalendarProvider(calendar: CalendarStore): IntegrationProvi
  * policy-scoped, reusing the one documents-source implementation (never a private
  * item). Built over the SphereStore; no external service.
  */
-export function localDocumentsProvider(spheres: SphereStore): IntegrationProviderAdapter {
+export function localDocumentsProvider(spheres: SphereStore, memory: MemoryStore): IntegrationProviderAdapter {
   return async (capability, input, ctx) => {
     const readCtx: ExecutionContext = {
       sphereId: ctx.sphereId,
@@ -104,12 +105,12 @@ export function localDocumentsProvider(spheres: SphereStore): IntegrationProvide
     };
     if (capability === "document.search") {
       const q = (typeof input === "object" && input !== null ? (input as { query?: unknown }).query : undefined);
-      return searchSharedDocuments(spheres, readCtx, typeof q === "string" ? q : undefined);
+      return searchSharedDocuments(spheres, memory, readCtx, typeof q === "string" ? q : undefined);
     }
     if (capability === "document.summarize") {
       const args = (typeof input === "object" && input !== null ? input : {}) as { documentId?: unknown };
       if (typeof args.documentId !== "string") throw new Error("document.summarize requires a documentId");
-      return summarizeSharedDocument(spheres, readCtx, args.documentId);
+      return summarizeSharedDocument(spheres, memory, readCtx, args.documentId);
     }
     throw new Error(`The local documents provider does not implement '${capability}'`);
   };
@@ -121,9 +122,9 @@ export function localDocumentsProvider(spheres: SphereStore): IntegrationProvide
  * Sphere's shared notes. This makes provider "local" uniform across integrations,
  * so a Documents integration set to `local` reuses the RFC-029 shared-notes source.
  */
-export function localProvider(deps: { calendar: CalendarStore; spheres: SphereStore }): IntegrationProviderAdapter {
+export function localProvider(deps: { calendar: CalendarStore; spheres: SphereStore; memory: MemoryStore }): IntegrationProviderAdapter {
   const calendar = localCalendarProvider(deps.calendar);
-  const documents = localDocumentsProvider(deps.spheres);
+  const documents = localDocumentsProvider(deps.spheres, deps.memory);
   return async (capability, input, ctx) => {
     if (capability.startsWith("calendar.")) return calendar(capability, input, ctx);
     if (capability.startsWith("document.")) return documents(capability, input, ctx);

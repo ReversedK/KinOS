@@ -14,6 +14,7 @@ import {
   importSphere,
   resolveReadableMemory,
   type ExecutionContext,
+  type MemoryStore,
   type SphereStore,
 } from "@kinos/core";
 
@@ -47,13 +48,15 @@ export function extractiveSummary(content: string, maxChars = 240): string {
  */
 export async function searchSharedDocuments(
   spheres: SphereStore,
+  memory: MemoryStore,
   ctx: ExecutionContext,
   query: string | undefined,
 ): Promise<{ documents: DocumentHit[] }> {
   const snap = await spheres.load(ctx.sphereId);
   if (snap === undefined) return { documents: [] };
-  const imported = importSphere(snap);
-  const readable = resolveReadableMemory(ctx.subject, imported.memory, imported.policies, {
+  const policies = importSphere(snap).policies;
+  const all = await memory.listBySphere(ctx.sphereId); // ADR-009: memory in its own store
+  const readable = resolveReadableMemory(ctx.subject, all, policies, {
     sphereId: ctx.sphereId,
     time: ctx.time,
     correlationId: ctx.correlationId,
@@ -69,13 +72,15 @@ export async function searchSharedDocuments(
  */
 export async function summarizeSharedDocument(
   spheres: SphereStore,
+  memory: MemoryStore,
   ctx: ExecutionContext,
   documentId: string,
 ): Promise<{ id: string; summary: string }> {
   const snap = await spheres.load(ctx.sphereId);
   if (snap === undefined) throw new Error(`Sphere ${ctx.sphereId} not found`);
-  const imported = importSphere(snap);
-  const readable = resolveReadableMemory(ctx.subject, imported.memory, imported.policies, {
+  const policies = importSphere(snap).policies;
+  const all = await memory.listBySphere(ctx.sphereId);
+  const readable = resolveReadableMemory(ctx.subject, all, policies, {
     sphereId: ctx.sphereId,
     time: ctx.time,
     correlationId: ctx.correlationId,

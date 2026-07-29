@@ -30,6 +30,7 @@ import {
   type KinEventType,
   type Policy,
   type Role,
+  type MemoryStore,
   type SphereExport,
   type SphereStore,
   type SphereType,
@@ -37,6 +38,8 @@ import {
 
 export interface ProvisioningDeps {
   readonly store: SphereStore;
+  /** Canonical memory store (ADR-009): export reads from it, restore writes to it. */
+  readonly memory: MemoryStore;
   readonly auditSink?: AuditSink;
   readonly now?: () => string;
   readonly newSphereId: () => string;
@@ -76,7 +79,9 @@ function reexport(
     sphere: changes.sphere ?? imported.sphere,
     identities: changes.identities ?? imported.identities,
     agents: changes.agents ?? imported.agents,
-    memory: imported.memory,
+    // ADR-009: memory lives in its own store — never re-written into the snapshot
+    // blob on an internal save (source of truth is the MemoryStore).
+    memory: [],
     policies: changes.policies ?? imported.policies,
     bindings: imported.bindings,
     runtimeConfig: imported.runtimeConfig,
@@ -382,8 +387,11 @@ export async function exportSphereProvision(
 ): Promise<SphereExport> {
   if (input.sphereId === undefined) throw new Error("sphereId is required");
   const imported = importSphere(await loadOrThrow(deps, input.sphereId));
-  // Re-stamp exportedAt: this snapshot is being exported now, not at last write.
-  return exportSphere({ ...imported, exportedAt: nowOf(deps) });
+  // ADR-009: memory lives in its own store — inject it so the backup stays complete
+  // (RFC-021: a backup that drops memory cannot restore the Sphere). Re-stamp
+  // exportedAt: this snapshot is being exported now, not at last write.
+  const memory = await deps.memory.listBySphere(input.sphereId);
+  return exportSphere({ ...imported, memory, exportedAt: nowOf(deps) });
 }
 
 // --- sphere.archive (RFC-024) ----------------------------------------------
@@ -490,7 +498,11 @@ export async function restoreSphereProvision(
   }
 
   const at = nowOf(deps);
-  await deps.store.save(exportSphere({ ...imported, exportedAt: at }));
+  // ADR-009: write the snapshot's memory into the dedicated store, and persist the
+  // Sphere snapshot WITHOUT memory in the blob (the store is the source of truth).
+  await deps.memory.deleteBySphere(sphereId);
+  for (const item of imported.memory) await deps.memory.append(item);
+  await deps.store.save(exportSphere({ ...imported, memory: [], exportedAt: at }));
   // Provenance is a security fact: an auditor must be able to tell a Sphere
   // created empty from one whose members, policies and memory came from a file.
   // The snapshot itself is never audited (audit minimality).
@@ -501,4 +513,29 @@ export async function restoreSphereProvision(
     members: imported.sphere.members.length,
     restored: true,
   };
+}
+
+// --- ADR-009 migration: move legacy in-snapshot memory into the memory store ---
+
+/**
+ * One-time, idempotent migration (ADR-009/RFC-044). Older Spheres stored canonical
+ * memory inside the snapshot blob (`spheres.snapshot.memory[]`). Move any such items
+ * into the dedicated MemoryStore and re-save the snapshot WITHOUT memory in the blob,
+ * so the store becomes the single source of truth. A Sphere whose blob memory is
+ * already empty is untouched (idempotent — safe to run at every boot). No data loss:
+ * items are appended to the store before the blob is cleared.
+ */
+export async function migrateMemoryToStore(store: SphereStore, memory: MemoryStore): Promise<number> {
+  let moved = 0;
+  for (const sphereId of await store.list()) {
+    const snap = await store.load(sphereId);
+    if (snap === undefined || snap.memory.length === 0) continue;
+    for (const item of snap.memory) {
+      // Append only if not already present (a prior partial run stays safe).
+      if ((await memory.get(sphereId, item.id)) === undefined) await memory.append(item);
+      moved += 1;
+    }
+    await store.save(exportSphere({ ...importSphere(snap), memory: [], exportedAt: new Date().toISOString() }));
+  }
+  return moved;
 }

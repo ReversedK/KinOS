@@ -1,5 +1,6 @@
 import {
   InMemoryCalendarStore,
+  InMemoryMemoryStore,
   InMemorySphereStore,
   createIntegration,
   createMemoryItem,
@@ -215,17 +216,19 @@ describe("Documents integration providers (RFC-031)", () => {
     return { ...createMemoryItem({ id, ownerId: "sph_1", ownerType: "sphere", sphereId: "sph_1", content, source: "manual", now: NOW }), visibility: "shared_with_sphere" };
   }
 
-  async function storeWithMemory(items: MemoryItem[]): Promise<InMemorySphereStore> {
+  async function storeWithMemory(items: MemoryItem[]): Promise<{ spheres: InMemorySphereStore; memory: InMemoryMemoryStore }> {
     const spheres = new InMemorySphereStore();
     const sphere = createSphere({ id: "sph_1", type: "family", name: "Doe", founder: { memberId: "mbr_A", identityId: "idy_A", role: "parent" } });
-    await spheres.save(exportSphere({ sphere, identities: [], agents: [], memory: items, policies: [], exportedAt: NOW }));
-    return spheres;
+    await spheres.save(exportSphere({ sphere, identities: [], agents: [], memory: [], policies: [], exportedAt: NOW }));
+    const memory = new InMemoryMemoryStore();
+    for (const item of items) await memory.append(item); // ADR-009: memory in its own store
+    return { spheres, memory };
   }
 
   it("localProvider: document.search returns shared notes; a private note is never returned", async () => {
     const priv = createMemoryItem({ id: "mem_p", ownerId: "mbr_A", ownerType: "member", sphereId: "sph_1", content: "a private secret", source: "manual", now: NOW });
-    const spheres = await storeWithMemory([sharedNote("mem_s", "The wifi code is hunter2"), priv]);
-    const provider = localProvider({ calendar: new InMemoryCalendarStore(), spheres });
+    const { spheres, memory } = await storeWithMemory([sharedNote("mem_s", "The wifi code is hunter2"), priv]);
+    const provider = localProvider({ calendar: new InMemoryCalendarStore(), spheres, memory });
     const out = (await provider("document.search", { query: "wifi" }, provCtx())) as { documents: { id: string; content: string }[] };
     expect(out.documents.map((d) => d.content)).toEqual(["The wifi code is hunter2"]);
     // The private note is not a document even with an empty query.
@@ -235,8 +238,8 @@ describe("Documents integration providers (RFC-031)", () => {
 
   it("localProvider: document.summarize summarizes a shared note but refuses a private one", async () => {
     const priv = createMemoryItem({ id: "mem_p", ownerId: "mbr_A", ownerType: "member", sphereId: "sph_1", content: "diary", source: "manual", now: NOW });
-    const spheres = await storeWithMemory([sharedNote("mem_s", "School trip Tuesday. Bring lunch."), priv]);
-    const provider = localProvider({ calendar: new InMemoryCalendarStore(), spheres });
+    const { spheres, memory } = await storeWithMemory([sharedNote("mem_s", "School trip Tuesday. Bring lunch."), priv]);
+    const provider = localProvider({ calendar: new InMemoryCalendarStore(), spheres, memory });
     const sum = (await provider("document.summarize", { documentId: "mem_s" }, provCtx())) as { summary: string };
     expect(sum.summary.toLowerCase()).toContain("school trip");
     await expect(provider("document.summarize", { documentId: "mem_p" }, provCtx())).rejects.toThrow(/not found/i);
@@ -244,7 +247,7 @@ describe("Documents integration providers (RFC-031)", () => {
 
   it("localProvider: still dispatches calendar.* to the calendar store", async () => {
     const calendar = new InMemoryCalendarStore();
-    const provider = localProvider({ calendar, spheres: await storeWithMemory([]) });
+    const provider = localProvider({ calendar, ...(await storeWithMemory([])) });
     await provider("calendar.create_event", { title: "Dentist", start: "2026-07-20T09:00:00Z" }, provCtx());
     const read = (await provider("calendar.read", {}, provCtx())) as { events: { title: string }[] };
     expect(read.events.map((e) => e.title)).toEqual(["Dentist"]);

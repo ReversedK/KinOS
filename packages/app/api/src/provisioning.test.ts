@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryApprovalStore,
   InMemoryAuditSink,
+  InMemoryMemoryStore,
   InMemorySphereStore,
   PROVISIONING_TOOLS,
   importSphere,
+  type MemoryStore,
   type SphereStore,
 } from "@kinos/core";
 import { LocalCapabilityExecutor, type CapabilityHandler } from "@kinos/executor-local";
@@ -24,10 +26,11 @@ import {
 
 const NOW = "2026-07-13T10:00:00.000Z";
 
-function provDeps(store: SphereStore, audit?: InMemoryAuditSink): ProvisioningDeps {
+function provDeps(store: SphereStore, audit?: InMemoryAuditSink, memory: MemoryStore = new InMemoryMemoryStore()): ProvisioningDeps {
   let n = 0;
   return {
     store,
+    memory,
     ...(audit !== undefined ? { auditSink: audit } : {}),
     now: () => NOW,
     newSphereId: () => `sph_${++n}`,
@@ -129,6 +132,33 @@ describe("provisioning side effects (RFC-008)", () => {
     });
     expect(res.enabledCapabilities).toEqual(["memory.search"]);
     expect(res.state).toBe("active");
+  });
+
+  it("RFC-044/ADR-009: export includes memory from the store; restore writes it back (round-trip)", async () => {
+    const store = new InMemorySphereStore();
+    const memory = new InMemoryMemoryStore();
+    const deps = provDeps(store, undefined, memory);
+    const s = await createSphereProvision(deps, { sphereId: "sph_1", name: "Fam" });
+    // A memory item lives in the dedicated store, NOT the Sphere snapshot.
+    await memory.append({
+      id: "mem_1", ownerId: s.founderMemberId, ownerType: "member", sphereId: "sph_1",
+      visibility: "private", sensitivity: "normal", content: "remember me", source: "manual",
+      createdAt: NOW, updatedAt: NOW, state: "active", auditRefs: [],
+    });
+    expect(importSphere((await store.load("sph_1"))!).memory).toEqual([]); // not in the blob
+
+    // Export injects memory from the store (RFC-021: backup stays complete).
+    const exported = await exportSphereProvision(deps, { sphereId: "sph_1" });
+    expect(exported.memory.map((m) => m.content)).toEqual(["remember me"]);
+
+    // Restore onto a fresh instance writes the memory into the fresh memory store.
+    const store2 = new InMemorySphereStore();
+    const memory2 = new InMemoryMemoryStore();
+    const deps2 = provDeps(store2, undefined, memory2);
+    await restoreSphereProvision(deps2, { snapshot: exported });
+    expect((await memory2.listBySphere("sph_1")).map((m) => m.content)).toEqual(["remember me"]);
+    // And the restored Sphere snapshot carries no memory in its blob (store is truth).
+    expect(importSphere((await store2.load("sph_1"))!).memory).toEqual([]);
   });
 });
 

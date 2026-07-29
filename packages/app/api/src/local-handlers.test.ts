@@ -1,11 +1,13 @@
 import {
   InMemoryCalendarStore,
+  InMemoryMemoryStore,
   InMemorySphereStore,
   createSphere,
   defaultStoreCatalog,
   exportSphere,
   type CapabilityBinding,
   type ExecutionContext,
+  type MemoryStore,
   type SphereStore,
 } from "@kinos/core";
 import { describe, expect, it } from "vitest";
@@ -31,12 +33,12 @@ const ctx = (sphereId: string, memberId = "mbr_1"): ExecutionContext => ({
   time: NOW,
 });
 
-function env(calendar = new InMemoryCalendarStore(), spheres: SphereStore = new InMemorySphereStore()) {
+function env(calendar = new InMemoryCalendarStore(), spheres: SphereStore = new InMemorySphereStore(), memory: MemoryStore = new InMemoryMemoryStore()) {
   let n = 0;
   let m = 0;
   let p = 0;
-  const h = buildLocalHandlers({ calendar, spheres, newEventId: () => `evt_${++n}`, newMemoryId: () => `mem_${++m}`, newProjectId: () => `prj_${++p}`, now: () => NOW });
-  return { h, calendar, spheres };
+  const h = buildLocalHandlers({ calendar, spheres, memory, newEventId: () => `evt_${++n}`, newMemoryId: () => `mem_${++m}`, newProjectId: () => `prj_${++p}`, now: () => NOW });
+  return { h, calendar, spheres, memory };
 }
 
 /** A stored Sphere with two members, so memory ownership/visibility is testable. */
@@ -86,15 +88,15 @@ describe("real calendar integration (RFC-012)", () => {
 
 describe("real canonical memory / notes (RFC-013)", () => {
   it("capture records a private note owned by the acting subject", async () => {
-    const { h, spheres } = env(new InMemoryCalendarStore(), await seededSphere());
+    const { h, memory } = env(new InMemoryCalendarStore(), await seededSphere());
     const out = (await h.get("local.memory_capture")!({ content: "Dentist Friday" }, binding, ctx("sph_1", "mbr_A"))) as {
       captured: boolean;
       visibility: string;
     };
     expect(out).toMatchObject({ captured: true, visibility: "private" });
-    const imported = (await spheres.load("sph_1"))!;
-    expect(imported.memory).toHaveLength(1);
-    expect(imported.memory[0]).toMatchObject({ ownerId: "mbr_A", visibility: "private", content: "Dentist Friday" });
+    const stored = await memory.listBySphere("sph_1");
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ ownerId: "mbr_A", visibility: "private", content: "Dentist Friday" });
   });
 
   it("search is policy-scoped: a member never sees another member's private note", async () => {
@@ -129,7 +131,7 @@ describe("real canonical memory / notes (RFC-013)", () => {
 
   it("revocation blocks the future, not the past (RFC-015)", async () => {
     const spheres = await seededSphere();
-    const { h } = env(new InMemoryCalendarStore(), spheres);
+    const { h, memory } = env(new InMemoryCalendarStore(), spheres);
     const cap = (await h.get("local.memory_capture")!({ content: "trip plan" }, binding, ctx("sph_1", "mbr_A"))) as { id: string };
     await h.get("local.memory_share")!({ itemId: cap.id, memberIds: ["mbr_B"] }, binding, ctx("sph_1", "mbr_A"));
     // B sees it after sharing.
@@ -143,7 +145,7 @@ describe("real canonical memory / notes (RFC-013)", () => {
     // ...the owner still sees it, and the grant record is retained (revokedAt set).
     const aSees = (await h.get("local.memory_search")!({}, binding, ctx("sph_1", "mbr_A"))) as { items: unknown[] };
     expect(aSees.items).toHaveLength(1);
-    const item = (await spheres.load("sph_1"))!.memory.find((m) => m.id === cap.id)!;
+    const item = (await memory.get("sph_1", cap.id))!;
     expect(item.shareGrants?.[0]).toMatchObject({ subjectId: "mbr_B", revokedAt: expect.any(String) });
   });
 
@@ -161,22 +163,22 @@ describe("real canonical memory / notes (RFC-013)", () => {
     const spheres = await seededSphere();
     const other = createSphere({ id: "sph_2", type: "family", name: "Other", founder: { memberId: "mbr_X", identityId: "idy_X", role: "parent" } });
     await spheres.save(exportSphere({ sphere: other, identities: [], agents: [], memory: [], policies: [], exportedAt: NOW }));
-    const { h } = env(new InMemoryCalendarStore(), spheres);
+    const { h, memory } = env(new InMemoryCalendarStore(), spheres);
     await h.get("local.memory_capture")!({ content: "into victim", sphereId: "sph_2" }, binding, ctx("sph_1", "mbr_A"));
-    expect((await spheres.load("sph_2"))!.memory).toEqual([]);
-    expect((await spheres.load("sph_1"))!.memory).toHaveLength(1);
+    expect(await memory.listBySphere("sph_2")).toEqual([]);
+    expect(await memory.listBySphere("sph_1")).toHaveLength(1);
   });
 });
 
 describe("shared notes, projects & documents (RFC-029)", () => {
   it("sphere.note.create writes a Sphere-visible note; document.search finds it", async () => {
-    const { h, spheres } = env(new InMemoryCalendarStore(), await seededSphere());
+    const { h, memory } = env(new InMemoryCalendarStore(), await seededSphere());
     const out = (await h.get("local.sphere_note_create")!({ content: "Wifi code is hunter2" }, binding, ctx("sph_1", "mbr_A"))) as {
       created: boolean;
       visibility: string;
     };
     expect(out).toMatchObject({ created: true, visibility: "shared_with_sphere" });
-    const stored = (await spheres.load("sph_1"))!.memory[0]!;
+    const stored = (await memory.listBySphere("sph_1"))[0]!;
     expect(stored).toMatchObject({ ownerType: "sphere", visibility: "shared_with_sphere", content: "Wifi code is hunter2" });
 
     // Any other member's agent can find the shared document.

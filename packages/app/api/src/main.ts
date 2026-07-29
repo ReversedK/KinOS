@@ -20,6 +20,7 @@ import {
   SqliteAuditSink,
   SqliteSessionStore,
   SqliteCalendarStore,
+  SqliteMemoryStore,
   SqliteSnapshotStore,
   SqliteSphereStore,
 } from "@kinos/persistence-sqlite";
@@ -45,6 +46,7 @@ import {
   archiveSphereProvision,
   createAgentProvision,
   createSphereProvision,
+  migrateMemoryToStore,
   exportSphereProvision,
   inviteMemberProvision,
   managePolicyProvision,
@@ -98,6 +100,7 @@ const tokens = new SqliteAgentTokenStore(ensureDir(process.env["KINOS_TOKENS_DB"
 const snapshots = new SqliteSnapshotStore(ensureDir(process.env["KINOS_SNAPSHOTS_DB"] ?? "data/snapshots.sqlite"));
 // Real Sphere-scoped calendar behind the family-calendar capabilities (RFC-012).
 const calendarStore = new SqliteCalendarStore(ensureDir(process.env["KINOS_CALENDAR_DB"] ?? "data/calendar.sqlite"));
+const memoryStore = new SqliteMemoryStore(ensureDir(process.env["KINOS_MEMORY_DB"] ?? "data/memory.sqlite"));
 
 // Snapshot blob encryption key (ADR-007: from the secret store; env in dev).
 // A generated key is fine for a single run but makes prior blobs unreadable on
@@ -167,6 +170,7 @@ const govDeps: RuntimeGovernanceDeps = {
 // SphereStore behind the governed provisioning capabilities.
 const provDeps: ProvisioningDeps = {
   store,
+  memory: memoryStore,
   auditSink: audit,
   newSphereId: () => `sph_${randomUUID().slice(0, 8)}`,
   newMemberId: () => `mbr_${randomUUID().slice(0, 8)}`,
@@ -184,7 +188,7 @@ const localExecutor = new LocalCapabilityExecutor(
     // Local handlers behind the store packages' capability bindings
     // (RFC-002/011/012): a real Sphere-scoped calendar + synthetic stubs. Built
     // from a shared, test-covered factory so every store binding has a handler.
-    ...buildLocalHandlers({ calendar: calendarStore, spheres: store }),
+    ...buildLocalHandlers({ calendar: calendarStore, spheres: store, memory: memoryStore }),
     [RUNTIME_GOVERNANCE_TOOLS["runtime.config.project"], async (input) => projectAgentConfig(govDeps, input as RuntimeProjectInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.backup"], async (input) => backupAgentState(govDeps, input as RuntimeBackupInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.restore"], async (input) => restoreAgentState(govDeps, input as RuntimeRestoreInput)],
@@ -232,7 +236,7 @@ setInterval(() => pendingOAuth.prune(), 60_000).unref();
 const providerRegistry = new Map<string, IntegrationProviderAdapter>([
   // RFC-031: "local" is the built-in reference for BOTH calendar.* (calendar store)
   // and document.* (the Sphere's shared notes) — one uniform local provider.
-  ["local", localProvider({ calendar: calendarStore, spheres: store })],
+  ["local", localProvider({ calendar: calendarStore, spheres: store, memory: memoryStore })],
   // Google/Apple resolve a fresh token via the broker (RFC-017) and call the real
   // Calendar API. Wire real client credentials into the broker to use live.
   ["google", googleCalendarProvider(authBroker)],
@@ -297,6 +301,9 @@ const server = createApiServer(
 // broker. Startup fails loudly if migration cannot run, rather than 500ing later.
 async function start(): Promise<void> {
   if (authBroker instanceof BetterAuthBroker) await authBroker.migrate();
+  // ADR-009: move any legacy in-snapshot memory into the dedicated store (idempotent).
+  const moved = await migrateMemoryToStore(store, memoryStore);
+  if (moved > 0) console.log(`Migrated ${moved} memory item(s) into the memory store.`);
   server.listen(port, () => console.log(`KinOS API listening on :${port}`));
 }
 void start();

@@ -6,3 +6,4 @@ export * from "./sqlite-agent-token-store.js";
 export * from "./sqlite-snapshot-store.js";
 export * from "./fs-encrypted-blob-store.js";
 export * from "./sqlite-calendar-store.js";
+export * from "./sqlite-memory-store.js";

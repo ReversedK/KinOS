@@ -137,3 +137,44 @@ export function hasActiveGrant(item: MemoryItem, subjectId: string): boolean {
     (g) => g.subjectId === subjectId && g.revokedAt === undefined,
   );
 }
+
+/**
+ * Persistence port for canonical memory (ADR-009 / RFC-044). Memory lives in its
+ * own store — separate from the Sphere snapshot — keyed by Sphere id, which is the
+ * isolation boundary: `listBySphere`/`get` MUST return only the given Sphere's
+ * items. Ids are caller-supplied (the core stays deterministic). `replace` updates
+ * an existing item (share/revoke/lifecycle); `deleteBySphere` supports
+ * restore-overwrite and per-Sphere erasure.
+ */
+export interface MemoryStore {
+  append(item: MemoryItem): Promise<void>;
+  get(sphereId: string, id: string): Promise<MemoryItem | undefined>;
+  replace(item: MemoryItem): Promise<void>;
+  listBySphere(sphereId: string): Promise<readonly MemoryItem[]>;
+  deleteBySphere(sphereId: string): Promise<void>;
+}
+
+/** In-memory MemoryStore for tests and local dev (Sphere-scoped, ordered by id). */
+export class InMemoryMemoryStore implements MemoryStore {
+  private items: MemoryItem[] = [];
+
+  async append(item: MemoryItem): Promise<void> {
+    this.items.push(item);
+  }
+
+  async get(sphereId: string, id: string): Promise<MemoryItem | undefined> {
+    return this.items.find((m) => m.sphereId === sphereId && m.id === id);
+  }
+
+  async replace(item: MemoryItem): Promise<void> {
+    this.items = this.items.map((m) => (m.sphereId === item.sphereId && m.id === item.id ? item : m));
+  }
+
+  async listBySphere(sphereId: string): Promise<readonly MemoryItem[]> {
+    return this.items.filter((m) => m.sphereId === sphereId).sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  async deleteBySphere(sphereId: string): Promise<void> {
+    this.items = this.items.filter((m) => m.sphereId !== sphereId);
+  }
+}

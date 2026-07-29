@@ -28,6 +28,7 @@ import {
   revokeShare,
   shareWithMembers,
   type CalendarStore,
+  type MemoryStore,
   type SphereStore,
 } from "@kinos/core";
 import type { CapabilityHandler } from "@kinos/executor-local";
@@ -36,8 +37,10 @@ import { searchSharedDocuments, summarizeSharedDocument } from "./documents.js";
 
 export interface LocalHandlerDeps {
   readonly calendar: CalendarStore;
-  /** Canonical memory + policies live in the Sphere snapshot (RFC-013). */
+  /** Policies + projects live in the Sphere snapshot; canonical memory has its own
+   *  dedicated store (ADR-009/RFC-044). */
   readonly spheres: SphereStore;
+  readonly memory: MemoryStore;
   /** Injectable ids/time for deterministic tests; default to real ones. */
   readonly newEventId?: () => string;
   readonly newMemoryId?: () => string;
@@ -85,7 +88,7 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
       },
     ],
 
-    // --- Notes: real canonical memory (RFC-013) -----------------------------
+    // --- Notes: real canonical memory (RFC-013), in its own store (ADR-009) ---
     [
       "local.memory_capture",
       async (input, _binding, context) => {
@@ -93,9 +96,6 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
         const ownerId = ctx.subject.memberId;
         if (ownerId === undefined) throw new Error("memory.capture requires a member subject to own the note");
         const args = (typeof input === "object" && input !== null ? input : {}) as { content?: unknown; summary?: unknown };
-        const snap = await deps.spheres.load(ctx.sphereId);
-        if (snap === undefined) throw new Error(`Sphere ${ctx.sphereId} not found`);
-        const imported = importSphere(snap);
         const item = createMemoryItem({
           id: newMemoryId(),
           ownerId, // owned by the acting subject, from the governed context
@@ -106,7 +106,8 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
           now: now(),
           ...(typeof args.summary === "string" ? { summary: args.summary } : {}),
         });
-        await deps.spheres.save(exportSphere({ ...imported, memory: [...imported.memory, item], exportedAt: now() }));
+        // One indexed insert — no Sphere-snapshot rewrite (ADR-009).
+        await deps.memory.append(item);
         // Security fact only; the note content is never returned to audit here.
         return { captured: true, id: item.id, visibility: item.visibility };
       },
@@ -115,11 +116,13 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
       "local.memory_search",
       async (input, _binding, context) => {
         const ctx = requireCtx(context, "memory.search");
+        // Policies stay in the snapshot; memory comes from its own store (ADR-009).
         const snap = await deps.spheres.load(ctx.sphereId);
         if (snap === undefined) return { items: [] };
-        const imported = importSphere(snap);
+        const policies = importSphere(snap).policies;
+        const all = await deps.memory.listBySphere(ctx.sphereId);
         // Policy-scoped retrieval (ADR-002): only what this subject may read.
-        const readable = resolveReadableMemory(ctx.subject, imported.memory, imported.policies, {
+        const readable = resolveReadableMemory(ctx.subject, all, policies, {
           sphereId: ctx.sphereId,
           time: ctx.time,
           correlationId: ctx.correlationId,
@@ -141,14 +144,10 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
         const args = (typeof input === "object" && input !== null ? input : {}) as { itemId?: unknown; memberIds?: unknown };
         if (typeof args.itemId !== "string") throw new Error("memory.share requires an itemId");
         const subjectIds = Array.isArray(args.memberIds) ? args.memberIds.filter((x): x is string => typeof x === "string") : [];
-        const snap = await deps.spheres.load(ctx.sphereId);
-        if (snap === undefined) throw new Error(`Sphere ${ctx.sphereId} not found`);
-        const imported = importSphere(snap);
-        const item = imported.memory.find((m) => m.id === args.itemId);
+        const item = await deps.memory.get(ctx.sphereId, args.itemId);
         if (item === undefined) throw new Error(`Memory item ${args.itemId} not found`);
         const shared = shareWithMembers(item, { subjectIds, grantedBy, now: now() });
-        const memory = imported.memory.map((m) => (m.id === item.id ? shared : m));
-        await deps.spheres.save(exportSphere({ ...imported, memory, exportedAt: now() }));
+        await deps.memory.replace(shared);
         return { shared: true, itemId: item.id, visibility: shared.visibility };
       },
     ],
@@ -163,18 +162,14 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
         if (typeof args.itemId !== "string" || typeof args.memberId !== "string") {
           throw new Error("memory.revoke_share requires an itemId and a memberId");
         }
-        const snap = await deps.spheres.load(ctx.sphereId);
-        if (snap === undefined) throw new Error(`Sphere ${ctx.sphereId} not found`);
-        const imported = importSphere(snap);
-        const item = imported.memory.find((m) => m.id === args.itemId);
+        const item = await deps.memory.get(ctx.sphereId, args.itemId);
         if (item === undefined) throw new Error(`Memory item ${args.itemId} not found`);
         // Owner-only: only the note's owner may withdraw a share of it.
         if (!(item.ownerType === "member" && item.ownerId === actor)) {
           throw new Error("Only the note owner may revoke a share");
         }
         const revoked = revokeShare(item, { subjectId: args.memberId, now: now() });
-        const memory = imported.memory.map((m) => (m.id === item.id ? revoked : m));
-        await deps.spheres.save(exportSphere({ ...imported, memory, exportedAt: now() }));
+        await deps.memory.replace(revoked);
         // Security fact only: the grant record is retained (revokedAt) as audit.
         return { revoked: true, itemId: item.id, member: args.memberId };
       },
@@ -189,9 +184,6 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
       async (input, _binding, context) => {
         const ctx = requireCtx(context, "sphere.note.create");
         const args = (typeof input === "object" && input !== null ? input : {}) as { content?: unknown; summary?: unknown };
-        const snap = await deps.spheres.load(ctx.sphereId);
-        if (snap === undefined) throw new Error(`Sphere ${ctx.sphereId} not found`);
-        const imported = importSphere(snap);
         const base = createMemoryItem({
           id: newMemoryId(),
           ownerId: ctx.sphereId, // the Sphere owns a shared note
@@ -204,7 +196,7 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
         });
         // createMemoryItem defaults to private; a shared note is Sphere-visible.
         const note = { ...base, visibility: "shared_with_sphere" as const };
-        await deps.spheres.save(exportSphere({ ...imported, memory: [...imported.memory, note], exportedAt: now() }));
+        await deps.memory.append(note); // canonical memory store (ADR-009)
         return { created: true, id: note.id, visibility: note.visibility };
       },
     ],
@@ -240,7 +232,7 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
       async (input, _binding, context) => {
         const ctx = requireCtx(context, "document.search");
         const q = (typeof input === "object" && input !== null ? (input as { query?: unknown }).query : undefined);
-        return searchSharedDocuments(deps.spheres, ctx, typeof q === "string" ? q : undefined);
+        return searchSharedDocuments(deps.spheres, deps.memory, ctx, typeof q === "string" ? q : undefined);
       },
     ],
     [
@@ -249,7 +241,7 @@ export function buildLocalHandlers(deps: LocalHandlerDeps): Map<string, Capabili
         const ctx = requireCtx(context, "document.summarize");
         const args = (typeof input === "object" && input !== null ? input : {}) as { documentId?: unknown };
         if (typeof args.documentId !== "string") throw new Error("document.summarize requires a documentId");
-        return summarizeSharedDocument(deps.spheres, ctx, args.documentId);
+        return summarizeSharedDocument(deps.spheres, deps.memory, ctx, args.documentId);
       },
     ],
 
