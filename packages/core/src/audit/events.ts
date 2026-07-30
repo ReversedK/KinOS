@@ -52,6 +52,9 @@ export type KinEventType =
   | "runtime.session.restored"
   /** A terminal was attached to an agent's governed Harness profile (ADR-008 §6). */
   | "runtime.session.attached"
+  /** Sphere cloud inference was enabled/disabled (RFC-046); records the flag, never a secret. */
+  | "runtime.cloud.enabled"
+  | "runtime.cloud.disabled"
   /** An integration was configured — provider/scopes set, credentials by reference (RFC-016). */
   | "integration.configured"
   /** An OAuth integration connect was begun / completed (RFC-017); never the token. */

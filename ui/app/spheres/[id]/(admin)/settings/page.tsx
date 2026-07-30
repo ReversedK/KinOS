@@ -75,7 +75,7 @@ export default async function SettingsSection({
             </div>
           </div>
           <hr className="hairline" style={{ margin: 0 }} />
-          <SetRuntime sphereId={id} actor={admin} />
+          <SetRuntime sphereId={id} actor={admin} cloudEnabled={runtime.cloudInferenceEnabled} />
         </div>
       </div>
 

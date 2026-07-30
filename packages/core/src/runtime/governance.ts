@@ -23,6 +23,10 @@ export const RUNTIME_GOVERNANCE_TOOLS = {
   "runtime.config.project": "runtime.project",
   "runtime.session.backup": "runtime.backup",
   "runtime.session.restore": "runtime.restore",
+  // RFC-046: enable/disable Sphere cloud inference. Separate tools so the enable
+  // approval floor can never be bypassed by routing through disable.
+  "runtime.enable_cloud": "runtime.cloud_enable",
+  "runtime.disable_cloud": "runtime.cloud_disable",
 } as const;
 
 export type RuntimeGovernanceCapability = keyof typeof RUNTIME_GOVERNANCE_TOOLS;

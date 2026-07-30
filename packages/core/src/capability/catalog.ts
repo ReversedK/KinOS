@@ -173,6 +173,28 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "decision", "correlationId"],
   },
   {
+    // RFC-046 (completing RFC-004): turn ON cloud inference and permit cloud
+    // providers. Enabling external transfer is consequential → approval-floored;
+    // adult-only. Once enabled, runtime.set_provider can select a cloud profile.
+    name: "runtime.enable_cloud",
+    description: "Enable cloud inference and permit cloud providers (admin, approval-gated).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: true,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
+    // RFC-046: the safety kill-switch — turn OFF cloud inference. Never
+    // approval-floored: an administrator must always be able to stop external
+    // transfer unilaterally. A cloud default profile is reverted to local.
+    name: "runtime.disable_cloud",
+    description: "Disable cloud inference for the Sphere (admin kill-switch).",
+    risk: "high",
+    allowedProfiles: ["adult"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "decision", "correlationId"],
+  },
+  {
     // RFC-004/RFC-009: set an agent's default model within the Sphere-allowed
     // set. Admin/owner-only (the founder is an administrator) and adult-only.
     // Local and immediate — an override only swaps the model string on the

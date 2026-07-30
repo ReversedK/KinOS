@@ -4,6 +4,7 @@ import {
   createRuntimeProfile,
   defaultRuntimeConfig,
   resolveEffectiveProfile,
+  setCloudInference,
   setDefaultRuntimeProfile,
 } from "./profile.js";
 
@@ -122,6 +123,48 @@ describe("RuntimeProfile (RFC-004)", () => {
         secretRef: "secret://openai/key",
       });
       expect(() => setDefaultRuntimeProfile(config, cloud)).toThrow(/cloud/i);
+    });
+  });
+
+  describe("setCloudInference (RFC-046)", () => {
+    it("enabling turns cloud on and unions the requested providers", () => {
+      const config = defaultRuntimeConfig();
+      const next = setCloudInference(config, { enabled: true, allowProviders: ["openai"] });
+      expect(next.cloudInferenceEnabled).toBe(true);
+      expect(next.allowedProviders).toEqual(["ollama", "openai"]);
+      // Immutable: original untouched (deny-by-default still holds elsewhere).
+      expect(config.cloudInferenceEnabled).toBe(false);
+      expect(config.allowedProviders).toEqual(["ollama"]);
+    });
+
+    it("after enabling, a cloud OpenAI profile passes assertProfileAllowed", () => {
+      const config = setCloudInference(defaultRuntimeConfig(), { enabled: true, allowProviders: ["openai"] });
+      const cloud = createRuntimeProfile({ providerId: "openai", model: "gpt-4o-mini", execution: "cloud", secretRef: "secret://openai/key" });
+      expect(() => assertProfileAllowed(config, cloud)).not.toThrow();
+      expect(setDefaultRuntimeProfile(config, cloud).defaultProfile.providerId).toBe("openai");
+    });
+
+    it("enabling does not duplicate an already-allowed provider", () => {
+      const config = { ...defaultRuntimeConfig(), allowedProviders: ["ollama", "openai"] as const };
+      const next = setCloudInference(config, { enabled: true, allowProviders: ["openai"] });
+      expect(next.allowedProviders).toEqual(["ollama", "openai"]);
+    });
+
+    it("disabling is the kill-switch: cloud off and a cloud default reverted to local", () => {
+      const enabled = setCloudInference(defaultRuntimeConfig(), { enabled: true, allowProviders: ["openai"] });
+      const onCloud = setDefaultRuntimeProfile(enabled, createRuntimeProfile({ providerId: "openai", model: "gpt-4o-mini", execution: "cloud", secretRef: "secret://openai/key" }));
+      const disabled = setCloudInference(onCloud, { enabled: false });
+      expect(disabled.cloudInferenceEnabled).toBe(false);
+      // A now-forbidden cloud default is reverted to the local-first default.
+      expect(disabled.defaultProfile.execution).toBe("local");
+      expect(disabled.defaultProfile.providerId).toBe("ollama");
+    });
+
+    it("disabling leaves a local default profile untouched", () => {
+      const enabled = setCloudInference(defaultRuntimeConfig(), { enabled: true, allowProviders: ["openai"] });
+      const disabled = setCloudInference(enabled, { enabled: false });
+      expect(disabled.cloudInferenceEnabled).toBe(false);
+      expect(disabled.defaultProfile).toEqual(defaultRuntimeConfig().defaultProfile);
     });
   });
 });

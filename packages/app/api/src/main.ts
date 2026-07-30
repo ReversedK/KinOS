@@ -35,9 +35,12 @@ import { BetterAuthBroker } from "./better-auth-broker.js";
 import { secretStoreFromEnv } from "./secret-store.js";
 import {
   backupAgentState,
+  disableSphereCloud,
+  enableSphereCloud,
   projectAgentConfig,
   restoreAgentState,
   type RuntimeBackupInput,
+  type RuntimeCloudInput,
   type RuntimeGovernanceDeps,
   type RuntimeProjectInput,
   type RuntimeRestoreInput,
@@ -192,6 +195,9 @@ const localExecutor = new LocalCapabilityExecutor(
     [RUNTIME_GOVERNANCE_TOOLS["runtime.config.project"], async (input) => projectAgentConfig(govDeps, input as RuntimeProjectInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.backup"], async (input) => backupAgentState(govDeps, input as RuntimeBackupInput)],
     [RUNTIME_GOVERNANCE_TOOLS["runtime.session.restore"], async (input) => restoreAgentState(govDeps, input as RuntimeRestoreInput)],
+    // RFC-046: enable/disable Sphere cloud inference (enable is approval-floored).
+    [RUNTIME_GOVERNANCE_TOOLS["runtime.enable_cloud"], async (input) => enableSphereCloud(govDeps, input as RuntimeCloudInput)],
+    [RUNTIME_GOVERNANCE_TOOLS["runtime.disable_cloud"], async (input) => disableSphereCloud(govDeps, input as RuntimeCloudInput)],
     [PROVISIONING_TOOLS["sphere.create"], async (input) => createSphereProvision(provDeps, input as CreateSphereInput)],
     [PROVISIONING_TOOLS["member.invite"], async (input) => inviteMemberProvision(provDeps, input as InviteMemberInput)],
     [PROVISIONING_TOOLS["agent.create"], async (input) => createAgentProvision(provDeps, input as CreateAgentInput)],

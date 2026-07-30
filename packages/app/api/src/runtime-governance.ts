@@ -22,12 +22,15 @@ import {
   defaultCapabilityCatalog,
   defaultMemoryBindings,
   defaultMemoryPolicy,
+  exportSphere,
   importSphere,
   projectAgentRuntimeConfig,
+  setCloudInference,
   type AgentTokenStore,
   type AuditSink,
   type PolicyRequest,
   type Role,
+  type RuntimeProviderId,
   type RuntimeStateBlobStore,
   type SnapshotStore,
   type SphereStore,
@@ -166,6 +169,60 @@ export async function projectAgentConfig(
   });
 
   return { agentId, version: projection.version, allowedTools: projection.gateway.allowedTools, configPath };
+}
+
+export interface RuntimeCloudInput {
+  readonly sphereId?: string;
+  /** Cloud providers to permit when enabling (ignored on disable). */
+  readonly allowProviders?: readonly string[];
+  readonly correlationId?: string;
+}
+
+export interface RuntimeCloudResult {
+  readonly cloudInferenceEnabled: boolean;
+  readonly allowedProviders: readonly RuntimeProviderId[];
+}
+
+const KNOWN_PROVIDERS: readonly RuntimeProviderId[] = ["ollama", "openai"];
+
+/**
+ * `runtime.enable_cloud` / `runtime.disable_cloud` side effect (RFC-046): flip the
+ * Sphere's `cloudInferenceEnabled` and (on enable) permit the requested cloud
+ * providers. `enabled` is fixed by which capability bound to this handler — it is
+ * NEVER read from caller input — so routing through disable can't bypass the enable
+ * approval floor. Records a security fact only (decision + flag), never a secret.
+ */
+async function setSphereCloud(deps: RuntimeGovernanceDeps, input: RuntimeCloudInput, enabled: boolean): Promise<RuntimeCloudResult> {
+  const sphereId = input.sphereId;
+  if (typeof sphereId !== "string") throw new Error("input.sphereId is required");
+  const snap = await deps.store.load(sphereId);
+  if (snap === undefined) throw new Error(`Sphere ${sphereId} not found`);
+  const imported = importSphere(snap);
+  const allowProviders = (input.allowProviders ?? []).filter((p): p is RuntimeProviderId =>
+    (KNOWN_PROVIDERS as readonly string[]).includes(p),
+  );
+  const runtimeConfig = setCloudInference(imported.runtimeConfig, { enabled, allowProviders });
+  const stamp = (deps.now ?? (() => new Date().toISOString()))();
+  await deps.store.save(exportSphere({ ...imported, runtimeConfig, exportedAt: stamp }));
+  deps.auditSink?.record({
+    type: enabled ? "runtime.cloud.enabled" : "runtime.cloud.disabled",
+    sphereId,
+    resourceType: "sphere",
+    resourceId: sphereId,
+    decision: "executed",
+    reason: `cloudInferenceEnabled=${runtimeConfig.cloudInferenceEnabled}; allowedProviders=${runtimeConfig.allowedProviders.join(",")}`,
+    correlationId: input.correlationId ?? `cloud-${stamp}`,
+    createdAt: stamp,
+  });
+  return { cloudInferenceEnabled: runtimeConfig.cloudInferenceEnabled, allowedProviders: runtimeConfig.allowedProviders };
+}
+
+export function enableSphereCloud(deps: RuntimeGovernanceDeps, input: RuntimeCloudInput): Promise<RuntimeCloudResult> {
+  return setSphereCloud(deps, input, true);
+}
+
+export function disableSphereCloud(deps: RuntimeGovernanceDeps, input: RuntimeCloudInput): Promise<RuntimeCloudResult> {
+  return setSphereCloud(deps, input, false);
 }
 
 export interface RuntimeBackupInput {

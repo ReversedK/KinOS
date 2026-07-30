@@ -75,6 +75,11 @@ export const IN_SPHERE_RUNTIME_GOVERNANCE_CAPABILITIES = [
  */
 export const IN_SPHERE_ADMIN_SETTINGS_CAPABILITIES = [
   "runtime.set_provider",
+  // RFC-046: enable/disable cloud inference. The allow is granted here; enabling
+  // is still raised to require_approval by the catalog floor (a single admin may
+  // self-approve, RFC-026), and disabling stays unilateral (safety kill-switch).
+  "runtime.enable_cloud",
+  "runtime.disable_cloud",
   "integration.enable",
   "integration.disable",
   "integration.configure",

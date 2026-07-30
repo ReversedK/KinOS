@@ -108,6 +108,34 @@ export function setDefaultRuntimeProfile(
   return { ...config, defaultProfile: newDefault };
 }
 
+export interface SetCloudInferenceInput {
+  /** true → turn cloud on; false → the safety kill-switch, turn it off. */
+  readonly enabled: boolean;
+  /** Cloud providers to permit (unioned into allowedProviders) when enabling. */
+  readonly allowProviders?: readonly RuntimeProviderId[];
+}
+
+/**
+ * Enable or disable Sphere cloud inference (RFC-046, completing RFC-004). Pure and
+ * immutable — subject authorization (adult-only, approval-gated on enable) belongs
+ * to the Policy Engine and catalog, not here.
+ *
+ * Enabling flips `cloudInferenceEnabled` on and unions the requested providers into
+ * `allowedProviders` (deny-by-default: a provider is permitted only once explicitly
+ * added). Disabling flips it off; if the current default profile runs in the cloud
+ * it is reverted to the local-first default (Ollama) so the Sphere never keeps a
+ * now-forbidden cloud profile — cloud is "fully disableable" (invariant 13).
+ */
+export function setCloudInference(config: SphereRuntimeConfig, input: SetCloudInferenceInput): SphereRuntimeConfig {
+  if (input.enabled) {
+    const allowedProviders = Array.from(new Set<RuntimeProviderId>([...config.allowedProviders, ...(input.allowProviders ?? [])]));
+    return { ...config, cloudInferenceEnabled: true, allowedProviders };
+  }
+  const defaultProfile =
+    config.defaultProfile.execution === "cloud" ? defaultRuntimeConfig().defaultProfile : config.defaultProfile;
+  return { ...config, cloudInferenceEnabled: false, defaultProfile };
+}
+
 /**
  * Resolve the profile to use for a turn. An agent's model preference overrides
  * only the model string on the Sphere's default provider — a "boring" swap that

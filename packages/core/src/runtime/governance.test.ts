@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { RUNTIME_GOVERNANCE_TOOLS, runtimeGovernanceBindings } from "./governance.js";
 
 describe("runtimeGovernanceBindings (RFC-007/ADR-007)", () => {
-  it("binds the three runtime-governance capabilities to local executor tools, enabled + high-risk", () => {
+  it("binds the runtime-governance capabilities to local executor tools, enabled + high-risk", () => {
     const bindings = runtimeGovernanceBindings();
     expect(bindings.map((b) => b.capability).sort()).toEqual([
       "runtime.config.project",
+      "runtime.disable_cloud",
+      "runtime.enable_cloud",
       "runtime.session.backup",
       "runtime.session.restore",
     ]);

@@ -845,6 +845,32 @@ export async function setRuntime(
   throw new Error(`set runtime failed: ${status}`);
 }
 
+/**
+ * Enable Sphere cloud inference and permit cloud providers (RFC-046). Governed,
+ * adult-only, and approval-floored — returns `pending_approval` (202) until a
+ * second administrator grants it (a single-admin Sphere may self-approve). Once
+ * enabled, `setRuntime` can select a cloud provider with a credential reference.
+ */
+export function enableCloudInference(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  input: { readonly allowProviders?: readonly string[] } = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "runtime.enable_cloud", subject, input, fetchImpl);
+}
+
+/** Disable Sphere cloud inference — the unilateral safety kill-switch (RFC-046). */
+export function disableCloudInference(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ExecutionOutcome> {
+  return executeCapability(baseUrl, sphereId, "runtime.disable_cloud", subject, {}, fetchImpl);
+}
+
 export interface HarnessTerminalGrant {
   /** Single-use attach ticket; undefined on a denial. Never persisted or logged. */
   readonly ticket?: string;
