@@ -443,7 +443,63 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     }
 
     if (result.status === "pending_approval" && result.approval !== undefined) {
-      await deps.approvals.save({ approval: result.approval, request });
+      const approval = result.approval;
+      // RFC-047: an administrator is the human final authority (invariant 18) and
+      // need not ask a second person to approve their OWN action. When the requester
+      // is an eligible admin *member*, self-approve and execute in one step. An
+      // AGENT requester (agentId present) never qualifies — its approval-floored
+      // calls (payment, browser) still require a human approver (invariants 18/21).
+      const requesterMember =
+        subject.agentId === undefined && typeof subject.memberId === "string"
+          ? imported.sphere.members.find((m) => m.id === subject.memberId)
+          : undefined;
+      const requesterIsAdminApprover =
+        requesterMember !== undefined &&
+        requesterMember.status === "active" &&
+        effectiveAgeProfile(requesterMember) === "adult" &&
+        approval.approverRoles.includes(requesterMember.role);
+
+      if (requesterIsAdminApprover && requesterMember !== undefined) {
+        let resolved;
+        try {
+          resolved = await resolveApproval(
+            approval,
+            {
+              approver: {
+                memberId: requesterMember.id,
+                roles: [requesterMember.role],
+                ageProfile: effectiveAgeProfile(requesterMember),
+                active: true,
+              },
+              decision: "grant",
+              at: (deps.now ?? (() => new Date().toISOString()))(),
+              // The admin approves their own request (RFC-047 generalises RFC-026's
+              // sole-approver bypass to "an admin may approve their own action").
+              soleEligibleApprover: true,
+            },
+            request,
+            {
+              catalog: defaultCapabilityCatalog(),
+              bindings: [...imported.bindings, ...runtimeGovernanceBindings(), ...provisioningBindings(), ...defaultMemoryBindings()],
+              policies: effectivePolicies,
+              executor: deps.executor,
+              audit: deps.auditSink,
+              newApprovalId: deps.newApprovalId,
+            },
+          );
+        } catch (e) {
+          return err(422, "execution_failed", (e as Error).message);
+        }
+        if (resolved.status === "denied") return err(403, "forbidden", resolved.reason);
+        if (resolved.status === "execution_failed") return err(422, "execution_failed", resolved.reason);
+        return ok({
+          status: resolved.status,
+          reason: resolved.reason,
+          ...(resolved.output !== undefined ? { output: resolved.output } : {}),
+        });
+      }
+
+      await deps.approvals.save({ approval, request });
       return {
         status: 202,
         correlationId,
@@ -451,8 +507,8 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         body: {
           status: result.status,
           reason: result.reason,
-          approvalId: result.approval.id,
-          approverRoles: result.approval.approverRoles,
+          approvalId: approval.id,
+          approverRoles: approval.approverRoles,
         },
       };
     }

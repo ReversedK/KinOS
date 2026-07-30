@@ -379,17 +379,20 @@ describe("sphere.export — full-fidelity, admin-gated (RFC-021)", () => {
 
   const exportPath = (sphereId: string) => `/spheres/${sphereId}/capabilities/sphere.export/execute`;
 
-  it("an identified adult cannot export unilaterally — the approval floor suspends it", async () => {
+  it("an admin exports in one step — RFC-047 admin self-approval (no second approver)", async () => {
+    // RFC-047 (PO decision): an administrator is the human final authority and may
+    // export their own Sphere without a second approver — including the private
+    // memory it contains. The floor still holds for non-admins and agents.
     const { deps, store, sphereId } = await bootstrapped();
     const founder = importSphere((await store.load(sphereId))!).sphere.administrators[0]!;
     const res = await handleApiRequest(
       { method: "POST", path: exportPath(sphereId), body: { subject: { ...adult, memberId: founder } } },
       deps,
     );
-    expect(res.status).toBe(202);
-    expect(res.code).toBe("approval_required");
-    // The snapshot must not be handed over with the pending response.
-    expect(JSON.stringify(res.body)).not.toContain("kinos.sphere.export");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "executed" });
+    // The admin receives the snapshot directly (it is theirs); it never entered audit.
+    expect((res.body as { output: { format: string } }).output.format).toBe("kinos.sphere.export");
   });
 
   // Regression: an anonymous subject (no memberId, no agentId) made the core's
@@ -410,9 +413,9 @@ describe("sphere.export — full-fidelity, admin-gated (RFC-021)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns the full snapshot once a second adult grants, and it round-trips through importSphere", async () => {
+  it("returns the full snapshot to the admin in one step, and it round-trips through importSphere", async () => {
     const { deps, store, sphereId } = await bootstrapped();
-    // A second adult, so an approver other than the requester exists.
+    // A second adult member, for member-count fidelity in the exported snapshot.
     await handleApiRequest(
       {
         method: "POST",
@@ -422,20 +425,15 @@ describe("sphere.export — full-fidelity, admin-gated (RFC-021)", () => {
       deps,
     );
     const snapBefore = importSphere((await store.load(sphereId))!);
-    const approver = snapBefore.sphere.members.find((m) => m.role === "parent" && m.id !== snapBefore.sphere.administrators[0])!;
 
-    const pending = await handleApiRequest(
+    // RFC-047: the admin founder self-approves and receives the snapshot in one call.
+    const res = await handleApiRequest(
       { method: "POST", path: exportPath(sphereId), body: { subject: { ...adult, memberId: snapBefore.sphere.administrators[0] } } },
       deps,
     );
-    const approvalId = (pending.body as { approvalId: string }).approvalId;
-
-    const granted = await handleApiRequest(
-      { method: "POST", path: `/approvals/${approvalId}/grant`, body: { approver: { memberId: approver.id, role: "parent" } } },
-      deps,
-    );
-    expect(granted.status).toBe(200);
-    const output = (granted.body as { output?: unknown }).output;
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "executed" });
+    const output = (res.body as { output?: unknown }).output;
 
     // Fidelity: the payload is a valid export snapshot that imports unchanged.
     const reimported = importSphere(output);
@@ -477,21 +475,12 @@ describe("sphere.restore — never overwrites (RFC-022)", () => {
       },
       deps,
     );
-    const snap = importSphere((await store.load(sphereId))!);
-    const approver = snap.sphere.members.find((m) => m.role === "parent" && m.id !== founder)!;
-    const pending = await handleApiRequest(
+    // RFC-047: the admin founder self-approves the export and receives it in one call.
+    const exported = await handleApiRequest(
       { method: "POST", path: `/spheres/${sphereId}/capabilities/sphere.export/execute`, body: { subject: { ...adult, memberId: founder } } },
       deps,
     );
-    const granted = await handleApiRequest(
-      {
-        method: "POST",
-        path: `/approvals/${(pending.body as { approvalId: string }).approvalId}/grant`,
-        body: { approver: { memberId: approver.id, role: "parent" } },
-      },
-      deps,
-    );
-    return { snapshot: (granted.body as { output: unknown }).output, sphereId };
+    return { snapshot: (exported.body as { output: unknown }).output, sphereId };
   }
 
   it("restores a Sphere onto a fresh instance, faithfully (export → restore round-trip)", async () => {

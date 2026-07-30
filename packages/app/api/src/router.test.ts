@@ -297,6 +297,11 @@ describe("API router — capability execution (write path)", () => {
 
   const adult = { memberId: "mbr_p1", role: "parent", ageProfile: "adult" as const };
   const child = { memberId: "mbr_c1", role: "child", ageProfile: "child" as const };
+  // RFC-047: an AGENT requester never self-approves an approval-floored capability
+  // — even one owned by an admin. It carries an agentId, so the floor still suspends
+  // its call for a human approver (invariants 18/21). Used to exercise the floor now
+  // that an admin *member* (mbr_p1) would self-approve instead.
+  const agentReq = { agentId: "agt_0", memberId: "mbr_p1", role: "parent", ageProfile: "adult" as const };
   const execPath = (cap: string) => `/spheres/sph_1/capabilities/${cap}/execute`;
 
   it("executes an allowed capability (200) and audits it", async () => {
@@ -324,8 +329,9 @@ describe("API router — capability execution (write path)", () => {
 
   it("returns 202 approval_required for an approval-floored capability and persists the approval", async () => {
     const { deps, approvals, calls } = await execDeps([allowAdultPayment], [paymentBinding]);
+    // An agent requester (RFC-047 guardrail): the floor still suspends for a human.
     const res = await handleApiRequest(
-      { method: "POST", path: execPath("payment.execute"), body: { subject: adult } },
+      { method: "POST", path: execPath("payment.execute"), body: { subject: agentReq } },
       deps,
     );
     expect(res.status).toBe(202);
@@ -333,6 +339,24 @@ describe("API router — capability execution (write path)", () => {
     expect(res.body).toMatchObject({ status: "pending_approval" });
     expect(calls()).toBe(0);
     expect(await approvals.listPending("sph_1")).toHaveLength(1);
+  });
+
+  it("RFC-047: an admin member self-approves their own approval-floored capability in one step", async () => {
+    const { deps, audit, approvals, calls } = await execDeps([allowAdultPayment], [paymentBinding]);
+    // mbr_p1 is the founder/administrator — an eligible approver — so their own
+    // approval-floored request executes immediately, with no pending approval parked.
+    const res = await handleApiRequest(
+      { method: "POST", path: execPath("payment.execute"), body: { subject: adult } },
+      deps,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "executed" });
+    expect(calls()).toBe(1);
+    expect(await approvals.listPending("sph_1")).toHaveLength(0);
+    // The self-approval is a recorded fact, not a silent bypass (invariant 15).
+    const types = audit.events.map((e) => e.type);
+    expect(types).toContain("approval.granted");
+    expect(types).toContain("capability.executed");
   });
 
   it("runs runtime.config.project through the pipeline: approval floor (202) then grant executes (RFC-007)", async () => {
@@ -346,7 +370,7 @@ describe("API router — capability execution (write path)", () => {
     };
     const { deps, approvals, calls } = await execDeps([allowProject], []);
     const begin = await handleApiRequest(
-      { method: "POST", path: execPath("runtime.config.project"), body: { subject: adult, input: { sphereId: "sph_1", agentId: "agt_0" } } },
+      { method: "POST", path: execPath("runtime.config.project"), body: { subject: agentReq, input: { sphereId: "sph_1", agentId: "agt_0" } } },
       deps,
     );
     expect(begin.status).toBe(202); // catalog approval floor for runtime.config.project
@@ -369,7 +393,7 @@ describe("API router — capability execution (write path)", () => {
     // anchored on. A Sphere with no policies at all is never backfilled.
     const { deps, approvals, calls } = await execDeps([adminProvisioningSeed("sph_1")], []);
     const begin = await handleApiRequest(
-      { method: "POST", path: execPath("runtime.config.project"), body: { subject: adult, input: { sphereId: "sph_1", agentId: "agt_0" } } },
+      { method: "POST", path: execPath("runtime.config.project"), body: { subject: agentReq, input: { sphereId: "sph_1", agentId: "agt_0" } } },
       deps,
     );
     expect(begin.status).toBe(202);
@@ -402,7 +426,7 @@ describe("API router — capability execution (write path)", () => {
     };
     const { deps, calls } = await execDeps([allowRestore], []);
     const begin = await handleApiRequest(
-      { method: "POST", path: execPath("runtime.session.restore"), body: { subject: adult, input: { sphereId: "sph_1", agentId: "agt_0", snapshotId: "snap_1" } } },
+      { method: "POST", path: execPath("runtime.session.restore"), body: { subject: agentReq, input: { sphereId: "sph_1", agentId: "agt_0", snapshotId: "snap_1" } } },
       deps,
     );
     expect(begin.status).toBe(202);
