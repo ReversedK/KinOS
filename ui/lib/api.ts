@@ -683,6 +683,28 @@ export async function beginOAuthConnect(
   throw new Error(`begin oauth failed: ${status}`);
 }
 
+/**
+ * RFC-049: begin "Sign in with ChatGPT" for a codex runtime model. Returns the
+ * OpenAI authorize URL; the browser follows it, consents, and /oauth/connected
+ * assembles the OpenAI OAuth inference profile. Governed (admin-only, cloud-gated).
+ */
+export async function beginRuntimeOAuth(
+  baseUrl: string,
+  sphereId: string,
+  subject: ActingSubject,
+  model: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<OAuthBeginOutcome> {
+  const { status, body } = await postJson<OAuthBeginOutcome>(
+    baseUrl,
+    `/spheres/${encodeURIComponent(sphereId)}/runtime/oauth/begin`,
+    { subject, model },
+    fetchImpl,
+  );
+  if (status === 200 || status === 400 || status === 403) return body;
+  throw new Error(`begin runtime oauth failed: ${status}`);
+}
+
 export interface ConfigureIntegrationOutcome {
   readonly id?: string;
   readonly provider?: string;

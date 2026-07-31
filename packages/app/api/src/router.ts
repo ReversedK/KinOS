@@ -19,6 +19,7 @@ import {
   changeModelPreference,
   bootstrapPolicies,
   createRuntimeProfile,
+  isCodexModel,
   createSession,
   createTuiTicket,
   defaultCapabilityCatalog,
@@ -1144,6 +1145,89 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     return ok({ authorizeUrl: url, nonce, provider: integration.provider });
   }
 
+  // --- Runtime OAuth begin (RFC-049) ---
+  // POST /spheres/:id/runtime/oauth/begin  { subject, model }
+  // "Sign in with ChatGPT" for a codex model: mint a runtime-targeted pending
+  // connection and return the OpenAI authorize URL. Admin-gated like set_provider;
+  // the connect (/oauth/connected) assembles the full OpenAI OAuth profile.
+  if (
+    req.method === "POST" &&
+    segments[0] === "spheres" &&
+    segments.length === 5 &&
+    segments[2] === "runtime" &&
+    segments[3] === "oauth" &&
+    segments[4] === "begin"
+  ) {
+    if (deps.auditSink === undefined || deps.authBroker === undefined || deps.pendingOAuth === undefined || deps.newOAuthState === undefined) {
+      return err(501, "not_implemented", "OAuth connect is not enabled on this deployment");
+    }
+    const sphereId = segments[1] as string;
+    const snap = await deps.store.load(sphereId);
+    if (snap === undefined) return err(404, "not_found", "Sphere not found");
+    const imported = importSphere(snap);
+
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as { subject?: PolicyRequest["subject"]; model?: unknown };
+    const subject = body.subject;
+    if (subject === undefined || typeof subject.role !== "string" || typeof subject.ageProfile !== "string") {
+      return err(400, "invalid_request", "A subject with role and ageProfile is required");
+    }
+    const model = typeof body.model === "string" ? body.model.trim() : "";
+    if (model === "") return err(400, "invalid_request", "A model is required");
+    // RFC-049: OAuth "Sign in with ChatGPT" applies to codex models only.
+    if (!isCodexModel(model)) return err(400, "invalid_request", "OAuth sign-in applies to codex models only");
+
+    const stamp = (deps.now ?? (() => new Date().toISOString()))();
+    // Admin-gated: reuse the set_provider floor + policy (connecting completes it).
+    const cap = defaultCapabilityCatalog().get("runtime.set_provider");
+    if (cap === undefined || !cap.allowedProfiles.includes(subject.ageProfile)) {
+      return err(403, "forbidden", "runtime.set_provider is not allowed for this profile");
+    }
+    const decision = evaluate(
+      {
+        subject,
+        action: "execute",
+        resource: { type: "capability", capabilityName: "runtime.set_provider", riskLevel: "high" },
+        context: { sphereId, time: stamp, execution: "local", correlationId },
+      },
+      withAdminSeedMigration(sphereId, imported.policies, "runtime.set_provider"),
+    );
+    if (decision.effect !== "allow") return err(403, "forbidden", decision.reason);
+
+    // Deny by default: cloud must be enabled and OpenAI allowed before we connect a
+    // cloud account (the profile we will assemble on connect must be permitted).
+    try {
+      assertProfileAllowed(imported.runtimeConfig, createRuntimeProfile({ providerId: "openai", model, execution: "cloud", secretRef: "pending://oauth", authMethod: "oauth" }));
+    } catch (e) {
+      return err(403, "forbidden", (e as Error).message);
+    }
+
+    const nonce = deps.newOAuthState();
+    const connectedBase = deps.oauthRedirectUri ?? "http://localhost:8787/oauth/connected";
+    const callbackURL = `${connectedBase}${connectedBase.includes("?") ? "&" : "?"}nonce=${encodeURIComponent(nonce)}`;
+    deps.pendingOAuth.issue({
+      nonce,
+      sphereId,
+      kind: "runtime",
+      provider: "openai",
+      model,
+      expiresAt: new Date(Date.parse(stamp) + OAUTH_STATE_TTL_SECONDS * 1000).toISOString(),
+    });
+    const scopes = unionRealScopes(["openai"]);
+    const { url } = await deps.authBroker.beginConnect({ provider: "openai", scopes, callbackURL });
+    deps.auditSink.record({
+      type: "runtime.oauth.begun",
+      sphereId,
+      resourceType: "capability",
+      resourceId: "runtime.set_provider",
+      decision: "executed",
+      reason: `provider=openai model=${model}`,
+      correlationId,
+      createdAt: stamp,
+      ...(subject.memberId !== undefined ? { actorId: subject.memberId } : {}),
+    });
+    return ok({ authorizeUrl: url, nonce, provider: "openai" });
+  }
+
   // --- OAuth connected (RFC-018) ---
   // GET /oauth/connected?nonce=..
   // The broker (Better Auth) has processed the provider callback and stored the
@@ -1162,8 +1246,6 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     const snap = await deps.store.load(pending.sphereId);
     if (snap === undefined) return err(404, "not_found", "Sphere not found");
     const imported = importSphere(snap);
-    const integration = imported.integrations.find((i) => i.id === pending.integrationId);
-    if (integration === undefined) return err(404, "not_found", "Integration not found");
 
     const stamp = (deps.now ?? (() => new Date().toISOString()))();
     let resolved: { accountRef: string } | undefined;
@@ -1173,6 +1255,43 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
       return err(502, "connect_failed", (e as Error).message);
     }
     if (resolved === undefined) return err(403, "forbidden", "No connected account in the broker session");
+
+    // RFC-049: a runtime-targeted connect assembles the OpenAI OAuth inference profile
+    // (provider + codex model + authMethod=oauth + the broker account reference) in one
+    // shot — no credential-less cloud profile is ever saved. The secretRef is a broker
+    // account reference, never a token.
+    if (pending.kind === "runtime") {
+      const consoleBase = (deps.consoleUrl ?? "http://localhost:3100").replace(/\/+$/, "");
+      let newConfig;
+      try {
+        const profile = createRuntimeProfile({
+          providerId: "openai",
+          model: pending.model ?? imported.runtimeConfig.defaultProfile.model,
+          execution: "cloud",
+          authMethod: "oauth",
+          secretRef: `${pending.provider}::${resolved.accountRef}`,
+        });
+        newConfig = setDefaultRuntimeProfile(imported.runtimeConfig, profile);
+      } catch (e) {
+        return err(403, "forbidden", (e as Error).message);
+      }
+      await deps.store.save(exportSphere({ ...imported, runtimeConfig: newConfig, exportedAt: stamp }));
+      deps.auditSink.record({
+        type: "runtime.oauth.connected",
+        sphereId: pending.sphereId,
+        resourceType: "capability",
+        resourceId: "runtime.set_provider",
+        decision: "executed",
+        reason: `provider=${pending.provider} model=${newConfig.defaultProfile.model}`,
+        correlationId,
+        createdAt: stamp,
+      });
+      const location = `${consoleBase}/spheres/${encodeURIComponent(pending.sphereId)}/settings?connected=${encodeURIComponent(pending.provider)}`;
+      return { status: 302, correlationId, code: "connected", headers: { Location: location }, body: { provider: pending.provider, connected: true } };
+    }
+
+    const integration = imported.integrations.find((i) => i.id === pending.integrationId);
+    if (integration === undefined) return err(404, "not_found", "Integration not found");
     // The secretRef is a reference to the broker-held account — never the token.
     // Carry the provider so the token lookup knows which account to refresh.
     const configured = { ...integration, secretRef: `${pending.provider}::${resolved.accountRef}` };

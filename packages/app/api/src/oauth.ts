@@ -47,8 +47,17 @@ export interface AuthBroker {
 export interface PendingOAuth {
   readonly nonce: string;
   readonly sphereId: string;
-  readonly integrationId: string;
+  /**
+   * What the connection targets. "integration" (default) binds to an Integration
+   * and sets its secretRef on connect; "runtime" (RFC-049) binds to the Sphere's
+   * inference profile and assembles an OpenAI OAuth profile on connect.
+   */
+  readonly kind?: "integration" | "runtime";
+  /** The Integration being connected (integration kind only). */
+  readonly integrationId?: string;
   readonly provider: string;
+  /** RFC-049: the codex model to set on the runtime profile (runtime kind only). */
+  readonly model?: string;
   readonly expiresAt: string;
 }
 

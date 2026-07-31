@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   CLIENT_API_BASE,
+  beginRuntimeOAuth,
   disableCloudInference,
   enableCloudInference,
   setRuntime,
@@ -69,6 +70,22 @@ export function SetRuntime({
         ? await enableCloudInference(CLIENT_API_BASE, sphereId, actor, { allowProviders: ["openai"] })
         : await disableCloudInference(CLIENT_API_BASE, sphereId, actor);
       setNote(describeOutcome(res));
+    } catch (e) {
+      setNote({ tone: "deny", text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // RFC-049: begin "Sign in with ChatGPT" for the codex model, then follow the
+  // authorize URL. The governed /oauth/connected assembles the OpenAI OAuth profile.
+  async function connectChatGpt(): Promise<void> {
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const res = await beginRuntimeOAuth(CLIENT_API_BASE, sphereId, actor, model.trim());
+      if (res.authorizeUrl !== undefined) window.location.href = res.authorizeUrl;
+      else setNote({ tone: "deny", text: `Denied — ${res.message ?? "cannot connect"}` });
     } catch (e) {
       setNote({ tone: "deny", text: (e as Error).message });
     } finally {
@@ -153,11 +170,18 @@ export function SetRuntime({
             </button>
           </div>
           {authMethod === "oauth" ? (
-            <span className="hint">
-              This codex model authenticates with a ChatGPT sign-in. KinOS stores only a broker account reference, never a token. The live
-              sign-in requires the operator to provision the OpenAI OAuth client (see <span className="mono">.env</span>); until then, paste the
-              broker account reference above.
-            </span>
+            <div className="stack tight" style={{ gap: 6 }}>
+              <div>
+                <button className="btn sm primary" disabled={busy || !cloudEnabled} onClick={() => void connectChatGpt()}>
+                  {busy ? <span className="spin" /> : null} Connect ChatGPT →
+                </button>
+              </div>
+              <span className="hint">
+                Signing in connects a ChatGPT account and sets this codex model as the Sphere&apos;s inference profile. KinOS stores only a
+                broker account reference, never a token. Requires cloud inference enabled{cloudEnabled ? "" : " (enable it below first)"} and the
+                operator-provisioned OpenAI OAuth client (<span className="mono">OPENAI_OAUTH_*</span> in <span className="mono">.env</span>).
+              </span>
+            </div>
           ) : null}
         </div>
       ) : null}

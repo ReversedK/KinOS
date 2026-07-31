@@ -719,6 +719,90 @@ describe("API router — runtime provider/model write", () => {
   });
 });
 
+// --- Runtime OAuth "Sign in with ChatGPT" for codex models (RFC-049) ---
+
+describe("API router — runtime OAuth connect (RFC-049)", () => {
+  const allowAdultSetProvider: Policy = {
+    id: "pol_rt",
+    sphereId: "sph_1",
+    description: "Adults may change the inference provider.",
+    subjectSelector: { ageProfiles: ["adult"] },
+    action: "execute",
+    resourceSelector: { capabilityNames: ["runtime.set_provider"] },
+    effect: "allow",
+    priority: 0,
+    version: 1,
+    status: "active",
+  };
+  const adult = { memberId: "mbr_p1", role: "parent", ageProfile: "adult" as const };
+
+  // A Sphere with cloud enabled + openai allowed (the RFC-046 grant already released),
+  // plus the OAuth broker deps. Uses the deterministic FakeAuthBroker.
+  async function oauthRuntimeDeps(policies: Policy[], cloud = true) {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({ id: "sph_1", type: "family", name: "Doe Family", founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" } });
+    const runtimeConfig = {
+      defaultProfile: { providerId: "ollama" as const, model: "gemma4-128k", execution: "local" as const },
+      allowedProviders: cloud ? (["ollama", "openai"] as const) : (["ollama"] as const),
+      cloudInferenceEnabled: cloud,
+    };
+    await store.save(exportSphere({ sphere, identities: [], agents: [], memory: [], policies, runtimeConfig, exportedAt: NOW }));
+    const audit = new InMemoryAuditSink();
+    let n = 0;
+    const deps: ApiDeps = {
+      store,
+      approvals: new InMemoryApprovalStore(),
+      audit,
+      auditSink: audit,
+      newCorrelationId: () => `req_${++n}`,
+      now: () => NOW,
+      authBroker: new FakeAuthBroker(),
+      pendingOAuth: new PendingOAuthStore(() => NOW),
+      newOAuthState: () => "n_ai",
+      oauthRedirectUri: "http://cb/oauth/connected",
+      consoleUrl: "http://console",
+    };
+    return { deps, audit };
+  }
+  const beginPath = "/spheres/sph_1/runtime/oauth/begin";
+
+  it("begins the ChatGPT sign-in for a codex model and returns an authorize URL", async () => {
+    const { deps } = await oauthRuntimeDeps([allowAdultSetProvider]);
+    const res = await handleApiRequest({ method: "POST", path: beginPath, body: { subject: adult, model: "gpt-5-codex" } }, deps);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ provider: "openai" });
+    expect((res.body as { authorizeUrl?: string }).authorizeUrl).toContain("fake_provider=openai");
+  });
+
+  it("refuses a non-codex model (400)", async () => {
+    const { deps } = await oauthRuntimeDeps([allowAdultSetProvider]);
+    const res = await handleApiRequest({ method: "POST", path: beginPath, body: { subject: adult, model: "gpt-4o" } }, deps);
+    expect(res.status).toBe(400);
+  });
+
+  it("denies by default when no policy allows set_provider (403)", async () => {
+    const { deps } = await oauthRuntimeDeps([]);
+    const res = await handleApiRequest({ method: "POST", path: beginPath, body: { subject: adult, model: "gpt-5-codex" } }, deps);
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses when cloud inference is disabled for the Sphere (403)", async () => {
+    const { deps } = await oauthRuntimeDeps([allowAdultSetProvider], false);
+    const res = await handleApiRequest({ method: "POST", path: beginPath, body: { subject: adult, model: "gpt-5-codex" } }, deps);
+    expect(res.status).toBe(403);
+  });
+
+  it("connect assembles the OpenAI OAuth profile (provider+codex model+cloud) on /oauth/connected", async () => {
+    const { deps } = await oauthRuntimeDeps([allowAdultSetProvider]);
+    const begin = await handleApiRequest({ method: "POST", path: beginPath, body: { subject: adult, model: "gpt-5-codex" } }, deps);
+    expect(begin.status).toBe(200);
+    const cb = await handleApiRequest({ method: "GET", path: "/oauth/connected", query: { nonce: "n_ai" }, headers: { "x-fake-user": "alice" } }, deps);
+    expect(cb.status).toBe(302);
+    const after = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/runtime" }, deps);
+    expect(after.body).toMatchObject({ provider: "openai", model: "gpt-5-codex", execution: "cloud" });
+  });
+});
+
 // --- Chat sessions: create + list (RFC-005) ---
 
 describe("API router — chat sessions", () => {

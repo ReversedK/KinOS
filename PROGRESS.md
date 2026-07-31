@@ -2293,3 +2293,23 @@ Runtime adapter → integrations/Packages → UI.
   scopes (operator-provisioned; placeholders shipped), and a **runtime-scoped connect
   endpoint** + token resolution (the existing OAuth begin flow is integration-scoped; the
   runtime provider is not an Integration) — the next slice.
+
+### Iteration 120 — 2026-07-31 (RFC-049: runtime-scoped "Connect ChatGPT" for codex)
+- Built the runtime-scoped OAuth connect (the existing flow was integration-scoped; the
+  runtime provider isn't an Integration). `PendingOAuth` gains `kind`
+  (`integration | runtime`) + `model`.
+- **`POST /spheres/:id/runtime/oauth/begin { subject, model }`** — admin-gated (the
+  `runtime.set_provider` floor + policy), requires a **codex** model and cloud enabled +
+  OpenAI allowed (deny-by-default), returns the OpenAI authorize URL.
+- **`/oauth/connected` (runtime branch)** resolves the broker account and **assembles the
+  full OpenAI OAuth profile in one shot** — provider openai + codex model + `cloud` +
+  `authMethod=oauth` + `secretRef=openai::<accountRef>` (broker ref, never a token). No
+  credential-less cloud profile is ever saved; solves the create-profile-needs-secretRef
+  chicken-and-egg. Redirects to the console settings.
+- **UI:** SetRuntime shows a **Connect ChatGPT →** button when provider=OpenAI + codex
+  model + OAuth chosen (gated on cloud enabled). Audit events `runtime.oauth.begun/connected`.
+- **Verified:** 5 new router tests (begin ok / non-codex 400 / no-policy 403 / cloud-off
+  403 / connect assembles the profile) — 586 tests, typecheck, `next build` green.
+- **Last remaining hop (deferred, needs live cloud):** materializing the broker token into
+  the Hermes projected profile `.env` for the actual codex inference call — KinOS cloud
+  inference has never been run end-to-end, so this stays for a live session.

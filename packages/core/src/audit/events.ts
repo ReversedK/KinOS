@@ -60,6 +60,9 @@ export type KinEventType =
   /** An OAuth integration connect was begun / completed (RFC-017); never the token. */
   | "integration.oauth.begun"
   | "integration.oauth.connected"
+  /** A runtime OAuth ("Sign in with ChatGPT") connect was begun / completed (RFC-049); never the token. */
+  | "runtime.oauth.begun"
+  | "runtime.oauth.connected"
   | "external_transfer.requested"
   | "external_transfer.allowed"
   | "external_transfer.denied";

@@ -103,14 +103,29 @@ URL is built offline for a configured OpenAI provider.
   authorize/token URLs, scopes and PKCE specifics are operator-provisioned config (the map
   ships placeholder OIDC scopes `openid/profile/email`). The broker plumbing is in place;
   only real values + a live consent remain, mirroring the Google-client provisioning.
-- **Runtime connect endpoint:** the existing OAuth begin/`/oauth/connected` flow is
-  integration-scoped (keyed by `integrationId`); the runtime provider is not an Integration.
-  A runtime-scoped connect (stash the broker `accountRef` into the runtime profile's
-  `secretRef`) plus resolving that token in runtime selection (broker instead of the static
-  secret resolver when `authMethod=oauth`) is the next slice.
+- **Token materialization for inference (remaining):** resolving the broker `accountRef`
+  into a bearer for the *actual* inference call. The agent runs via the Hermes projection,
+  which references the provider key by env (`${OPENAI_API_KEY}`); wiring the broker
+  `getAccessToken(secretRef)` → the projected profile `.env` for `authMethod=oauth` is the
+  last hop, and needs live cloud verification (KinOS cloud inference has never been run
+  end-to-end). The CLI `selectRuntime` path also still uses a static `SecretResolver`.
 - **Token model / availability:** access-token lifetime and refresh for a ChatGPT
   subscription sign-in; which codex models a given plan exposes, and surfacing an
   unavailable-model denial cleanly.
+
+## Runtime connect (built)
+
+The runtime-scoped connect is implemented (the existing OAuth flow was integration-scoped;
+the runtime provider is not an Integration). `PendingOAuth` gained a `kind`
+(`"integration" | "runtime"`) + a `model`. `POST /spheres/:id/runtime/oauth/begin
+{ subject, model }` is admin-gated (the `runtime.set_provider` floor + policy), requires a
+**codex** model and that cloud is enabled + OpenAI allowed (deny-by-default), and returns
+the OpenAI authorize URL. On return, `/oauth/connected` (runtime branch) resolves the
+broker account and **assembles the full OpenAI OAuth profile in one shot** — provider
+`openai`, the codex model, `execution: cloud`, `authMethod: oauth`, and
+`secretRef = openai::<accountRef>` (a broker reference, never a token) — so no
+credential-less cloud profile is ever persisted. The console's runtime settings surface a
+**Connect ChatGPT** button when OpenAI + a codex model + OAuth is chosen.
 
 ## Acceptance criteria
 
