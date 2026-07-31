@@ -15,20 +15,37 @@
  */
 
 export interface OAuthProviderSpec {
-  /** The auth broker's social-login provider that actually holds the account. */
-  readonly socialProvider: "google" | "apple";
+  /**
+   * The auth broker's login provider that actually holds the account. `google` /
+   * `apple` are Better Auth built-in social providers; `openai` is a Better Auth
+   * *generic* OAuth2 provider (RFC-049) — see `generic` below.
+   */
+  readonly socialProvider: "google" | "apple" | "openai";
   /** The real OAuth scope URLs to request for this KinOS provider's purpose. */
   readonly scopes: readonly string[];
+  /**
+   * RFC-049: true when the login is a Better Auth *generic* OAuth2 provider (a
+   * custom authorize/token endpoint, e.g. "Sign in with ChatGPT") rather than a
+   * built-in social provider. The broker connects it via `signInWithOAuth2` and
+   * its endpoints come from deployment config, not a built-in.
+   */
+  readonly generic?: boolean;
 }
 
 const GOOGLE_CALENDAR = "https://www.googleapis.com/auth/calendar";
 const GOOGLE_DRIVE_READONLY = "https://www.googleapis.com/auth/drive.readonly";
+// RFC-049: placeholder OIDC scopes for "Sign in with ChatGPT". OpenAI's real
+// codex/ChatGPT OAuth scopes are still an open question — overridable at deploy.
+const OPENAI_OIDC = ["openid", "profile", "email"];
 
-/** KinOS provider id → social provider + real OAuth scopes. */
+/** KinOS provider id → login provider + real OAuth scopes. */
 export const OAUTH_PROVIDERS: Readonly<Record<string, OAuthProviderSpec>> = {
   google: { socialProvider: "google", scopes: [GOOGLE_CALENDAR] },
   google_drive: { socialProvider: "google", scopes: [GOOGLE_DRIVE_READONLY] },
   apple: { socialProvider: "apple", scopes: [] },
+  // RFC-049: the OpenAI runtime provider authenticating via "Sign in with ChatGPT"
+  // (a generic OAuth2 login), used when a codex model is selected with authMethod=oauth.
+  openai: { socialProvider: "openai", scopes: OPENAI_OIDC, generic: true },
 };
 
 /** Look up a provider spec; undefined for an unmapped provider (caller refuses). */

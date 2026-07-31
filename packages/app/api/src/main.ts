@@ -227,13 +227,27 @@ function buildAuthBroker(): AuthBroker {
   const secret = process.env["BETTER_AUTH_SECRET"];
   const googleId = process.env["GOOGLE_CLIENT_ID"];
   const googleSecret = process.env["GOOGLE_CLIENT_SECRET"];
-  if (secret !== undefined && googleId !== undefined && googleSecret !== undefined) {
+  const google = googleId !== undefined && googleSecret !== undefined ? { clientId: googleId, clientSecret: googleSecret } : undefined;
+  // RFC-049: OpenAI "Sign in with ChatGPT" as a generic OAuth2 provider. Needs the
+  // client credentials AND its authorize/token endpoints (OpenAI's real URLs are
+  // operator-provisioned). Unset ⇒ not registered, like Google.
+  const openaiId = process.env["OPENAI_OAUTH_CLIENT_ID"];
+  const openaiSecret = process.env["OPENAI_OAUTH_CLIENT_SECRET"];
+  const openaiAuthorize = process.env["OPENAI_OAUTH_AUTHORIZE_URL"];
+  const openaiToken = process.env["OPENAI_OAUTH_TOKEN_URL"];
+  const openai =
+    openaiId !== undefined && openaiSecret !== undefined && openaiAuthorize !== undefined && openaiToken !== undefined
+      ? { clientId: openaiId, clientSecret: openaiSecret, authorizeUrl: openaiAuthorize, tokenUrl: openaiToken }
+      : undefined;
+  // A real broker as soon as ANY provider is configured (with the shared secret).
+  if (secret !== undefined && (google !== undefined || openai !== undefined)) {
     return new BetterAuthBroker({
       baseURL: process.env["BETTER_AUTH_URL"] ?? mcpPublicUrl,
       secret,
       // Durable account store: connected accounts + refresh tokens survive restart.
       databaseFile: ensureDir(process.env["BETTER_AUTH_DB"] ?? "data/auth.sqlite"),
-      google: { clientId: googleId, clientSecret: googleSecret },
+      ...(google !== undefined ? { google } : {}),
+      ...(openai !== undefined ? { openai } : {}),
     });
   }
   return new FakeAuthBroker();

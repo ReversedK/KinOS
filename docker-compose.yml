@@ -65,6 +65,15 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
+      # RFC-049: OpenAI "Sign in with ChatGPT" as a Better Auth generic OAuth2
+      # provider, for codex models with authMethod=oauth. Needs the OpenAI OAuth
+      # client (id+secret) AND its authorize/token endpoints (operator-provisioned;
+      # OpenAI's real URLs are the RFC's open question). All four unset ⇒ the openai
+      # login is not registered, exactly like Google. Reuses BETTER_AUTH_SECRET/URL.
+      - OPENAI_OAUTH_CLIENT_ID=${OPENAI_OAUTH_CLIENT_ID:-}
+      - OPENAI_OAUTH_CLIENT_SECRET=${OPENAI_OAUTH_CLIENT_SECRET:-}
+      - OPENAI_OAUTH_AUTHORIZE_URL=${OPENAI_OAUTH_AUTHORIZE_URL:-}
+      - OPENAI_OAUTH_TOKEN_URL=${OPENAI_OAUTH_TOKEN_URL:-}
       # The API as the BROWSER reaches it — NOT the compose name http://api:8787
       # (that is KINOS_PUBLIC_URL, for Hermes→Sphere-MCP container-to-container).
       # Better Auth derives the Google redirect_uri from this, and Google redirects

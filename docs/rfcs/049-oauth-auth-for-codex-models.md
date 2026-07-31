@@ -86,16 +86,30 @@ method is a property of the Sphere runtime profile, surfaced when a codex model 
 - **A separate `codex` provider id.** Unnecessary — codex is an OpenAI model; the provider
   stays `openai`, the model string identifies codex, and `isCodexModel` detects it.
 
-## Open questions (deferred external work)
+## Broker mechanism (decided + built)
 
-- **OpenAI OAuth mechanics:** the real "Sign in with ChatGPT" client id, authorize/token
-  endpoints, scopes and device/PKCE flow — and whether the current Better Auth broker can
-  host an `openai`/`chatgpt` provider or needs a dedicated adapter. Until provisioned, the
-  UI surfaces the option with an operator hint and the handshake is not live (parallels the
-  Google client provisioning in RFC-017/034).
-- **Token model:** access-token lifetime and refresh for ChatGPT sign-in (subscription
-  tokens differ from API keys); how the OpenAI runtime resolves a token via the broker.
-- **Availability:** which codex models a given ChatGPT plan exposes, and how to surface an
+The Better Auth broker is reused (PO decision). OpenAI is registered as a Better Auth
+**generic OAuth2** provider (the `genericOAuth` plugin), not a built-in social provider:
+`OAUTH_PROVIDERS.openai` marks it `generic: true`; the broker's `beginConnect` branches to
+`signInWithOAuth2` for generic providers (built-in Google/Apple still use `signInSocial`),
+and `getAccessToken` resolves it by `providerId` uniformly. It is gated on deployment env
+(`OPENAI_OAUTH_CLIENT_ID/SECRET` + `OPENAI_OAUTH_AUTHORIZE_URL/TOKEN_URL`); all unset ⇒ the
+provider is not registered, exactly like Google. A broker unit test proves the authorize
+URL is built offline for a configured OpenAI provider.
+
+## Open questions (remaining external work)
+
+- **OpenAI OAuth endpoints + scopes:** the *real* "Sign in with ChatGPT" client id,
+  authorize/token URLs, scopes and PKCE specifics are operator-provisioned config (the map
+  ships placeholder OIDC scopes `openid/profile/email`). The broker plumbing is in place;
+  only real values + a live consent remain, mirroring the Google-client provisioning.
+- **Runtime connect endpoint:** the existing OAuth begin/`/oauth/connected` flow is
+  integration-scoped (keyed by `integrationId`); the runtime provider is not an Integration.
+  A runtime-scoped connect (stash the broker `accountRef` into the runtime profile's
+  `secretRef`) plus resolving that token in runtime selection (broker instead of the static
+  secret resolver when `authMethod=oauth`) is the next slice.
+- **Token model / availability:** access-token lifetime and refresh for a ChatGPT
+  subscription sign-in; which codex models a given plan exposes, and surfacing an
   unavailable-model denial cleanly.
 
 ## Acceptance criteria

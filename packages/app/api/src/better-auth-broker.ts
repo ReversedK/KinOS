@@ -28,6 +28,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import Database from "better-sqlite3";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
+import { genericOAuth } from "better-auth/plugins";
 import { getMigrations } from "better-auth/db/migration";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 
@@ -43,6 +44,13 @@ export interface BetterAuthBrokerOptions {
   readonly databaseFile?: string;
   readonly google?: { clientId: string; clientSecret: string };
   readonly apple?: { clientId: string; clientSecret: string };
+  /**
+   * RFC-049: OpenAI "Sign in with ChatGPT" as a Better Auth *generic* OAuth2
+   * provider. The authorize/token endpoints are deployment config (OpenAI's real
+   * URLs are provisioned by the operator) — unset ⇒ the provider is not registered
+   * (exactly like Google), so the option surfaces only when actually configured.
+   */
+  readonly openai?: { clientId: string; clientSecret: string; authorizeUrl: string; tokenUrl: string };
 }
 
 const REF_SEP = "::";
@@ -71,6 +79,26 @@ function buildAuth(opts: BetterAuthBrokerOptions, basePath: string) {
       ...(opts.google !== undefined ? { google: { ...opts.google, accessType: "offline", prompt: "consent" } } : {}),
       ...(opts.apple !== undefined ? { apple: opts.apple } : {}),
     },
+    // RFC-049: register OpenAI as a generic OAuth2 provider when configured. Its
+    // authorize/token endpoints come from deployment config; the broker treats it
+    // uniformly (beginConnect → signInWithOAuth2, getAccessToken by providerId).
+    ...(opts.openai !== undefined
+      ? {
+          plugins: [
+            genericOAuth({
+              config: [
+                {
+                  providerId: "openai",
+                  clientId: opts.openai.clientId,
+                  clientSecret: opts.openai.clientSecret,
+                  authorizationUrl: opts.openai.authorizeUrl,
+                  tokenUrl: opts.openai.tokenUrl,
+                },
+              ],
+            }),
+          ],
+        }
+      : {}),
   });
 }
 
@@ -111,6 +139,31 @@ export class BetterAuthBroker implements AuthBroker {
     // solely in oauth-providers.ts.
     const spec = oauthProviderSpec(input.provider);
     if (spec === undefined) throw new Error(`No OAuth provider mapping for '${input.provider}'`);
+    // RFC-049: a generic OAuth2 provider (e.g. OpenAI "Sign in with ChatGPT") is
+    // connected via the genericOAuth plugin's signInWithOAuth2, keyed by providerId;
+    // built-in social providers (Google/Apple) via signInSocial. Both return only a URL.
+    if (spec.generic === true) {
+      // The genericOAuth plugin is registered conditionally, so its endpoints are not
+      // in the statically-inferred api type; call through a narrow typed view.
+      const api = this.auth.api as unknown as {
+        signInWithOAuth2: (args: {
+          body: { providerId: string; callbackURL: string; scopes: string[]; disableRedirect: boolean };
+        }) => Promise<{ url?: string }>;
+      };
+      if (typeof api.signInWithOAuth2 !== "function") {
+        throw new Error(`Generic OAuth provider '${input.provider}' is not configured`);
+      }
+      const res = await api.signInWithOAuth2({
+        body: {
+          providerId: spec.socialProvider,
+          callbackURL: input.callbackURL,
+          scopes: [...input.scopes],
+          disableRedirect: true,
+        },
+      });
+      if (res.url === undefined) throw new Error(`Better Auth did not return an authorize URL for '${input.provider}'`);
+      return { url: res.url };
+    }
     const res = (await this.auth.api.signInSocial({
       body: {
         provider: spec.socialProvider,

@@ -2273,3 +2273,23 @@ Runtime adapter → integrations/Packages → UI.
   existing Google-client hint.
 - **Verified:** 580 tests, typecheck, `next build` green. The real OpenAI OAuth
   broker/endpoints are explicitly out of scope (tracked in the RFC).
+
+### Iteration 119 — 2026-07-31 (RFC-049: OpenAI in the Better Auth broker via generic OAuth2)
+- Chose to **reuse the Better Auth broker** (PO). OpenAI "Sign in with ChatGPT" is
+  registered as a Better Auth **generic OAuth2** provider (the `genericOAuth` plugin),
+  since OpenAI is not a built-in social provider.
+- **Provider map:** `OAuthProviderSpec.socialProvider` gains `"openai"` + a `generic?`
+  flag; `OAUTH_PROVIDERS.openai` (generic, placeholder OIDC scopes) added.
+- **Broker:** `BetterAuthBrokerOptions.openai { clientId, clientSecret, authorizeUrl,
+  tokenUrl }`; `buildAuth` registers the `genericOAuth` plugin when configured;
+  `beginConnect` branches to `signInWithOAuth2` for generic providers (Google/Apple stay
+  on `signInSocial`); `getAccessToken` resolves by providerId uniformly. `main.ts` builds
+  it from `OPENAI_OAUTH_*` env — a real broker now boots as soon as ANY provider (Google
+  OR OpenAI) is configured; all-unset ⇒ FakeAuthBroker, exactly as before.
+- **Verified:** a broker unit test builds the OpenAI authorize URL offline (host
+  `auth.openai.com`, client_id, scopes) — 581 tests + typecheck green. compose documents
+  the four `OPENAI_OAUTH_*` vars.
+- **Still deferred (RFC-049 open questions):** OpenAI's *real* authorize/token URLs +
+  scopes (operator-provisioned; placeholders shipped), and a **runtime-scoped connect
+  endpoint** + token resolution (the existing OAuth begin flow is integration-scoped; the
+  runtime provider is not an Integration) — the next slice.
