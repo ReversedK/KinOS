@@ -1,6 +1,6 @@
 import { DevActorSwitcher } from "../../../../components/DevActorSwitcher";
 import { SphereTabs } from "../../../../components/SphereTabs";
-import { apiBaseUrl, getMembers, getSphere } from "../../../../lib/api";
+import { apiBaseUrl, getInstalledPackages, getMembers, getSphere } from "../../../../lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +30,15 @@ export default async function SphereWorkspaceLayout({
     error = (e as Error).message;
   }
 
+  // RFC-048: the Documents section is package-gated. Resolve it best-effort so a
+  // packages-read hiccup never blocks the whole workspace shell.
+  let hasDocuments = false;
+  try {
+    hasDocuments = (await getInstalledPackages(base, id)).some((p) => p.id === "documents");
+  } catch {
+    hasDocuments = false;
+  }
+
   if (error !== undefined || sphere === undefined) {
     return (
       <div className="container narrow">
@@ -49,7 +58,7 @@ export default async function SphereWorkspaceLayout({
 
       <div className="admin-shell">
         <aside className="admin-rail">
-          <SphereTabs sphereId={id} />
+          <SphereTabs sphereId={id} hasDocuments={hasDocuments} />
           <DevActorSwitcher members={members} />
           <div className="rail-note">
             <span className="eyebrow">Security model</span>

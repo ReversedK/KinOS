@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { FakeAuthBroker } from "./oauth.js";
 import { MapSecretStore, type SecretMaterial } from "./secret-store.js";
 import { IntegrationExecutor, caldavCalendarProvider, googleCalendarProvider, googleDriveProvider, localCalendarProvider, localProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { InMemoryObjectStore, bucketForSphere, objectDocumentsProvider } from "./object-documents.js";
 
 const NOW = "2026-07-16T10:00:00.000Z";
 const ctx: ExecutionContext = {
@@ -135,6 +136,35 @@ describe("IntegrationExecutor (RFC-016 inc.2)", () => {
       secrets: new MapSecretStore({}), // ref not present
     });
     await expect(unresolved.execute(customBinding("calendar.read"), {}, ctx)).rejects.toThrow(/not configured/i);
+  });
+
+  // RFC-048: the full governed routing of the writable documents source — the
+  // executor dispatches document.upload/search to the minio object-store provider,
+  // into the Sphere's own bucket.
+  it("routes document.upload + document.search to the minio object-store provider", async () => {
+    const store = new InMemoryObjectStore();
+    const integration = enableIntegration({
+      ...createIntegration({
+        id: "int_documents",
+        sphereId: "sph_1",
+        provider: "minio",
+        providesCapabilities: ["document.search", "document.summarize", "document.upload"],
+      }),
+      secretRef: "secret://minio/sph_1", // presence satisfies the "configured" gate
+    });
+    const spheres = await storeWith(integration);
+    const registry = new Map<string, IntegrationProviderAdapter>([["minio", objectDocumentsProvider(store)]]);
+    const e = new IntegrationExecutor(throwingFallback, { spheres, registry, now: () => NOW, newId: () => "id_1" });
+    const docBinding = (cap: string): CapabilityBinding => ({ ...customBinding(cap), runtimeToolName: "int_documents" });
+
+    const up = await e.execute(docBinding("document.upload"), { name: "budget.txt", content: "Rent 800. Food 300." }, ctx);
+    expect(up).toEqual({ uploaded: true, id: "budget.txt" });
+
+    const found = (await e.execute(docBinding("document.search"), { query: "rent" }, ctx)) as { documents: Array<{ id: string }> };
+    expect(found.documents.map((d) => d.id)).toEqual(["budget.txt"]);
+
+    // It landed in the Sphere's own bucket (structural isolation).
+    expect(await store.list(bucketForSphere("sph_1"))).toEqual(["budget.txt"]);
   });
 });
 

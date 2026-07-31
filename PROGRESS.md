@@ -2228,3 +2228,20 @@ Runtime adapter → integrations/Packages → UI.
 - **Deferred (RFC open questions):** binary/PDF text extraction (MVP treats objects as
   UTF-8 text); a writable `google_drive` upload; real per-Sphere MinIO keys (today the
   deployment key + bucket isolation, secretRef as the connect gate).
+
+### Iteration 116 — 2026-07-31 (RFC-048 UI: package-gated Documents section with upload)
+- Wired the writable documents source into the console. A **Documents** section now
+  appears in the Sphere nav **only when the `documents` package is installed** — the
+  `(admin)` layout resolves it (a governed packages read, best-effort) and passes
+  `hasDocuments` to `SphereTabs`, which stays presentational.
+- New `/spheres/[id]/documents` section: a `Documents` panel that **uploads**
+  (`document.upload`), **searches/lists** (`document.search`) and **summarizes**
+  (`document.summarize`) via the governed `executeCapability` endpoints, acting as the
+  resolved identity. It decides nothing (RFC-003) — a denial (read-only provider, no
+  upload grant, a minor) surfaces as a governed note. Upload only lands on a writable
+  source (the `minio` provider).
+- **Verified:** added a real integration test — the `IntegrationExecutor` routes
+  `document.upload` + `document.search` to the `minio` object-store provider into the
+  Sphere's own bucket (577 tests). Typecheck + `next build` green (the new route builds).
+  Combined with iteration 115's live MinIO round trip, the full seam is exercised;
+  a browser E2E screenshot of the section is the remaining optional check.

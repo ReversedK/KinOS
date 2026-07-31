@@ -9,7 +9,7 @@ import { usePathname, useSearchParams } from "next/navigation";
  * nothing (coding principle 1); it preserves the acting `?actor=` identity across
  * sections so switching tabs never silently changes who you are acting as.
  */
-const SECTIONS = [
+const SECTIONS: ReadonlyArray<readonly [string, string, string]> = [
   ["", "Overview", "01"],
   ["members", "Members", "02"],
   ["agents", "Agents", "03"],
@@ -17,18 +17,25 @@ const SECTIONS = [
   ["data", "Data", "05"],
   ["settings", "Settings", "06"],
   ["activity", "Activity", "07"],
-] as const;
+];
 
-export function SphereTabs({ sphereId }: { sphereId: string }) {
+/**
+ * The Documents section (RFC-048) is package-gated: it only appears once the
+ * `documents` package is installed in this Sphere. The layout resolves that
+ * (a governed read) and passes `hasDocuments`; the nav stays presentational.
+ */
+export function SphereTabs({ sphereId, hasDocuments = false }: { sphereId: string; hasDocuments?: boolean }) {
   const pathname = usePathname() ?? "";
   const search = useSearchParams();
   const base = `/spheres/${encodeURIComponent(sphereId)}`;
   const query = search.get("actor") ? `?actor=${encodeURIComponent(search.get("actor") as string)}` : "";
 
+  const sections = hasDocuments ? [...SECTIONS, ["documents", "Documents", "08"] as const] : SECTIONS;
+
   return (
     <nav className="sphere-nav" aria-label="Sphere workspace">
       <span className="eyebrow">Workspace</span>
-      {SECTIONS.map(([slug, label, index]) => {
+      {sections.map(([slug, label, index]) => {
         const href = slug === "" ? base : `${base}/${slug}`;
         const active = slug === "" ? pathname === base : pathname === href || pathname.startsWith(`${href}/`);
         return (
