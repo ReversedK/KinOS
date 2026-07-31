@@ -77,6 +77,15 @@ services:
       # The console as the browser reaches it — /oauth/connected 302-redirects back
       # here after a connect (RFC-036), so the user lands in the UI, not on JSON.
       - KINOS_CONSOLE_URL=${KINOS_CONSOLE_URL:-http://localhost:3100}
+      # RFC-048: the writable local documents source (the `minio` provider). Leave
+      # MINIO_ENDPOINT unset → the in-memory reference store (dev default). Set it to
+      # the compose service name and `docker compose up api minio` to use real MinIO
+      # (per-Sphere bucket). Credentials default to the minio service's root user.
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-}
+      - MINIO_PORT=${MINIO_PORT:-9000}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-kinos}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-kinos-minio-devkey}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # ADR-007 hardening note: the Sphere MCP is currently path-mounted on this
@@ -179,8 +188,24 @@ services:
       - "-c"
       - "python3 /opt/harness-bootstrap.py && (python3 /opt/tui-bridge.py &) && exec hermes gateway run"
 
+  # RFC-048: MinIO object store — the writable local documents source ("minio"
+  # provider). Bring it up alongside the api (`MINIO_ENDPOINT=minio docker compose
+  # up api minio`) to back Documents with real per-Sphere buckets. Console on :9001.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-kinos}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-kinos-minio-devkey}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+
 volumes:
   node_modules:
   kinos_data:
   ui_next:
   hermes_home:
+  minio_data:

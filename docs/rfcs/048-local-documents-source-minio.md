@@ -6,11 +6,14 @@ Accepted
 
 ## Summary
 
-Give the `documents` integration package a real **local** documents source: a
-Sphere-owned object store (MinIO, S3-compatible) that actually holds files, rather
-than the current `local` provider which only re-reads the Sphere's shared notes.
-The `document.search` / `document.summarize` capabilities, their policies, grants
-and audit stay identical; only the adapter behind the `local` provider changes.
+Give the `documents` integration package a real documents source that actually
+holds files: a Sphere-owned object store (MinIO, S3-compatible), offered as a new
+**`minio`** provider choice **alongside** the existing `local` (shared-notes) and
+`google_drive` providers — not replacing them. Reading (`document.search` /
+`document.summarize`) works the same whichever provider backs it; the `minio`
+provider additionally supports **uploading** documents via a new `document.upload`
+capability, since a store you own must be writable to be useful. Policies, grants,
+the correlation-id chain and audit are unchanged.
 
 ## Motivation
 
@@ -45,25 +48,35 @@ entirely in an adapter.
    key and indexed text, fetch an object to summarize. It is a replaceable adapter that
    *implements* the capabilities and defines no permissions (integration-model).
 
-3. **Provider wiring.** The `documents` package manifest keeps `document.search` /
-   `document.summarize` and its adults-only read preset. Its `integration.providerChoices`
-   becomes `["minio", "google_drive"]` (replacing the notes-backed `local`), with
-   `minio` authenticating via a secret reference (`auth: "apikey"`), `google_drive` via
-   OAuth. Selecting `minio` at configure time binds `document.*` to the MinIO adapter for
-   that Sphere; the connect step supplies the credentials reference (the same secret-ref
-   flow the wizard already has for CalDAV).
+3. **A new `document.upload` capability.** A write capability that puts a document
+   (name + content) into the Sphere's store. It is medium-risk, adults-and-teens in the
+   catalog floor, and — like every write — **adults-only in the package preset** (invariant
+   8); minors are widened only by an explicit custom grant at enable time. `document.search`
+   / `document.summarize` are unchanged (read-only). Providers that cannot accept writes
+   (the read-only `local` shared-notes source, and `google_drive` in this iteration)
+   refuse `document.upload`; the `minio` provider implements it.
 
-4. **No policy or capability change.** `document.search` / `document.summarize` remain
-   read-only, adults-only by default, with minors widened only by an explicit custom
-   grant at enable time (invariant 8). The correlation-id chain (policy → runtime →
-   integration) is unchanged.
+4. **Provider wiring.** The `documents` package manifest gains `document.upload` in
+   `providesCapabilities` and its `integration.providerChoices` becomes
+   `["local", "minio", "google_drive"]` — `local` (shared notes, no auth) and
+   `google_drive` (OAuth) are kept; `minio` is added and authenticates via a secret
+   reference (`auth: "apikey"`, the same secret-ref connect flow the wizard already has
+   for CalDAV). Selecting `minio` at configure time binds `document.*` to the MinIO adapter
+   for that Sphere.
+
+5. **Adapter over a port.** The domain/API core depends only on a small `ObjectStore`
+   port (`list` / `get` / `put` over a per-Sphere bucket); the real MinIO client lives in
+   a `MinioObjectStore` adapter selected at wiring time when `MINIO_ENDPOINT` is set,
+   with an in-memory reference `ObjectStore` for dev/tests. No provider SDK leaks into the
+   core (coding-principles).
 
 ## Domain impact
 
 - **Entities:** an `Integration` whose `provider = "minio"`, `auth = "apikey"`, holding a
   secret *reference*. No new domain entity — MinIO is an adapter, not a domain concept.
-- **Capabilities:** none added or changed. `document.search` / `document.summarize` keep
-  their catalog definitions (read, low risk, adults-by-preset).
+- **Capabilities:** one added — **`document.upload`** (write, medium risk, floor
+  adult+teen, no approval floor). `document.search` / `document.summarize` are unchanged
+  (read, low risk). Blessed in the domain capability catalog by this RFC.
 - **Memory:** unaffected. Documents are files in the object store; canonical memory and
   its embeddings are untouched. A future indexing step (document text → search index) is
   derived and regenerable, never the source of truth.
@@ -92,24 +105,37 @@ entirely in an adapter.
 - **Depend on a cloud S3 immediately.** Contradicts the local-first intent; MinIO gives the
   same API locally, and a real-S3 provider can be added later as another adapter.
 
+## Resolved decisions
+
+- **Upload is in scope** (PO decision): this RFC adds `document.upload`, backed by the
+  `minio` provider. `local` and `google_drive` stay read-only and refuse it.
+- **Bucket per Sphere:** one bucket per Sphere (`kinos-docs-<sphereId>`, lower-cased to a
+  valid S3 bucket name), so a least-privilege key can be scoped to exactly one Sphere and
+  isolation is structural, not prefix-convention.
+- **Index is derived from the store:** MVP search lists bucket objects and matches the
+  query against object key + text content on read; there is no separate index to keep in
+  sync. If a durable index is added later it stays derived/regenerable from the bucket —
+  never the source of truth.
+
 ## Open questions
 
-- Bucket-per-Sphere vs. one bucket with a per-Sphere key prefix — which gives cleaner
-  least-privilege key scoping?
-- Where does the search index live (in MinIO object metadata, a sidecar index, or the
-  existing memory store), and how is it (re)built on upload? It must stay derived/regenerable.
-- Upload path: is ingestion in scope for this RFC (a `document.upload` capability) or is
-  this RFC read-only (search/summarize) with ingestion deferred to a follow-up?
+- Content typing / extraction for non-text objects (PDF, docx): the MVP treats objects as
+  UTF-8 text; binary extraction is a later adapter concern.
+- Making `google_drive` writable (its own `document.upload`) is deferred — this RFC only
+  requires the `minio` provider to implement upload.
 
 ## Acceptance criteria
 
 - A `minio` service runs in the compose stack; a Sphere can be configured with a `minio`
   documents provider whose credentials are held by reference.
-- Installing `documents`, choosing the `minio` provider, and connecting binds
-  `document.search` / `document.summarize` to the MinIO adapter for that Sphere.
-- `document.search` returns objects from the Sphere's bucket; `document.summarize`
-  summarizes a fetched object — both gated by the unchanged adults-only read policy,
-  denied by default for minors.
-- No change to the `document.*` capability definitions, policies, or the correlation-id
-  audit chain; switching a Sphere between `minio` and `google_drive` needs no policy edit.
+- The `documents` package offers provider choices `local`, `minio`, `google_drive`;
+  installing it, choosing `minio`, and connecting binds `document.*` to the MinIO adapter
+  for that Sphere (its own bucket).
+- `document.upload` puts a document into the Sphere's bucket; `document.search` then
+  returns it and `document.summarize` summarizes it — the full round trip through the
+  governed pipeline. `local` / `google_drive` refuse `document.upload`.
+- `document.upload` is adults-only by the package preset (denied by default for minors),
+  widenable only by an explicit custom grant; reads keep their unchanged read policy.
+- The `ObjectStore` port keeps the MinIO client out of the core; an in-memory reference
+  store backs dev/tests, `MinioObjectStore` backs a real deployment.
 - Raw MinIO credentials never appear in the domain export or the audit log.

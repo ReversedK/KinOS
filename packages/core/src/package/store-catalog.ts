@@ -72,33 +72,40 @@ const CATALOG: readonly PackageManifest[] = [
   }),
   createManifest({
     // RFC-031/048: a real Documents SOURCE (integration). Provider choice selects
-    // where documents come from — "local" (a MinIO/S3 object store the Sphere owns,
-    // per RFC-048) or "google_drive" (a real Drive over OAuth). Installing mints a
-    // proposed Integration; configuring picks the provider + connects; enabling backs
-    // document.* via the chosen source. The capability, policies and audit are
-    // identical whichever provider backs them. This is the single Documents package
-    // (it subsumes the former read-only "family-documents" skill).
+    // where documents come from — "local" (the Sphere's shared notes, read-only),
+    // "minio" (a MinIO/S3 object store the Sphere owns — WRITABLE, per RFC-048), or
+    // "google_drive" (a real Drive over OAuth). Installing mints a proposed Integration;
+    // configuring picks the provider + connects; enabling backs document.* via the chosen
+    // source. Capability, policies and audit are identical whichever provider backs them.
+    // This is the single Documents package (it subsumes the former "family-documents" skill).
     id: "documents",
     type: "mcp",
     title: "Documents",
-    description: "Connect a real documents source (Google Drive, or KinOS's own shared notes) so your agent can search and summarize them.",
+    description: "Connect a documents source (KinOS-local, a MinIO/S3 store you own, or Google Drive) so your agent can search, summarize — and, on a store you own, upload documents.",
     version: "1.0.0",
     publisher: "kinos",
     ageRating: "all",
-    providesCapabilities: ["document.search", "document.summarize"],
+    providesCapabilities: ["document.search", "document.summarize", "document.upload"],
     integration: {
       provider: "google_drive",
-      providerChoices: ["local", "google_drive"],
-      scopes: ["documents.read"],
+      providerChoices: ["local", "minio", "google_drive"],
+      scopes: ["documents.read", "documents.write"],
       auth: "oauth",
     },
-    // Adults only by default (invariant 8); read-only. Widen to minors via a custom
-    // grant at enable time (the capability floor permits it — read-only).
+    // Reads: adults by preset, read-only (invariant 8), widenable to minors by a custom
+    // grant. Upload is a WRITE — adults only by preset; the "local"/"google_drive"
+    // providers refuse it, only "minio" implements it.
     defaultPolicies: [
       {
-        description: "Adults may search and summarize the connected documents (Documents integration, read-only).",
+        description: "Adults may search and summarize the connected documents (Documents integration).",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["document.search", "document.summarize"],
+        effect: "allow",
+      },
+      {
+        description: "Adults may upload documents to a writable source (Documents integration, RFC-048).",
+        subjectSelector: { ageProfiles: ["adult"] },
+        capabilityNames: ["document.upload"],
         effect: "allow",
       },
     ],

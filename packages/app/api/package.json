@@ -16,7 +16,8 @@
     "@kinos/runtime-hermes": "*",
     "@kinos/runtime-openai": "*",
     "better-auth": "^1.6.23",
-    "better-sqlite3": "^11.3.0"
+    "better-sqlite3": "^11.3.0",
+    "minio": "^8.0.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11"

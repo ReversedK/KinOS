@@ -30,6 +30,8 @@ import { OpenAiRuntime } from "@kinos/runtime-openai";
 import { createApiServer } from "./server.js";
 import { buildLocalHandlers } from "./local-handlers.js";
 import { IntegrationExecutor, caldavCalendarProvider, googleCalendarProvider, googleDriveProvider, localProvider, type IntegrationProviderAdapter } from "./integration-executor.js";
+import { InMemoryObjectStore, objectDocumentsProvider, type ObjectStore } from "./object-documents.js";
+import { MinioObjectStore, minioConfigFromEnv } from "./minio-object-store.js";
 import { FakeAuthBroker, PendingOAuthStore, type AuthBroker } from "./oauth.js";
 import { BetterAuthBroker } from "./better-auth-broker.js";
 import { secretStoreFromEnv } from "./secret-store.js";
@@ -240,6 +242,11 @@ const authBroker: AuthBroker = buildAuthBroker();
 const pendingOAuth = new PendingOAuthStore();
 setInterval(() => pendingOAuth.prune(), 60_000).unref();
 
+// RFC-048: the documents object store behind the `minio` provider — real MinIO when
+// MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY are set, else the in-memory reference store.
+const minioConfig = minioConfigFromEnv(process.env);
+const documentsObjectStore: ObjectStore = minioConfig !== undefined ? new MinioObjectStore(minioConfig) : new InMemoryObjectStore();
+
 const providerRegistry = new Map<string, IntegrationProviderAdapter>([
   // RFC-031: "local" is the built-in reference for BOTH calendar.* (calendar store)
   // and document.* (the Sphere's shared notes) — one uniform local provider.
@@ -253,6 +260,10 @@ const providerRegistry = new Map<string, IntegrationProviderAdapter>([
   // Fastmail. Configure a KINOS_SECRETS entry with {kind:"basic",username,password,
   // endpoint} for the integration's secretRef.
   ["caldav", caldavCalendarProvider()],
+  // RFC-048: a WRITABLE local documents source over an S3-style object store. Backed
+  // by real MinIO when MINIO_ENDPOINT etc. are set (per-Sphere bucket), else the
+  // in-memory reference store for dev. Implements document.upload + search/summarize.
+  ["minio", objectDocumentsProvider(documentsObjectStore)],
 ]);
 // Secret store (RFC-019): resolves non-OAuth integration secretRefs to credentials
 // at execution time. Dev seed from KINOS_SECRETS; a deployment swaps its real

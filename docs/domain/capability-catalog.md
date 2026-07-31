@@ -124,6 +124,15 @@ Summarize an authorized document.
 
 Risk: low to medium depending on sensitivity.
 
+### document.upload
+
+Upload a document into a writable Sphere documents source (RFC-048). Write capability;
+only providers that own their storage (e.g. the MinIO/S3 source) accept it — read-only
+sources refuse it.
+
+Risk: medium. Child: denied by default. Adults only by package preset (invariant 8);
+widened to others only by an explicit grant.
+
 ### approval.request
 
 Ask a human approver to validate an action.

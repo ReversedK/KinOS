@@ -2204,3 +2204,27 @@ Runtime adapter → integrations/Packages → UI.
   for the Documents `local` provider (today it only re-reads shared notes) — spec-first,
   so the MinIO adapter lands after acceptance; this iteration does not implement it.
 - **Verified:** 569 tests, typecheck, and `next build` all green.
+
+### Iteration 115 — 2026-07-31 (RFC-048: writable MinIO/S3 documents source + document.upload)
+- Implemented RFC-048 (amended: **upload in scope**, PO decision). The Documents package
+  gains a **`minio`** provider choice **alongside** `local` (shared notes) and
+  `google_drive` — `providerChoices: [local, minio, google_drive]`, and a new
+  **`document.upload`** capability (write; floor adult+teen, adults-only preset).
+- **Port/adapter split (coding-principles):** a small `ObjectStore` port (`ensureBucket`
+  / `list` / `get` / `put`, per-Sphere bucket) in `object-documents.ts`, with
+  `objectDocumentsProvider` implementing search/summarize/**upload** over it. The real
+  MinIO client is isolated in `minio-object-store.ts` (`MinioObjectStore`, new `minio`
+  dep) — no S3 SDK reaches the core. `InMemoryObjectStore` backs dev/tests. Per-Sphere
+  isolation is structural: `bucketForSphere(id)` → `kinos-docs-<id>`.
+- **Wiring:** `main.ts` registers the `minio` provider, choosing `MinioObjectStore` when
+  `MINIO_ENDPOINT` is set (env) else the in-memory store. `docker-compose.yml` adds a
+  `minio` service (+ `minio_data` volume, console :9001) and the api's `MINIO_*` env.
+  `local`/`google_drive` stay read-only and refuse `document.upload`; only `minio` writes.
+- **Verified LIVE against real MinIO** (per the verify-live rule, not just unit fakes):
+  brought up the `minio` service, ran the real `MinioObjectStore` — upload → search("fox")
+  found it → summarize returned the extractive summary → a different Sphere's bucket came
+  back empty (isolation). Plus 576 tests (7 new adapter tests over the in-memory store) +
+  typecheck green.
+- **Deferred (RFC open questions):** binary/PDF text extraction (MVP treats objects as
+  UTF-8 text); a writable `google_drive` upload; real per-Sphere MinIO keys (today the
+  deployment key + bucket isolation, secretRef as the connect gate).

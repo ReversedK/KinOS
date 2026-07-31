@@ -63,8 +63,9 @@ describe("store catalog (RFC-002)", () => {
     }
     const ws = findStorePackage("shared-workspace");
     expect(ws?.providesCapabilities).toEqual(["sphere.note.create", "sphere.project.create"]);
-    // Documents is now a single integration package (subsumes the former family-documents skill).
+    // Documents is now a single integration package (subsumes the former family-documents skill);
+    // RFC-048 adds document.upload (writable minio provider).
     const docs = findStorePackage("documents");
-    expect(docs?.providesCapabilities).toEqual(["document.search", "document.summarize"]);
+    expect(docs?.providesCapabilities).toEqual(["document.search", "document.summarize", "document.upload"]);
   });
 });

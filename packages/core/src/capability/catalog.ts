@@ -92,6 +92,17 @@ const CAPABILITIES: readonly Capability[] = [
     auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
   },
   {
+    // RFC-048: upload a document into a WRITABLE documents source (the MinIO/S3
+    // provider). A write — floor is adult+teen (minors denied), adults-only by
+    // package preset. Read-only sources (local shared notes, google_drive) refuse it.
+    name: "document.upload",
+    description: "Upload a document into a writable Sphere documents source.",
+    risk: "medium",
+    allowedProfiles: ["adult", "teen"],
+    approvalFloor: false,
+    auditFacts: ["actor", "capability", "resourceId", "decision", "correlationId"],
+  },
+  {
     name: "calendar.read",
     description: "Read authorized calendars.",
     risk: "low",
@@ -447,6 +458,7 @@ const CAPABILITY_INPUT_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
   "memory.revoke_share": obj({ itemId: str("Id of the memory item."), memberId: str("Member whose share to withdraw.") }, ["itemId", "memberId"]),
   "document.search": obj({ query: str("Text to match; omit to list all shared documents.") }),
   "document.summarize": obj({ documentId: str("Id of the document to summarize — use an id returned by document.search.") }, ["documentId"]),
+  "document.upload": obj({ name: str("File name for the document (used as its key/id)."), content: str("The document's text content.") }, ["name", "content"]),
   "sphere.note.create": obj({ content: str("The shared note text (visible to the whole Sphere)."), summary: str("Optional short summary.") }, ["content"]),
   "sphere.project.create": obj({ title: str("Project title."), description: str("Optional description.") }, ["title"]),
   "calendar.read": obj({}),

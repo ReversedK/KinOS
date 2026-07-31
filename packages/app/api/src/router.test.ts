@@ -1193,6 +1193,7 @@ describe("API router — package store", () => {
     expect(doc1.provider).toBe("google_drive");
     expect(doc1.providerChoices).toEqual([
       { provider: "local", auth: "none" },
+      { provider: "minio", auth: "apikey" },
       { provider: "google_drive", auth: "oauth" },
     ]);
 
