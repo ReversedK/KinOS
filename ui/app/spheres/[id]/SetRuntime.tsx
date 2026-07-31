@@ -28,6 +28,9 @@ const DEFAULT_BASE_URL: Readonly<Record<string, string>> = {
   openai: "",
 };
 
+/** RFC-049: a codex (OpenAI coding) model — where "Sign in with ChatGPT" applies. */
+const isCodexModel = (model: string): boolean => /codex/i.test(model);
+
 export function SetRuntime({
   sphereId,
   actor,
@@ -42,8 +45,14 @@ export function SetRuntime({
   const [model, setModel] = useState("gemma4-128k");
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL["ollama"] ?? "");
   const [secretRef, setSecretRef] = useState("");
+  const [authMethod, setAuthMethod] = useState<"apikey" | "oauth">("apikey");
   const [note, setNote] = useState<{ tone: string; text: string }>();
   const [busy, setBusy] = useState(false);
+
+  // RFC-049: the OAuth ("Sign in with ChatGPT") auth option is offered only for an
+  // OpenAI codex model; otherwise the profile authenticates with an API-key reference.
+  const oauthEligible = provider === "openai" && isCodexModel(model);
+  const effectiveAuth: "apikey" | "oauth" = oauthEligible ? authMethod : "apikey";
 
   function selectProvider(next: string): void {
     setProvider(next);
@@ -78,7 +87,9 @@ export function SetRuntime({
         execution,
         ...(baseUrl.trim() !== "" ? { baseUrl: baseUrl.trim() } : {}),
         // Cloud credentials travel as a secret-store reference, never a key value.
+        // For OAuth (codex) the reference points at a ChatGPT broker account (RFC-049).
         ...(secretRef.trim() !== "" ? { secretRef: secretRef.trim() } : {}),
+        ...(provider === "openai" ? { authMethod: effectiveAuth } : {}),
       });
       setNote(describeOutcome(res));
     } catch (e) {
@@ -118,16 +129,38 @@ export function SetRuntime({
         </div>
         {provider === "openai" ? (
           <div className="field grow">
-            <label>Secret reference</label>
+            <label>{effectiveAuth === "oauth" ? "ChatGPT account reference" : "Secret reference"}</label>
             <input
               className="input"
               value={secretRef}
               onChange={(e) => setSecretRef(e.target.value)}
-              placeholder="secret://openai/key"
+              placeholder={effectiveAuth === "oauth" ? "openai::broker://chatgpt/…" : "secret://openai/key"}
             />
           </div>
         ) : null}
       </div>
+
+      {/* RFC-049: codex models may authenticate via "Sign in with ChatGPT" (OAuth). */}
+      {oauthEligible ? (
+        <div className="field">
+          <label>Authentication</label>
+          <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+            <button className={`btn sm${authMethod === "apikey" ? " primary" : ""}`} disabled={busy} onClick={() => setAuthMethod("apikey")}>
+              API key (reference)
+            </button>
+            <button className={`btn sm${authMethod === "oauth" ? " primary" : ""}`} disabled={busy} onClick={() => setAuthMethod("oauth")}>
+              OAuth · Sign in with ChatGPT
+            </button>
+          </div>
+          {authMethod === "oauth" ? (
+            <span className="hint">
+              This codex model authenticates with a ChatGPT sign-in. KinOS stores only a broker account reference, never a token. The live
+              sign-in requires the operator to provision the OpenAI OAuth client (see <span className="mono">.env</span>); until then, paste the
+              broker account reference above.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {/* RFC-046: cloud is off until explicitly, governably enabled. */}
       <div className="row between" style={{ alignItems: "center", gap: "var(--s3)" }}>
         <span className="faint">

@@ -810,6 +810,8 @@ export interface SetRuntimeInput {
   readonly execution: string;
   readonly baseUrl?: string;
   readonly secretRef?: string;
+  /** RFC-049: "apikey" (default) or "oauth" (Sign in with ChatGPT, codex models). */
+  readonly authMethod?: "apikey" | "oauth";
 }
 
 export interface SetRuntimeOutcome {

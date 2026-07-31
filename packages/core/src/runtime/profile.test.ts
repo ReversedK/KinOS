@@ -3,6 +3,7 @@ import {
   assertProfileAllowed,
   createRuntimeProfile,
   defaultRuntimeConfig,
+  isCodexModel,
   resolveEffectiveProfile,
   setCloudInference,
   setDefaultRuntimeProfile,
@@ -165,6 +166,38 @@ describe("RuntimeProfile (RFC-004)", () => {
       const disabled = setCloudInference(enabled, { enabled: false });
       expect(disabled.cloudInferenceEnabled).toBe(false);
       expect(disabled.defaultProfile).toEqual(defaultRuntimeConfig().defaultProfile);
+    });
+  });
+
+  // RFC-049: OAuth auth method for codex models.
+  describe("codex models + authMethod (RFC-049)", () => {
+    it("detects codex model ids, case-insensitively", () => {
+      for (const m of ["gpt-5-codex", "codex-mini-latest", "codex-1", "GPT-Codex"]) {
+        expect(isCodexModel(m), m).toBe(true);
+      }
+      for (const m of ["gpt-4o", "gemma4-128k", "o3-mini", "llama3.2"]) {
+        expect(isCodexModel(m), m).toBe(false);
+      }
+    });
+
+    it("carries authMethod=oauth on a cloud codex profile (still requires a secretRef)", () => {
+      const profile = createRuntimeProfile({
+        providerId: "openai",
+        model: "gpt-5-codex",
+        execution: "cloud",
+        secretRef: "openai::broker://chatgpt/alice",
+        authMethod: "oauth",
+      });
+      expect(profile.authMethod).toBe("oauth");
+      // Cloud without a reference is still refused, regardless of method.
+      expect(() =>
+        createRuntimeProfile({ providerId: "openai", model: "gpt-5-codex", execution: "cloud", authMethod: "oauth" }),
+      ).toThrow(/reference/i);
+    });
+
+    it("omits authMethod when not given (defaults to apikey semantics)", () => {
+      const profile = createRuntimeProfile({ providerId: "ollama", model: "gemma4-128k", execution: "local" });
+      expect(profile.authMethod).toBeUndefined();
     });
   });
 });

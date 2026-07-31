@@ -58,6 +58,7 @@ import {
   type CapabilityExecutor,
   type PolicyRequest,
   type Role,
+  type RuntimeAuthMethod,
   type RuntimeExecution,
   type RuntimeProviderId,
   type SessionStore,
@@ -639,7 +640,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
 
     const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as {
       subject?: PolicyRequest["subject"];
-      profile?: { providerId?: string; model?: string; execution?: string; baseUrl?: string; secretRef?: string };
+      profile?: { providerId?: string; model?: string; execution?: string; baseUrl?: string; secretRef?: string; authMethod?: string };
     };
     const subject = body.subject;
     const p = body.profile;
@@ -648,6 +649,10 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
     }
     if (p === undefined || typeof p.providerId !== "string" || typeof p.model !== "string" || typeof p.execution !== "string") {
       return err(400, "invalid_request", "A profile with providerId, model and execution is required");
+    }
+    // RFC-049: optional auth method (OAuth "Sign in with ChatGPT" for codex models).
+    if (p.authMethod !== undefined && p.authMethod !== "apikey" && p.authMethod !== "oauth") {
+      return err(400, "invalid_request", "authMethod must be 'apikey' or 'oauth'");
     }
 
     const imported = importSphere(snap);
@@ -694,6 +699,7 @@ export async function handleApiRequest(req: ApiRequest, deps: ApiDeps): Promise<
         execution: p.execution as RuntimeExecution,
         ...(p.baseUrl !== undefined ? { baseUrl: p.baseUrl } : {}),
         ...(p.secretRef !== undefined ? { secretRef: p.secretRef } : {}),
+        ...(p.authMethod !== undefined ? { authMethod: p.authMethod as RuntimeAuthMethod } : {}),
       });
     } catch (e) {
       return err(400, "invalid_request", (e as Error).message);

@@ -14,6 +14,15 @@ export type RuntimeProviderId = "ollama" | "openai";
 /** Whether inference stays on the local machine or leaves it (external transfer). */
 export type RuntimeExecution = "local" | "cloud";
 
+/**
+ * How a cloud provider authenticates (RFC-049). `apikey` — the `secretRef` points at
+ * a secret-store key. `oauth` — "Sign in with ChatGPT" for codex models: the `secretRef`
+ * points at a broker account, from which a fresh token is resolved at call time. Either
+ * way credentials stay by reference, never in the profile/audit/export. Defaults to
+ * `apikey` when omitted (backward-compatible).
+ */
+export type RuntimeAuthMethod = "apikey" | "oauth";
+
 export interface RuntimeProfile {
   readonly providerId: RuntimeProviderId;
   readonly model: string;
@@ -22,6 +31,17 @@ export interface RuntimeProfile {
   readonly baseUrl?: string;
   /** Secret-store reference for cloud credentials — never the key itself. */
   readonly secretRef?: string;
+  /** How the provider authenticates (RFC-049). Omitted ≡ "apikey". */
+  readonly authMethod?: RuntimeAuthMethod;
+}
+
+/**
+ * Whether a model id is a codex (OpenAI coding) model — e.g. `gpt-5-codex`,
+ * `codex-mini-latest`, `codex-1` (RFC-049). Advisory: it drives where the UI offers the
+ * OAuth ("Sign in with ChatGPT") auth option; it authorises nothing.
+ */
+export function isCodexModel(model: string): boolean {
+  return /codex/i.test(model.trim());
 }
 
 export interface SphereRuntimeConfig {
@@ -39,6 +59,7 @@ export interface CreateRuntimeProfileInput {
   readonly execution: RuntimeExecution;
   readonly baseUrl?: string;
   readonly secretRef?: string;
+  readonly authMethod?: RuntimeAuthMethod;
 }
 
 /**
@@ -60,6 +81,7 @@ export function createRuntimeProfile(input: CreateRuntimeProfileInput): RuntimeP
     execution: input.execution,
     ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
     ...(input.secretRef !== undefined ? { secretRef: input.secretRef } : {}),
+    ...(input.authMethod !== undefined ? { authMethod: input.authMethod } : {}),
   };
 }
 

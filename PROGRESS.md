@@ -2254,3 +2254,22 @@ Runtime adapter → integrations/Packages → UI.
   bench; the Overview's "active rules" stat links to the new section. Presentational
   reorg only — the engine still decides everything before any runtime (RFC-003).
 - **Verified:** `next build` green (new `/policies` route; `/access` slimmed).
+
+### Iteration 118 — 2026-07-31 (RFC-049: OAuth "Sign in with ChatGPT" auth for codex models)
+- A per-agent codex model runs under the Sphere's OpenAI provider; its auth was
+  API-key-only. RFC-049 (Accepted) lets that provider authenticate via **OAuth
+  ("Sign in with ChatGPT")** when a **codex** model is chosen — credentials stay by
+  reference either way (never a raw key/token in the profile/audit/export).
+- **Core:** `RuntimeProfile` gains optional `authMethod: "apikey" | "oauth"` (default
+  apikey, carried through create/validate and export/import; cloud still requires a
+  secretRef). New `isCodexModel(model)` detector. Tests added.
+- **Governed write:** `runtime.set_provider` accepts the optional `authMethod`
+  (validated), threaded into the profile — OAuth relaxes no authorization (cloud-enable
+  grant, admin-only, minor-denial all still apply).
+- **UI (SetRuntime):** when provider = OpenAI and the model is codex, an auth-method
+  toggle appears — *API key (reference)* vs *OAuth · Sign in with ChatGPT* — and the
+  reference field relabels to a ChatGPT broker account ref. The live sign-in handshake
+  is the deferred, operator-provisioned step (RFC-049 open questions), mirrored on the
+  existing Google-client hint.
+- **Verified:** 580 tests, typecheck, `next build` green. The real OpenAI OAuth
+  broker/endpoints are explicitly out of scope (tracked in the RFC).
