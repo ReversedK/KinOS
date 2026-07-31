@@ -13,10 +13,11 @@ const SECTIONS: ReadonlyArray<readonly [string, string, string]> = [
   ["", "Overview", "01"],
   ["members", "Members", "02"],
   ["agents", "Agents", "03"],
-  ["access", "Access", "04"],
-  ["data", "Data", "05"],
-  ["settings", "Settings", "06"],
-  ["activity", "Activity", "07"],
+  ["policies", "Policy Engine", "04"],
+  ["access", "Access", "05"],
+  ["data", "Data", "06"],
+  ["settings", "Settings", "07"],
+  ["activity", "Activity", "08"],
 ];
 
 /**
@@ -30,7 +31,7 @@ export function SphereTabs({ sphereId, hasDocuments = false }: { sphereId: strin
   const base = `/spheres/${encodeURIComponent(sphereId)}`;
   const query = search.get("actor") ? `?actor=${encodeURIComponent(search.get("actor") as string)}` : "";
 
-  const sections = hasDocuments ? [...SECTIONS, ["documents", "Documents", "08"] as const] : SECTIONS;
+  const sections = hasDocuments ? [...SECTIONS, ["documents", "Documents", "09"] as const] : SECTIONS;
 
   return (
     <nav className="sphere-nav" aria-label="Sphere workspace">

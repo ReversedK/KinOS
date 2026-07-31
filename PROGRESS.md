@@ -2245,3 +2245,12 @@ Runtime adapter → integrations/Packages → UI.
   Sphere's own bucket (577 tests). Typecheck + `next build` green (the new route builds).
   Combined with iteration 115's live MinIO round trip, the full seam is exercised;
   a browser E2E screenshot of the section is the remaining optional check.
+
+### Iteration 117 — 2026-07-31 (Policy Engine gets its own workspace section)
+- The Policy Engine's rules were buried inside the **Access** section (alongside
+  approvals and the capability test bench). Promoted them to a dedicated
+  **Policy Engine** nav section (`/spheres/[id]/policies`) rendering `PolicyManager`.
+- **Access** now holds only the human-in-the-loop approvals + the capability test
+  bench; the Overview's "active rules" stat links to the new section. Presentational
+  reorg only — the engine still decides everything before any runtime (RFC-003).
+- **Verified:** `next build` green (new `/policies` route; `/access` slimmed).

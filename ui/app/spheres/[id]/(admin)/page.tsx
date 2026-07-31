@@ -35,7 +35,7 @@ export default async function SphereOverview({ params }: { params: { id: string 
     { label: "agents", value: String(agents.length), to: "agents" },
     { label: "runtime", value: runtime?.provider ?? "—", sub: runtime?.model, to: "settings" },
     { label: "connectors", value: String(integrations.filter((i) => i.status === "enabled").length), to: "settings" },
-    { label: "active rules", value: String(policies.filter((p) => p.status === "active").length), to: "access" },
+    { label: "active rules", value: String(policies.filter((p) => p.status === "active").length), to: "policies" },
     { label: "pending approvals", value: String(pendingApprovals.length), to: "access" },
   ];
 

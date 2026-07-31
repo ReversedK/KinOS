@@ -1,39 +1,24 @@
 import { ApprovalActions } from "../../../../approvals/ApprovalActions";
-import { PolicyManager } from "../../../../../components/PolicyManager";
 import { RunCapability } from "../../RunCapability";
-import {
-  apiBaseUrl,
-  getCapabilities,
-  getMembers,
-  getPendingApprovals,
-  getPolicies,
-  resolveActingAdmin,
-} from "../../../../../lib/api";
+import { apiBaseUrl, getCapabilities, getMembers, getPendingApprovals } from "../../../../../lib/api";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Access — everything about what is allowed: the policy rules, the actions the
- * engine routed for a human decision, and a bench to test a capability against
- * them. Granting/denying is governed (quorum, minor-safety, no self-approval);
- * this screen only triggers and shows no private payload content (§18).
+ * Access — the human-in-the-loop decisions and a bench to test a capability. The
+ * permission RULES live in their own Policy Engine section; this screen shows the
+ * actions the engine routed for a human decision and lets an operator exercise a
+ * capability against them. Granting/denying is governed (quorum, minor-safety, no
+ * self-approval); this screen only triggers and shows no private payload (§18).
  */
-export default async function AccessSection({
-  params,
-  searchParams,
-}: {
-  params: { id: string };
-  searchParams: { actor?: string };
-}) {
+export default async function AccessSection({ params }: { params: { id: string } }) {
   const base = apiBaseUrl();
   const id = params.id;
-  const [members, policies, capabilities, pendingApprovals] = await Promise.all([
+  const [members, capabilities, pendingApprovals] = await Promise.all([
     getMembers(base, id).catch(() => []),
-    getPolicies(base, id).catch(() => []),
     getCapabilities(base).catch(() => []),
     getPendingApprovals(base, id).catch(() => []),
   ]);
-  const { admin } = resolveActingAdmin(members, searchParams.actor);
   const runMembers = members.map((m) => ({ id: m.id, role: m.role }));
 
   return (
@@ -95,21 +80,7 @@ export default async function AccessSection({
         </div>
       </div>
 
-      {/* Permissions & rules (RFC-003, policy engine). */}
-      <div className="panel">
-        <div className="panel-head">
-          <div>
-            <span className="eyebrow">Policy engine</span>
-            <h3>Permissions & rules · {policies.length}</h3>
-          </div>
-          <span className="badge brand">deny by default</span>
-        </div>
-        <div className="panel-body">
-          <PolicyManager sphereId={id} actor={admin} policies={policies} capabilities={capabilities} />
-        </div>
-      </div>
-
-      {/* Test bench — exercise a capability against the rules above. */}
+      {/* Test bench — exercise a capability against the Policy Engine's rules. */}
       <div className="panel">
         <div className="panel-head">
           <h3>Run a capability</h3>
