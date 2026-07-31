@@ -2180,3 +2180,27 @@ Runtime adapter → integrations/Packages → UI.
   compose-internal `api:8787`, which a host browser can't reach — real deployments set
   a public BETTER_AUTH_URL/KINOS_PUBLIC_URL, and real Google's authorize URL is
   browser-reachable. Not a code issue; a dev-config nuance.
+
+### Iteration 114 — 2026-07-31 (Store cleanup: de-duplicate the catalog + Set-up-vs-Activate button rule)
+- The store had grown confusing — 14 packages with real doublons. **Consolidated to 9.**
+  Removed the redundant `family-calendar` (skill) and `caldav-calendar` — the single
+  **Calendar** package (formerly `google-calendar`) already carries every provider
+  (local/google/caldav/apple) at setup. Removed the duplicate **Documents** skill
+  (`family-documents`); the `documents` integration is now the sole Documents package.
+- **Memory sharing:** the former `family-notes` is refocused (id `memory-sharing`) —
+  `memory.capture`/`memory.search` are built-in and default since RFC-043, so the
+  package now offers only `memory.share` (approval-gated) + `memory.revoke_share`.
+- **Deferred, not deleted:** the **Payments** and **Messaging** store packages are
+  removed (both were synthetic `local.pay`/`local.message` stubs). Their `payment.execute`
+  / `message.send` *capabilities* stay in the core catalog as domain vocabulary + the
+  governance-engine test fixtures — a capability without a store package is normal
+  (deny by default, no binding → never offered).
+- **UI button rule:** a package that "has a wizard" — i.e. an integration/connector
+  (`mcp`) with a Connect step — now shows **Set up**, opening the guided wizard in a
+  **modal**. Plain skills show a one-click **Activate** (install + enable with the safe
+  adults-only preset). The five Harness-native packages are grouped under their own
+  "Harness capabilities" section so the main catalog stays about features.
+- **Docs:** RFC-048 (Accepted) specs a real **local** documents source backed by MinIO/S3
+  for the Documents `local` provider (today it only re-reads shared notes) — spec-first,
+  so the MinIO adapter lands after acceptance; this iteration does not implement it.
+- **Verified:** 569 tests, typecheck, and `next build` all green.

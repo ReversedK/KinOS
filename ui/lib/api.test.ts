@@ -262,11 +262,11 @@ describe("UI API client", () => {
   });
 
   it("installStorePackage posts the packageId and returns the outcome", async () => {
-    const { impl, calls } = capturingFetch({ id: "family-calendar", status: "installed" });
-    const out = await installStorePackage("http://x", "sph_1", { memberId: "mbr_p1", role: "parent", ageProfile: "adult" }, "family-calendar", impl);
-    expect(out).toMatchObject({ id: "family-calendar", status: "installed" });
+    const { impl, calls } = capturingFetch({ id: "shared-workspace", status: "installed" });
+    const out = await installStorePackage("http://x", "sph_1", { memberId: "mbr_p1", role: "parent", ageProfile: "adult" }, "shared-workspace", impl);
+    expect(out).toMatchObject({ id: "shared-workspace", status: "installed" });
     expect(calls[0]?.url).toBe("http://x/spheres/sph_1/packages/install");
-    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ packageId: "family-calendar" });
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ packageId: "shared-workspace" });
   });
 
   it("installStorePackage returns a denial (403) instead of throwing", async () => {

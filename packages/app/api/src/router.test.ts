@@ -1020,40 +1020,40 @@ describe("API router — package store", () => {
     const res = await handleApiRequest({ method: "GET", path: "/store" }, await pkgDeps([]));
     expect(res.status).toBe(200);
     const pkgs = (res.body as { packages: { id: string }[] }).packages;
-    expect(pkgs.some((p) => p.id === "family-calendar")).toBe(true);
+    expect(pkgs.some((p) => p.id === "google-calendar")).toBe(true);
   });
 
   it("RFC-041: exposes per-capability default effect + approval floor for the grant wizard", async () => {
     const res = await handleApiRequest({ method: "GET", path: "/store" }, await pkgDeps([]));
     const pkgs = (res.body as { packages: Array<{ id: string; capabilities?: Array<{ name: string; defaultEffect: string; approvalFloor: boolean }> }> }).packages;
-    // family-calendar: create_event defaults to approval (preset), no floor → changeable.
-    const cal = pkgs.find((p) => p.id === "family-calendar")!;
+    // Calendar: create_event defaults to approval (preset), no floor → changeable.
+    const cal = pkgs.find((p) => p.id === "google-calendar")!;
     const create = cal.capabilities?.find((c) => c.name === "calendar.create_event");
     expect(create).toMatchObject({ defaultEffect: "require_approval", approvalFloor: false });
     const read = cal.capabilities?.find((c) => c.name === "calendar.read");
     expect(read).toMatchObject({ defaultEffect: "allow", approvalFloor: false });
-    // household-payments: payment.execute has an inviolable floor.
-    const pay = pkgs.find((p) => p.id === "household-payments")!;
-    expect(pay.capabilities?.find((c) => c.name === "payment.execute")).toMatchObject({ approvalFloor: true });
+    // hermes-browser: native.browser has an inviolable floor.
+    const browser = pkgs.find((p) => p.id === "hermes-browser")!;
+    expect(browser.capabilities?.find((c) => c.name === "native.browser")).toMatchObject({ approvalFloor: true });
   });
 
   it("installs a store package (installed, not enabled — install != authorization) and persists it", async () => {
     const deps = await pkgDeps([allowAdultPackages]);
-    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: "family-calendar", status: "installed" });
+    expect(res.body).toMatchObject({ id: "shared-workspace", status: "installed" });
     const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/packages" }, deps);
     expect((list.body as { packages: { id: string; status: string }[] }).packages).toEqual([
-      { id: "family-calendar", type: "skill", title: "Shared Calendar", description: expect.any(String), status: "installed" },
+      { id: "shared-workspace", type: "skill", title: "Shared Notes & Projects", description: expect.any(String), status: "installed" },
     ]);
   });
 
   it("then enables the installed package", async () => {
     const deps = await pkgDeps([allowAdultPackages]);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
-    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/shared-workspace/enable", body: adult }, deps);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: "family-calendar", status: "enabled" });
+    expect(res.body).toMatchObject({ id: "shared-workspace", status: "enabled" });
   });
 
   it("reports the resolved install plan in the response (RFC-002)", async () => {
@@ -1061,15 +1061,15 @@ describe("API router — package store", () => {
     // package is just that package. Dependency resolution + dedup across a chain is
     // exercised at the unit level in install-plan.test.ts.
     const deps = await pkgDeps([allowAdultPackages]);
-    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-notes" } }, deps);
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "memory-sharing" } }, deps);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: "family-notes", installed: ["family-notes"] });
+    expect(res.body).toMatchObject({ id: "memory-sharing", installed: ["memory-sharing"] });
     const list = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/packages" }, deps);
-    expect((list.body as { packages: { id: string }[] }).packages.map((p) => p.id).sort()).toEqual(["family-notes"]);
+    expect((list.body as { packages: { id: string }[] }).packages.map((p) => p.id).sort()).toEqual(["memory-sharing"]);
   });
 
   it("denies install by default when no policy allows it (403)", async () => {
-    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, await pkgDeps([]));
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, await pkgDeps([]));
     expect(res.status).toBe(403);
   });
 
@@ -1080,13 +1080,13 @@ describe("API router — package store", () => {
 
   it("409s installing an already-installed package", async () => {
     const deps = await pkgDeps([allowAdultPackages]);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
-    const again = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
+    const again = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
     expect(again.status).toBe(409);
   });
 
   it("501 when package management is not enabled (read-only deps)", async () => {
-    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, await deps());
+    const res = await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, await deps());
     expect(res.status).toBe(501);
   });
 
@@ -1360,7 +1360,7 @@ describe("API router — package store", () => {
       name: "Doe Family",
       founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" },
     });
-    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A", enabledCapabilities: ["calendar.read", "calendar.create_event"] });
+    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A", enabledCapabilities: ["sphere.note.create", "sphere.project.create"] });
     await store.save(exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies, exportedAt: NOW }));
     const audit = new InMemoryAuditSink();
     let n = 0;
@@ -1375,50 +1375,50 @@ describe("API router — package store", () => {
 
   it("install creates the binding disabled and grants nothing — projected surface stays empty", async () => {
     const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
     expect(await projectedTools(deps)).toEqual([]);
   });
 
-  it("enable activates the binding + grant, so the agent's projected surface gains calendar.read", async () => {
+  it("enable activates the binding + grant, so the agent's projected surface gains sphere.note.create", async () => {
     const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
-    expect(await projectedTools(deps)).toContain("calendar.read");
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/shared-workspace/enable", body: adult }, deps);
+    expect(await projectedTools(deps)).toContain("sphere.note.create");
   });
 
   it("disable empties the surface again (disabled binding → deny by default)", async () => {
     const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/disable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/shared-workspace/enable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/shared-workspace/disable", body: adult }, deps);
     expect(await projectedTools(deps)).toEqual([]);
   });
 
-  it("enable with an admin grant scopes calendar.read to teens (RFC-014), replacing the default", async () => {
+  it("enable with an admin grant scopes sphere.note.create to teens (RFC-014), replacing the default", async () => {
     const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
     await handleApiRequest(
       {
         method: "POST",
-        path: "/spheres/sph_1/packages/family-calendar/enable",
-        body: { ...adult, grant: [{ ageProfiles: ["teen"], capabilities: ["calendar.read"] }] },
+        path: "/spheres/sph_1/packages/shared-workspace/enable",
+        body: { ...adult, grant: [{ ageProfiles: ["teen"], capabilities: ["sphere.note.create"] }] },
       },
       deps,
     );
     const pols = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/policies" }, deps);
     const ids = (pols.body as { policies: { id: string }[] }).policies.map((p) => p.id);
     // The custom clause is written; the adult default is NOT.
-    expect(ids).toContain("pol_sph_1_pkg_family-calendar_grant_0");
-    expect(ids).not.toContain("pol_sph_1_pkg_family-calendar_0");
+    expect(ids).toContain("pol_sph_1_pkg_shared-workspace_grant_0");
+    expect(ids).not.toContain("pol_sph_1_pkg_shared-workspace_0");
   });
 
   it("rejects an enable grant naming a capability the package does not provide (400)", async () => {
     const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
     const res = await handleApiRequest(
       {
         method: "POST",
-        path: "/spheres/sph_1/packages/family-calendar/enable",
+        path: "/spheres/sph_1/packages/shared-workspace/enable",
         body: { ...adult, grant: [{ roles: ["parent"], capabilities: ["payment.execute"] }] },
       },
       deps,
@@ -1428,13 +1428,13 @@ describe("API router — package store", () => {
 
   it("re-enabling is idempotent (no duplicate grant policies)", async () => {
     const deps = await pkgDepsWithAgent([allowAdultPackages, allowProject]);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "family-calendar" } }, deps);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/disable", body: adult }, deps);
-    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/family-calendar/enable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/install", body: { ...adult, packageId: "shared-workspace" } }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/shared-workspace/enable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/shared-workspace/disable", body: adult }, deps);
+    await handleApiRequest({ method: "POST", path: "/spheres/sph_1/packages/shared-workspace/enable", body: adult }, deps);
     const pols = await handleApiRequest({ method: "GET", path: "/spheres/sph_1/policies" }, deps);
     const ids = (pols.body as { policies: { id: string }[] }).policies.map((p) => p.id);
-    expect(ids.filter((id) => id === "pol_sph_1_pkg_family-calendar_0")).toHaveLength(1);
+    expect(ids.filter((id) => id === "pol_sph_1_pkg_shared-workspace_0")).toHaveLength(1);
   });
 });
 

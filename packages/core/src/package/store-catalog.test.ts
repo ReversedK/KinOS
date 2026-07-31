@@ -48,24 +48,23 @@ describe("store catalog (RFC-002)", () => {
     const wired = defaultStoreCatalog().filter((m) => m.bindings.length > 0);
     expect(wired.map((m) => m.id)).toEqual(
       expect.arrayContaining([
-        "family-calendar",
-        "family-notes",
-        "household-messaging",
-        "household-payments",
+        "memory-sharing",
         "shared-workspace",
-        "family-documents",
+        "hermes-web",
+        "hermes-browser",
       ]),
     );
   });
 
-  it("RFC-029: the shared-workspace and documents packages bind the domain-blessed capabilities", () => {
+  it("RFC-029/048: the shared-workspace and documents packages expose the domain-blessed capabilities", () => {
     const known = new Set(defaultCapabilityCatalog().keys());
     for (const cap of ["sphere.note.create", "sphere.project.create", "document.search", "document.summarize"]) {
       expect(known.has(cap), `${cap} missing from the core catalog`).toBe(true);
     }
     const ws = findStorePackage("shared-workspace");
     expect(ws?.providesCapabilities).toEqual(["sphere.note.create", "sphere.project.create"]);
-    const docs = findStorePackage("family-documents");
+    // Documents is now a single integration package (subsumes the former family-documents skill).
+    const docs = findStorePackage("documents");
     expect(docs?.providesCapabilities).toEqual(["document.search", "document.summarize"]);
   });
 });

@@ -11,64 +11,31 @@ import { createManifest, type PackageManifest } from "./package.js";
 
 const CATALOG: readonly PackageManifest[] = [
   createManifest({
-    id: "family-calendar",
+    // Memory SHARING only. Capturing and searching an agent's own memory is now
+    // built-in and on by default (RFC-043), so this package no longer offers them —
+    // it exists solely to let an adult share a specific note with another member and
+    // revoke that share. The write (share) is approval-gated; revoking is direct.
+    id: "memory-sharing",
     type: "skill",
-    title: "Shared Calendar",
-    description: "Lets your agent read the shared calendar and propose events for approval.",
+    title: "Memory sharing",
+    description: "Lets your agent share a specific note with another member, and revoke that share.",
     version: "1.0.0",
     publisher: "kinos",
     ageRating: "all",
-    providesCapabilities: ["calendar.read", "calendar.create_event"],
-    // How each capability runs (RFC-011): mechanism only, authorizes nothing. The
-    // MVP maps to local executor handlers; a real calendar integration replaces
-    // these later without touching policy.
+    providesCapabilities: ["memory.share", "memory.revoke_share"],
     bindings: [
-      { capability: "calendar.read", runtime: "local", runtimeToolName: "local.calendar_read", execution: "local", risk: "low" },
-      { capability: "calendar.create_event", runtime: "local", runtimeToolName: "local.calendar", execution: "local", risk: "medium" },
-    ],
-    // The grant the wizard proposes: adults may read; creating an event proposes it
-    // for approval (require_approval). Minors are denied by default (no preset, and
-    // the catalog profile floor denies them regardless).
-    defaultPolicies: [
-      {
-        description: "Adults may read the shared calendar (Shared Calendar package).",
-        subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["calendar.read"],
-        effect: "allow",
-      },
-      {
-        description: "Adults may propose calendar events for approval (Shared Calendar package).",
-        subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["calendar.create_event"],
-        effect: "require_approval",
-        approverRoles: ["admin", "parent"],
-      },
-    ],
-  }),
-  createManifest({
-    id: "family-notes",
-    type: "skill",
-    title: "Shared Notes",
-    description: "Lets your agent search the group's shared notes and share a note with a member.",
-    version: "1.0.0",
-    publisher: "kinos",
-    ageRating: "all",
-    providesCapabilities: ["memory.capture", "memory.search", "memory.share", "memory.revoke_share"],
-    bindings: [
-      { capability: "memory.capture", runtime: "local", runtimeToolName: "local.memory_capture", execution: "local", risk: "low" },
-      { capability: "memory.search", runtime: "local", runtimeToolName: "local.memory_search", execution: "local", risk: "low" },
       { capability: "memory.share", runtime: "local", runtimeToolName: "local.memory_share", execution: "local", risk: "high" },
       { capability: "memory.revoke_share", runtime: "local", runtimeToolName: "local.memory_revoke", execution: "local", risk: "medium" },
     ],
     defaultPolicies: [
       {
-        description: "Adults may capture, search, and revoke shares of the shared notes (Shared Notes package).",
+        description: "Adults may revoke a shared note (Memory sharing package).",
         subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["memory.capture", "memory.search", "memory.revoke_share"],
+        capabilityNames: ["memory.revoke_share"],
         effect: "allow",
       },
       {
-        description: "Adults may share a note, subject to approval (Shared Notes package).",
+        description: "Adults may share a note, subject to approval (Memory sharing package).",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["memory.share"],
         effect: "require_approval",
@@ -104,40 +71,13 @@ const CATALOG: readonly PackageManifest[] = [
     ],
   }),
   createManifest({
-    // RFC-029: the READ side. Search and summarize the Sphere's shared documents
-    // (its shared_with_sphere content). Read-only, open to all profiles — a
-    // child's agent may read the family's shared documents, never a private item.
-    id: "family-documents",
-    type: "skill",
-    title: "Documents",
-    description: "Lets your agent search and summarize the Sphere's shared documents. Read-only.",
-    version: "1.0.0",
-    publisher: "kinos",
-    ageRating: "all",
-    providesCapabilities: ["document.search", "document.summarize"],
-    bindings: [
-      { capability: "document.search", runtime: "local", runtimeToolName: "local.document_search", execution: "local", risk: "low" },
-      { capability: "document.summarize", runtime: "local", runtimeToolName: "local.document_summarize", execution: "local", risk: "low" },
-    ],
-    // Deny-by-default for minors (invariant 8): the preset grants adults only,
-    // even though these are read-only and the capability floor permits children.
-    // An admin widens to teens/children with a custom grant at enable time.
-    defaultPolicies: [
-      {
-        description: "Adults may search and summarize the Sphere's shared documents (Documents package, read-only).",
-        subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["document.search", "document.summarize"],
-        effect: "allow",
-      },
-    ],
-  }),
-  createManifest({
-    // RFC-031: a real Documents SOURCE (integration), the external counterpart to
-    // the family-documents skill. Provider choice selects where documents come
-    // from — "local" (the Sphere's shared notes) or "google_drive" (a real Drive
-    // over OAuth). Installing mints a proposed Integration; configuring picks the
-    // provider + connects; enabling backs document.* via the chosen source. The
-    // capability, policies and audit are identical whichever provider backs them.
+    // RFC-031/048: a real Documents SOURCE (integration). Provider choice selects
+    // where documents come from — "local" (a MinIO/S3 object store the Sphere owns,
+    // per RFC-048) or "google_drive" (a real Drive over OAuth). Installing mints a
+    // proposed Integration; configuring picks the provider + connects; enabling backs
+    // document.* via the chosen source. The capability, policies and audit are
+    // identical whichever provider backs them. This is the single Documents package
+    // (it subsumes the former read-only "family-documents" skill).
     id: "documents",
     type: "mcp",
     title: "Documents",
@@ -164,36 +104,17 @@ const CATALOG: readonly PackageManifest[] = [
     ],
   }),
   createManifest({
-    id: "household-messaging",
-    type: "skill",
-    title: "Messaging",
-    description: "Lets your agent draft and send an external message on the group's behalf, subject to approval.",
-    version: "1.0.0",
-    publisher: "kinos",
-    ageRating: "teen",
-    providesCapabilities: ["message.send"],
-    bindings: [
-      { capability: "message.send", runtime: "local", runtimeToolName: "local.message", execution: "local", risk: "high" },
-    ],
-    defaultPolicies: [
-      {
-        description: "Adults may send an external message, subject to approval (Messaging package).",
-        subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["message.send"],
-        effect: "require_approval",
-        approverRoles: ["admin", "parent"],
-      },
-    ],
-  }),
-  createManifest({
-    // RFC-016: an integration package — the calendar functionality comes from an
-    // external service configured by the admin, not from KinOS code. Installing it
-    // creates a proposed Integration; configuring it supplies the provider choice
-    // and credentials (by reference); enabling it backs calendar.* via that service.
+    // RFC-016: the single Calendar integration package — the calendar functionality
+    // comes from an external service configured by the admin, not from KinOS code.
+    // Provider choice covers "local" (KinOS's built-in reference calendar, no external
+    // service), Google/Apple (OAuth) and CalDAV (app-specific password), so this one
+    // package subsumes the former "family-calendar" skill and "caldav-calendar" package.
+    // Installing creates a proposed Integration; configuring supplies the provider
+    // choice and credentials (by reference); enabling backs calendar.* via that service.
     id: "google-calendar",
     type: "mcp",
-    title: "Google Calendar",
-    description: "Connect a real calendar service (Google, CalDAV, or Apple) so your agent reads and proposes events on it.",
+    title: "Calendar",
+    description: "Connect a calendar (KinOS-local, Google, Apple, or CalDAV) so your agent reads and proposes events on it.",
     version: "1.0.0",
     publisher: "kinos",
     ageRating: "all",
@@ -215,42 +136,6 @@ const CATALOG: readonly PackageManifest[] = [
       },
       {
         description: "Adults may propose events on the connected calendar, subject to approval.",
-        subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["calendar.create_event"],
-        effect: "require_approval",
-        approverRoles: ["admin", "parent"],
-      },
-    ],
-  }),
-  createManifest({
-    // RFC-019: the first non-OAuth integration package. A CalDAV calendar (Apple
-    // iCloud, Nextcloud, Fastmail) authenticates with an app-specific password held
-    // by reference in the secret store — no OAuth broker. Installing creates a
-    // proposed Integration; configuring supplies the credentials reference; enabling
-    // backs calendar.* via CalDAV.
-    id: "caldav-calendar",
-    type: "mcp",
-    title: "CalDAV Calendar (Apple / self-hosted)",
-    description: "Connect an Apple iCloud, Nextcloud or Fastmail calendar over CalDAV using an app-specific password.",
-    version: "1.0.0",
-    publisher: "kinos",
-    ageRating: "all",
-    providesCapabilities: ["calendar.read", "calendar.create_event"],
-    integration: {
-      provider: "caldav",
-      providerChoices: ["caldav", "apple"],
-      scopes: ["calendar.read", "calendar.events.write"],
-      auth: "apikey",
-    },
-    defaultPolicies: [
-      {
-        description: "Adults may read the connected CalDAV calendar (CalDAV Calendar integration).",
-        subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["calendar.read"],
-        effect: "allow",
-      },
-      {
-        description: "Adults may propose events on the connected CalDAV calendar, subject to approval.",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["calendar.create_event"],
         effect: "require_approval",
@@ -374,29 +259,6 @@ const CATALOG: readonly PackageManifest[] = [
         description: "Adults may spawn Harness subagents (Delegation package).",
         subjectSelector: { ageProfiles: ["adult"] },
         capabilityNames: ["native.delegate"],
-        effect: "allow",
-      },
-    ],
-  }),
-  createManifest({
-    id: "household-payments",
-    type: "skill",
-    title: "Payments",
-    description: "Lets your agent execute a payment on the group's behalf. Always requires approval; adults only.",
-    version: "1.0.0",
-    publisher: "kinos",
-    ageRating: "adult",
-    providesCapabilities: ["payment.execute"],
-    bindings: [
-      { capability: "payment.execute", runtime: "local", runtimeToolName: "local.pay", execution: "local", risk: "critical" },
-    ],
-    // Even an `allow` grant is raised to approval by the catalog's critical
-    // approval floor on payment.execute — a demonstration that the floor wins.
-    defaultPolicies: [
-      {
-        description: "Adults may execute a payment (Payments package). The critical approval floor still applies per call.",
-        subjectSelector: { ageProfiles: ["adult"] },
-        capabilityNames: ["payment.execute"],
         effect: "allow",
       },
     ],

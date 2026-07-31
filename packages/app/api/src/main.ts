@@ -101,7 +101,8 @@ const audit = new SqliteAuditSink(ensureDir(process.env["KINOS_AUDIT_DB"] ?? "da
 const sessions = new SqliteSessionStore(ensureDir(process.env["KINOS_SESSIONS_DB"] ?? "data/sessions.sqlite"));
 const tokens = new SqliteAgentTokenStore(ensureDir(process.env["KINOS_TOKENS_DB"] ?? "data/tokens.sqlite"));
 const snapshots = new SqliteSnapshotStore(ensureDir(process.env["KINOS_SNAPSHOTS_DB"] ?? "data/snapshots.sqlite"));
-// Real Sphere-scoped calendar behind the family-calendar capabilities (RFC-012).
+// Real Sphere-scoped calendar behind the calendar.* capabilities (RFC-012), used
+// by the Calendar package's "local" provider.
 const calendarStore = new SqliteCalendarStore(ensureDir(process.env["KINOS_CALENDAR_DB"] ?? "data/calendar.sqlite"));
 const memoryStore = new SqliteMemoryStore(ensureDir(process.env["KINOS_MEMORY_DB"] ?? "data/memory.sqlite"));
 
