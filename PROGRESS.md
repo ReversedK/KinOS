@@ -2313,3 +2313,22 @@ Runtime adapter → integrations/Packages → UI.
 - **Last remaining hop (deferred, needs live cloud):** materializing the broker token into
   the Hermes projected profile `.env` for the actual codex inference call — KinOS cloud
   inference has never been run end-to-end, so this stays for a live session.
+
+### Iteration 121 — 2026-08-02 (RFC-049: materialize the inference key into the Hermes profile .env)
+- Built the token-materialization **seam** (the structural last hop; the live cloud call
+  itself still needs real creds). The Hermes model block references `${OPENAI_API_KEY}`;
+  now the value is written to the profile `.env` (ADR-007, beside the MCP token).
+- **Adapter:** `writeHermesProfile` gains an optional `providerKey` → written under
+  `providerKeyEnv(profile.providerId)` (exported); `.env` is written when a token OR a
+  providerKey is present. Value never in config.yaml/projection/audit.
+- **Governance:** `RuntimeGovernanceDeps.resolveInferenceKey(profile)` (optional); for a
+  cloud profile with a `secretRef`, `projectAgentConfig` resolves it and passes it as
+  `providerKey`. `main.ts` wires it: `authMethod=oauth` → `authBroker.getAccessToken(ref)`
+  (fresh token per projection); API-key profiles stay on ambient env for now. `authBroker`
+  moved above `govDeps` so both share one instance.
+- **Verified:** 2 new tests (adapter writes `OPENAI_API_KEY` to `.env` not config.yaml;
+  governance consults the resolver for a cloud OAuth profile and materializes the token) —
+  588 tests, typecheck green.
+- **Still deferred:** a live codex call with real OpenAI OAuth creds; OAuth token staleness
+  (a long-running agent needs re-projection to refresh); CLI `selectRuntime` still uses a
+  static secret resolver.

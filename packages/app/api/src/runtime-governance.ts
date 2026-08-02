@@ -30,6 +30,7 @@ import {
   type AuditSink,
   type PolicyRequest,
   type Role,
+  type RuntimeProfile,
   type RuntimeProviderId,
   type RuntimeStateBlobStore,
   type SnapshotStore,
@@ -60,6 +61,15 @@ export interface RuntimeGovernanceDeps {
    * authorization.
    */
   readonly providerBaseUrl?: (providerId: string) => string | undefined;
+  /**
+   * RFC-049: resolve the cloud inference credential for a governed profile — an API
+   * key from the secret store, or a fresh OAuth access token from the auth broker
+   * when `authMethod=oauth` (Sign in with ChatGPT). Returns undefined for a local
+   * provider or when nothing is configured; the value is written only to the profile
+   * `.env`, never retained. Absent ⇒ the profile relies on ambient provider env
+   * (unchanged prior behaviour).
+   */
+  readonly resolveInferenceKey?: (profile: RuntimeProfile) => Promise<string | undefined>;
   readonly auditSink?: AuditSink;
   readonly now?: () => string;
   /** Session backup/restore (RFC-007). Absent → backup/restore unavailable. */
@@ -149,10 +159,19 @@ export async function projectAgentConfig(
     version: 1,
   });
 
+  // RFC-049: resolve the cloud inference credential (API key or a fresh OAuth token)
+  // so Hermes can reach the provider. Only for a cloud profile with a reference; the
+  // value lands solely in the profile `.env` below, never in the projection or audit.
+  const inferenceKey =
+    projection.profile.execution === "cloud" && projection.profile.secretRef !== undefined
+      ? await deps.resolveInferenceKey?.(projection.profile)
+      : undefined;
+
   const configPath = await writeHermesProfile(projection, {
     home: deps.home,
     fs: deps.fs,
     token: provisioned.token,
+    ...(inferenceKey !== undefined ? { providerKey: inferenceKey } : {}),
   });
 
   // Audit the token provisioning as a security fact (never the value).

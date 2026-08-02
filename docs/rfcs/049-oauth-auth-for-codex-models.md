@@ -103,12 +103,15 @@ URL is built offline for a configured OpenAI provider.
   authorize/token URLs, scopes and PKCE specifics are operator-provisioned config (the map
   ships placeholder OIDC scopes `openid/profile/email`). The broker plumbing is in place;
   only real values + a live consent remain, mirroring the Google-client provisioning.
-- **Token materialization for inference (remaining):** resolving the broker `accountRef`
-  into a bearer for the *actual* inference call. The agent runs via the Hermes projection,
-  which references the provider key by env (`${OPENAI_API_KEY}`); wiring the broker
-  `getAccessToken(secretRef)` → the projected profile `.env` for `authMethod=oauth` is the
-  last hop, and needs live cloud verification (KinOS cloud inference has never been run
-  end-to-end). The CLI `selectRuntime` path also still uses a static `SecretResolver`.
+- **Live cloud verification (remaining):** the token-materialization *seam* is now built
+  (see "Inference-key materialization" below), but a real end-to-end codex inference call
+  through Hermes is still unverified — it needs a real OpenAI OAuth client + a live session
+  (KinOS cloud inference has never run end-to-end). The CLI `selectRuntime` path also still
+  uses a static `SecretResolver` (the API/Hermes path is the one wired here).
+- **OAuth token staleness:** a resolved access token is written into the profile `.env` at
+  projection time; a long-running agent whose token expires needs a re-projection
+  (`runtime.config.project`) to refresh it. An automatic refresh/re-projection trigger is
+  out of scope here.
 - **Token model / availability:** access-token lifetime and refresh for a ChatGPT
   subscription sign-in; which codex models a given plan exposes, and surfacing an
   unavailable-model denial cleanly.
@@ -126,6 +129,19 @@ broker account and **assembles the full OpenAI OAuth profile in one shot** — p
 `secretRef = openai::<accountRef>` (a broker reference, never a token) — so no
 credential-less cloud profile is ever persisted. The console's runtime settings surface a
 **Connect ChatGPT** button when OpenAI + a codex model + OAuth is chosen.
+
+## Inference-key materialization (built)
+
+The agent runs via the Hermes projection, whose model block references the provider key by
+env var (`api_key: ${OPENAI_API_KEY}`). The value is materialized into the profile `.env`
+— the one place secret values land (ADR-007), alongside the Sphere-MCP token:
+`writeHermesProfile` takes an optional resolved `providerKey`, written under
+`providerKeyEnv(providerId)` (e.g. `OPENAI_API_KEY`). `projectAgentConfig` resolves it for a
+cloud profile with a `secretRef` via an injected `resolveInferenceKey(profile)`; `main.ts`
+wires that to `authBroker.getAccessToken(secretRef)` for `authMethod=oauth` (a fresh token
+per projection) and leaves API-key profiles on ambient provider env for now. The token
+value never enters the projection, config.yaml, or audit. The remaining unknown is a live
+codex call with real OpenAI credentials.
 
 ## Acceptance criteria
 

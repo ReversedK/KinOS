@@ -103,6 +103,29 @@ describe("Hermes config projection — real schema (RFC-007/ADR-007)", () => {
     expect(written["/opt/data/profiles/agt_0/config.yaml"]).not.toContain("tok-secret-value");
   });
 
+  it("RFC-049: materializes the resolved cloud inference key into .env under the provider env var", async () => {
+    const written: Record<string, string> = {};
+    const fs: HermesFsPort = {
+      async mkdir() {},
+      async readFile() {
+        return undefined;
+      },
+      async writeFile(p, c) {
+        written[p] = c;
+      },
+    };
+    const cloud: RuntimeConfigProjection = {
+      ...projection,
+      profile: { providerId: "openai", model: "gpt-5-codex", execution: "cloud", authMethod: "oauth", secretRef: "openai::broker://acct/alice" },
+    };
+    await writeHermesProfile(cloud, { home: "/opt/data", fs, token: "tok-mcp", providerKey: "sk-resolved-oauth-token" });
+    const env = written["/opt/data/profiles/agt_0/.env"] ?? "";
+    // config.yaml references ${OPENAI_API_KEY}; the value lands only in .env.
+    expect(env).toContain("OPENAI_API_KEY=sk-resolved-oauth-token");
+    expect(env).toContain(`${SPHERE_MCP_TOKEN_ENV}=tok-mcp`);
+    expect(written["/opt/data/profiles/agt_0/config.yaml"]).not.toContain("sk-resolved-oauth-token");
+  });
+
   it("a preview (no token) writes config.yaml only — no .env, no secret on disk", async () => {
     const written: Record<string, string> = {};
     const fs: HermesFsPort = {

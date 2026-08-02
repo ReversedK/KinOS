@@ -118,6 +118,46 @@ describe("projectAgentConfig (RFC-007/ADR-007 — runtime.config.project side ef
     expect(cfg).not.toContain("tok-1");
   });
 
+  it("RFC-049: resolves the OAuth inference token and writes it into the profile .env, not config.yaml", async () => {
+    const store = new InMemorySphereStore();
+    const sphere = createSphere({ id: "sph_1", type: "family", name: "Doe", founder: { memberId: "mbr_p1", identityId: "idy_p1", role: "parent" } });
+    const agent = createAgent({ id: "agt_0", ownerId: "mbr_p1", ownerType: "member", sphereId: "sph_1", name: "A", enabledCapabilities: ["memory.search"] });
+    // A governed cloud OpenAI OAuth profile (as /oauth/connected would assemble it).
+    const runtimeConfig = {
+      defaultProfile: { providerId: "openai" as const, model: "gpt-5-codex", execution: "cloud" as const, authMethod: "oauth" as const, secretRef: "openai::broker://acct/alice" },
+      allowedProviders: ["ollama", "openai"] as const,
+      cloudInferenceEnabled: true,
+    };
+    await store.save(exportSphere({ sphere, identities: [], agents: [agent], memory: [], policies: [allowSearchForParents], bindings: [searchBinding], runtimeConfig, exportedAt: NOW }));
+    const written: Record<string, string> = {};
+    const fs: HermesFsPort = { async mkdir() {}, async readFile(p) { return written[p]; }, async writeFile(p, c) { written[p] = c; } };
+    // The resolver mimics main.ts: an OAuth profile resolves a fresh broker token.
+    const resolveCalls: string[] = [];
+    const deps: RuntimeGovernanceDeps = {
+      store,
+      tokens: new FakeTokens(),
+      home: "/opt/data",
+      fs,
+      gatewayEndpoint: (s, a) => `http://api:8787/spheres/${s}/mcp#${a}`,
+      now: () => NOW,
+      resolveInferenceKey: async (profile) => {
+        resolveCalls.push(`${profile.providerId}:${profile.authMethod}:${profile.secretRef}`);
+        return "sk-fresh-oauth-token";
+      },
+    };
+    await projectAgentConfig(deps, { sphereId: "sph_1", agentId: "agt_0" });
+
+    // The resolver was consulted for the cloud OAuth profile.
+    expect(resolveCalls).toEqual(["openai:oauth:openai::broker://acct/alice"]);
+    const env = written["/opt/data/profiles/agt_0/.env"] ?? "";
+    expect(env).toContain("OPENAI_API_KEY=sk-fresh-oauth-token");
+    // config.yaml references the env var, never the token value or the account ref.
+    const cfg = written["/opt/data/profiles/agt_0/config.yaml"] ?? "";
+    expect(cfg).toContain("${OPENAI_API_KEY}");
+    expect(cfg).not.toContain("sk-fresh-oauth-token");
+    expect(cfg).not.toContain("broker://acct/alice");
+  });
+
   it("projects the agent's governed model into its Hermes profile (RFC-009)", async () => {
     // Same seed, but the agent carries a governed model preference. Hermes must
     // run on exactly that model, not the Sphere default (llama3.2).

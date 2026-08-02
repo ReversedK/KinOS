@@ -246,7 +246,12 @@ export function grantedToolsets(grantTokens: readonly string[]): readonly string
   return out;
 }
 
-function providerKeyEnv(provider: string): string {
+/**
+ * The env var name the Hermes model block references for a cloud provider's key
+ * (e.g. `openai` → `OPENAI_API_KEY`). config.yaml references `${OPENAI_API_KEY}`;
+ * the value lands only in the profile `.env` (ADR-007) — see `writeHermesProfile`.
+ */
+export function providerKeyEnv(provider: string): string {
   return `${provider.toUpperCase()}_API_KEY`;
 }
 
@@ -447,6 +452,15 @@ export interface WriteHermesProfileOptions {
    * written and config.yaml still references the env var.
    */
   readonly token?: string;
+  /**
+   * RFC-049: the resolved cloud inference credential (an API key, or a fresh
+   * OAuth access token for "Sign in with ChatGPT"). When supplied, it is written
+   * to the profile `.env` under the provider's key env var (e.g. `OPENAI_API_KEY`)
+   * — the same var config.yaml references. Like the MCP token, the value lands
+   * ONLY in `.env`, never in config.yaml, the projection, or audit (ADR-007). Omit
+   * for a local provider or a preview.
+   */
+  readonly providerKey?: string;
 }
 
 /**
@@ -464,9 +478,16 @@ export async function writeHermesProfile(
   await options.fs.mkdir(dir);
   const currentConfig = await options.fs.readFile(path);
   await options.fs.writeFile(path, mergeHermesConfig(currentConfig, projection));
-  if (options.token !== undefined) {
+  // The profile `.env` is the one place secret VALUES land (ADR-007): the Sphere
+  // MCP token and — RFC-049 — the resolved cloud inference credential under the
+  // provider's key env var. Written only when a value is supplied.
+  const envEntries: Record<string, string> = {
+    ...(options.token !== undefined ? { [SPHERE_MCP_TOKEN_ENV]: options.token } : {}),
+    ...(options.providerKey !== undefined ? { [providerKeyEnv(projection.profile.providerId)]: options.providerKey } : {}),
+  };
+  if (Object.keys(envEntries).length > 0) {
     const currentEnv = await options.fs.readFile(envPath);
-    await options.fs.writeFile(envPath, mergeHermesEnv(currentEnv, { [SPHERE_MCP_TOKEN_ENV]: options.token }));
+    await options.fs.writeFile(envPath, mergeHermesEnv(currentEnv, envEntries));
   }
   return path;
 }

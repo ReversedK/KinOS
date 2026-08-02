@@ -155,6 +155,9 @@ const nodeFs: HermesFsPort = {
   },
 };
 const mcpPublicUrl = (process.env["KINOS_PUBLIC_URL"] ?? `http://localhost:${process.env["KINOS_API_PORT"] ?? "8787"}`).replace(/\/+$/, "");
+// OAuth broker (RFC-017/018/049) — built once, used by both the integration provider
+// registry and the runtime inference-key resolver below.
+const authBroker: AuthBroker = buildAuthBroker();
 const govDeps: RuntimeGovernanceDeps = {
   store,
   tokens,
@@ -165,6 +168,15 @@ const govDeps: RuntimeGovernanceDeps = {
   // pin one. Deployment detail only — the provider/model choice stays governed.
   providerBaseUrl: (providerId) =>
     providerId === "ollama" ? (process.env["HARNESS_OLLAMA_URL"] ?? "http://host.docker.internal:11434/v1") : undefined,
+  // RFC-049: resolve the cloud inference credential for the projected profile. An
+  // OAuth profile ("Sign in with ChatGPT") resolves a fresh access token from the
+  // broker; an API-key profile relies on the ambient provider env (unchanged) until
+  // secret-store resolution is wired. The value lands only in the profile `.env`.
+  resolveInferenceKey: async (profile) => {
+    if (profile.secretRef === undefined) return undefined;
+    if (profile.authMethod === "oauth") return authBroker.getAccessToken(profile.secretRef);
+    return undefined;
+  },
   auditSink: audit,
   snapshots,
   blobs,
@@ -252,7 +264,6 @@ function buildAuthBroker(): AuthBroker {
   }
   return new FakeAuthBroker();
 }
-const authBroker: AuthBroker = buildAuthBroker();
 const pendingOAuth = new PendingOAuthStore();
 setInterval(() => pendingOAuth.prune(), 60_000).unref();
 
